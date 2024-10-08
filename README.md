@@ -8,9 +8,8 @@ Variation of GANs that, generates realistic data that is classiﬁed with low co
 ## Create Virtual Environment
 
 ```ssh
-mamba create -n ambigan python=3.10
-mamba activate ambigan
-mamba install pip-tools
+poetry install
+poetry shell
 ```
 
 ## Run
