@@ -144,3 +144,6 @@ files/
 
 # WandB
 wandb/
+
+# poetry
+poetry.lock
