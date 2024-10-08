@@ -1,5 +1,5 @@
 import torch
-from .datasets import get_mnist, get_fashion_mnist, get_cifar10
+from .datasets import get_mnist, get_fashion_mnist, get_cifar10, get_chest_xray
 from .utils import BinaryDataset
 
 
@@ -7,6 +7,7 @@ dataset_2_fn = {
     'mnist': get_mnist,
     'fashion-mnist': get_fashion_mnist,
     'cifar10': get_cifar10,
+    'chest-xray': get_chest_xray
 }
 
 
