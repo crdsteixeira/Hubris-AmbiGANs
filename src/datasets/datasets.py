@@ -3,6 +3,7 @@ from datasets import load_dataset
 from torch.utils.data import Dataset
 from PIL import Image
 import io
+import torch
 
 
 def get_mnist(dataroot, train=True):
@@ -63,6 +64,14 @@ def get_chest_xray(dataroot, train=True):
             
             label = sample['label']
             return image, label
+        
+        @property
+        def data(self):
+            return torch.stack([self.transform(Image.open(io.BytesIO(sample["image"]))) for sample in self.hf_dataset])
+        
+        @property
+        def targets(self):
+            return torch.tensor([sample['label'] for sample in self.hf_dataset])
     
     return ChestXrayDataset(ds, transform=transform)
 
