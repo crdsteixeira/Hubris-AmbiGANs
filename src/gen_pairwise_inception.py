@@ -24,7 +24,7 @@ def main():
 
     for neg_class, pos_class in itertools.combinations(range(n_classes), 2):
         print(f"{neg_class}vs{pos_class}")
-        proc = subprocess.run(['python', '-m', 'src.metrics.fid',
+        proc = subprocess.run(['poetry', 'run', 'python', '-m', 'src.metrics.fid',
                                '--data', args.dataroot,
                                '--dataset', args.dataset,
                                '--device', args.device,

@@ -1,18 +1,11 @@
 import torch
-from .datasets import get_mnist, get_fashion_mnist, get_cifar10, get_chest_xray
+
+from src.constants import dataset_getters
 from .utils import BinaryDataset
 
 
-dataset_2_fn = {
-    'mnist': get_mnist,
-    'fashion-mnist': get_fashion_mnist,
-    'cifar10': get_cifar10,
-    'chest-xray': get_chest_xray
-}
-
-
 def valid_dataset(name):
-    return name.lower() in dataset_2_fn
+    return name.lower() in dataset_getters
 
 
 def load_dataset(name, data_dir, pos_class=None, neg_class=None, train=True):
@@ -20,7 +13,7 @@ def load_dataset(name, data_dir, pos_class=None, neg_class=None, train=True):
         print("{} dataset not supported".format(name))
         exit(-1)
 
-    get_dset_fn = dataset_2_fn[name]
+    get_dset_fn = dataset_getters[name]
     dataset = get_dset_fn(data_dir, train=train)
 
     image_size = tuple(dataset.data.shape[1:])

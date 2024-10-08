@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from src.metrics import fid
 from src.metrics.fid import get_inception_feature_map_fn
 from src.utils.checkpoint import construct_classifier_from_checkpoint
-from src.datasets import get_mnist, get_fashion_mnist, get_cifar10
+from src.constants import dataset_getters
 from src.datasets.utils import BinaryDataset
 
 
@@ -44,14 +44,12 @@ def main():
 
     print("Num workers", num_workers)
 
-    if args.dataset == 'mnist':
-        dset = get_mnist(args.dataroot)
-    elif args.dataset == 'fashion-mnist':
-        dset = get_fashion_mnist(args.dataroot)
-    elif args.dataset == 'cifar10':
-        dset = get_cifar10(args.dataroot)
+    dset = dataset_getters.get(args.dataset)
+
+    if dset:
+        dset = dset(args.dataroot)
     else:
-        print("invalid dataset", args.dataset)
+        print("Invalid dataset:", args.dataset)
         exit(-1)
 
     if args.model_path is None:
