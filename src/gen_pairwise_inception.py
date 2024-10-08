@@ -20,7 +20,7 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    n_classes = args.n_classes
+    n_classes = int(args.n_classes)
 
     for neg_class, pos_class in itertools.combinations(range(n_classes), 2):
         print(f"{neg_class}vs{pos_class}")
