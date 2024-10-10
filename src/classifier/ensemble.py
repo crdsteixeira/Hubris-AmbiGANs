@@ -1,45 +1,53 @@
-from .pretrained import ClassifierVIT, ClassifierResnet, ClassifierMLP
-from .simple_cnn import Classifier
+from src.classifier.pretrained import ClassifierResnet, ClassifierMLP
+from src.classifier.simple_cnn import Classifier
+from src.models import ClassifierParams, ClassifierType, EnsembleType, OutputMethod, DeviceType
+from typing import Union, Tuple, List
 import torch.nn as nn
-import ast
 import torch
 
 class Ensemble(nn.Module):
-    def __init__(self, img_size, num_classes, nf, ensemble_type, output_method, device):
+    def __init__(self, params: ClassifierParams) -> None:
+        """Initialize ensemble model based on the provided parameters."""
         super(Ensemble, self).__init__()
-        self.num_channels = img_size[0]
-        self.ensemble_type = ensemble_type
-        self.output_method = output_method
-        self.device = device
+        self.num_channels = params.img_size[0]
+        self.ensemble_type = params.ensemble_type
+        self.output_method = params.output_method
+        self.device = params.device
         self.m_val = False
+        self.n_classes = params.n_classes
 
         # List of ensemble models, either pretrained ones or CNN's.
-        if ensemble_type == "pretrained":
+        if params.ensemble_type == EnsembleType.pretrained:
             self.train_models = False
             self.models = nn.ModuleList(
                 [
-                    ClassifierResnet(img_size, num_classes, nf, self.device),
-                    ClassifierMLP(img_size, num_classes, nf, self.device),
+                    ClassifierResnet(params),
+                    ClassifierMLP(params),
                 ],
             )
-        elif ensemble_type == "cnn":
+        elif params.ensemble_type == EnsembleType.cnn:
             # Generate models' parameters
             self.train_models = True
-            self.cnn_list = nf
+            self.cnn_list = params.nf
             self.cnn_count = len(self.cnn_list)
             # Generate models
             self.models = nn.ModuleList(
                 [
                     Classifier(
-                        img_size,
-                        nf=cnn,
-                        num_classes=num_classes
-                    ) for cnn in self.cnn_list
+                        ClassifierParams(
+                            type=ClassifierType.cnn,
+                            img_size=params.img_size,
+                            nf=cnn,
+                            ensemble_type=None,
+                            output_method=None,
+                            n_classes=params.n_classes,
+                            device=params.device)
+                        ) for cnn in self.cnn_list
                 ]
             )
 
         # Output method for ensemble
-        if output_method == "meta-learner":
+        if params.output_method == OutputMethod.meta_learner:
             # Multi-probability combinator
             self.optimize = True
             self.predictor = nn.Sequential(
@@ -50,21 +58,21 @@ class Ensemble(nn.Module):
                 nn.Linear(len(self.models), 1),
                 nn.Sigmoid(),
             )
-        elif output_method == "mean":
+        elif params.output_method == OutputMethod.mean:
             # Mean combinator
             self.optimize = False
             self.predictor = nn.Sequential(
                 nn.Flatten(),
                 nn.AvgPool1d(len(self.models)),
             )
-        elif output_method == "linear":
-            self.optimize = True
+        elif params.output_method == OutputMethod.linear:
             # Linear combinator
             self.predictor = nn.Sequential(
                 nn.Linear(len(self.models), 1),
+                nn.Flatten(),
                 nn.Sigmoid(),
             )
-        elif output_method == "identity":
+        elif params.output_method == OutputMethod.identity:
             self.optimize = False
             self.m_val = True
             # Raw outputs with no combination
@@ -72,23 +80,36 @@ class Ensemble(nn.Module):
                 nn.Identity()
             )
 
-    def forward(self, x, output_feature_maps=False):
-        output = torch.Tensor().to(self.device)
-        feat_maps = []
-        for m in self.models:
-            out = m(x.clone(), output_feature_maps=False).unsqueeze(-1)
-            output = torch.hstack((output, out))
+    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
+        """"Perform forward pass through the ensemble and optionally return feature maps."""
+        # Initialize the output as a list to avoid shape mismatches in stacking
+        outputs = []
+        feature_maps = []
 
-        feat_maps.append(output)
-        output = self.predictor(output).squeeze(-1)
-        feat_maps.append(output)
+        # Pass input through each model in the ensemble
+        for model in self.models:
+            # Get the output of each model
+            out = model(x.clone(), output_feature_maps=output_feature_maps)
+            if output_feature_maps and isinstance(out, tuple):
+                feature_maps.append(out[0])  # Assume first element in tuple is feature maps
+                out = out[1]  # Assume second element is the final output
+            outputs.append(out.unsqueeze(-1))  # Add a new dimension to align for stacking
+
+        # Concatenate outputs along the last dimension
+        output = torch.cat(outputs, dim=-1)
+
+        # Combine the outputs using the predictor
+        combined_output = self.predictor(output).squeeze(-1)
 
         if output_feature_maps:
-            return feat_maps
+            return combined_output, feature_maps
         else:
-            return output
+            return combined_output
 
-    def train_helper(self, _, X, Y, crit, acc_fun, early_acc=1.00):
+
+    def train_helper(self, _: None, X: torch.Tensor, Y: torch.Tensor, 
+                     crit: nn.Module, acc_fun: nn.Module, early_acc: float = 1.00) -> Tuple[torch.Tensor, float]:
+        """Helper function for training ensemble models."""
         chunks = list(zip(torch.tensor_split(X, len(self.models)+1), torch.tensor_split(Y, len(self.models)+1)))[1:]
         loss_overall = 0
         acc = 0
@@ -105,7 +126,9 @@ class Ensemble(nn.Module):
 
         return loss_overall / len(self.models), acc / len(self.models)
 
-    def optimize_helper(self, _, X, Y, crit, acc_fun, early_acc=1.00):
+    def optimize_helper(self, _: None, X: torch.Tensor, Y: torch.Tensor, 
+                        crit: nn.Module, acc_fun: nn.Module, early_acc: float = 1.00) -> Tuple[torch.Tensor, float]:
+        """Helper function to optimize ensemble models."""
         chunks = list(zip(torch.tensor_split(X, len(self.models)+1), torch.tensor_split(Y, len(self.models)+1)))[0]
         x, y = chunks[0], chunks[1]
 
@@ -116,7 +139,7 @@ class Ensemble(nn.Module):
         loss = crit(y_hat, y)
         acc = acc_fun(y_hat, y, avg=False)
 
-        if (self.output_method != "mean") and (early_acc >= (acc / len(y))):
+        if (self.output_method != OutputMethod.mean) and (early_acc >= (acc / len(y))):
             loss.backward()
 
         return loss, acc

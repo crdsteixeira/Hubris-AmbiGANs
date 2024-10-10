@@ -1,42 +1,51 @@
 import torch.nn as nn
+import torch
 import math
+from src.models import ClassifierParams, PoolingParams
 
 
-def pool_out(in_size, kernel, dilation=1, padding=0, stride=None):
-    stride = kernel if stride is None else stride
-
-    out_size = (in_size + 2 * padding - dilation * (kernel-1) - 1) / stride + 1
-
+def pool_out(params: PoolingParams) -> int:
+    """
+    Calculate the output size after a pooling operation using PoolingParams.
+    """
+    stride = params.kernel if params.stride is None else params.stride
+    out_size = (params.in_size + 2 * params.padding - params.dilation * (params.kernel - 1) - 1) / stride + 1
     return int(math.floor(out_size))
 
 
 class Classifier(nn.Module):
-    def __init__(self, img_size, nf, num_classes):
+    def __init__(self, params: ClassifierParams) -> None:
+        """
+        Initialize the CNN classifier using ClassifierParams.
+        """
         super(Classifier, self).__init__()
-        nc, nh, nw = img_size
+        nc, nh, nw = params.img_size
         self.blocks = nn.ModuleList()
 
         n_in = nc
-        for i in range(len(nf)):
+        for i in range(len(params.nf)):
             self.blocks.append(nn.Sequential(
-                nn.Conv2d(n_in, nf[i], 3, padding='same'),
+                nn.Conv2d(n_in, params.nf[i], 3, padding='same'),
                 nn.ReLU(),
                 nn.MaxPool2d(2),
             ))
 
-            nh = pool_out(nh, 2)
-            nw = pool_out(nw, 2)
-            n_in = nf[i]
+            pool_params = PoolingParams(in_size=nh, kernel=2)
+            nh = pool_out(pool_params)
+            nw = pool_out(pool_params)
+            n_in = params.nf[i]
 
         self.blocks.append(nn.Sequential(
             nn.Flatten(),
-            nn.Linear(nh * nw * n_in, 1 if num_classes == 2 else num_classes),
-            nn.Sigmoid() if num_classes == 2 else nn.Softmax(dim=1)
+            nn.Linear(nh * nw * n_in, 1 if params.n_classes == 2 else params.n_classes),
+            nn.Sigmoid() if params.n_classes == 2 else nn.Softmax(dim=1)
         ))
 
-    def forward(self, x, output_feature_maps=False):
+    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
+        """
+        Forward pass through the CNN classifier.
+        """
         intermediate_outputs = []
-
         for block in self.blocks:
             x = block(x)
             intermediate_outputs.append(x)

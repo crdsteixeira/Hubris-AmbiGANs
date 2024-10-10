@@ -1,14 +1,15 @@
 import torch.nn as nn
 import torch
-from transformers import AutoImageProcessor, AutoModelForImageClassification, AutoModel
+from transformers import AutoModelForImageClassification, AutoModel
 from torchvision import transforms
+from src.models import ClassifierParams
 
 class ClassifierVIT(nn.Module):
-    def __init__(self, img_size, num_classes, nf, device):
+    def __init__(self, params: ClassifierParams) -> None:
+        """Initialize the VIT-based classifier."""
         super(ClassifierVIT, self).__init__()
-        num_channels = img_size[0]
-        out_features = 1 if num_classes == 2 else num_classes
-        self.device = device
+        out_features = 1 if params.n_classes == 2 else params.n_classes
+        self.device = params.device
         self.model = AutoModelForImageClassification.from_pretrained("farleyknight-org-username/vit-base-mnist")
 
         for p in self.model.parameters():
@@ -24,16 +25,18 @@ class ClassifierVIT(nn.Module):
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
 
-    def forward(self, x, output_feature_maps=False):
+    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
+        """Forward pass for VIT classifier."""
         images = torch.stack([self.transforms(i).to(self.device) for i in x])
         return self.model(images)['logits']
 
+
 class ClassifierResnet(nn.Module):
-    def __init__(self, img_size, num_classes, nf, device):
+    def __init__(self, params: ClassifierParams) -> None:
+        """Initialize the ResNet-based classifier."""
         super(ClassifierResnet, self).__init__()
-        num_channels = img_size[0]
-        out_features = 1 if num_classes == 2 else num_classes
-        self.device = device
+        out_features = 1 if params.n_classes == 2 else params.n_classes
+        self.device = params.device
         self.model = AutoModelForImageClassification.from_pretrained("fxmarty/resnet-tiny-mnist")
 
         for p in self.model.parameters():
@@ -45,15 +48,17 @@ class ClassifierResnet(nn.Module):
         )
         self.model.num_labels = out_features
 
-    def forward(self, x, output_feature_maps=False):
+    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
+        """Forward pass for ResNet classifier."""
         return self.model(x)['logits']
 
+
 class ClassifierMLP(nn.Module):
-    def __init__(self, img_size, num_classes, nf, device):
+    def __init__(self, params: ClassifierParams) -> None:
+        """Initialize the MLP-based classifier."""
         super(ClassifierMLP, self).__init__()
-        num_channels = img_size[0]
-        out_features = 1 if num_classes == 2 else num_classes
-        self.device = device
+        out_features = 1 if params.n_classes == 2 else params.n_classes
+        self.device = params.device
         self.model = AutoModel.from_pretrained("dacorvo/mnist-mlp", trust_remote_code=True)
 
         for p in self.model.parameters():
@@ -64,45 +69,18 @@ class ClassifierMLP(nn.Module):
             nn.Linear(in_features=self.model.config.hidden_size, out_features=out_features),
         )
         self.transforms = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Lambda(lambda pil_img: pil_img.convert("L")),  # Grayscale for MLP
+            transforms.Resize(28),  # Ensure the input size matches what MLP expects
+            transforms.ToTensor(),
             transforms.Normalize((0.1307), (0.3081)),
             transforms.Lambda(lambda x: torch.flatten(x)),
         ])
 
-    def forward(self, x, output_feature_maps=False):
+    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
+        """Forward pass for MLP classifier."""
         images = torch.stack([self.transforms(i).to(self.device) for i in x])
-        return self.model(images)
-
-class Ensemble(nn.Module):
-    def __init__(self, img_size, num_classes, nf, device):
-        super(Ensemble, self).__init__()
-        num_channels = img_size[0]
-        self.device = device
-        #self.model_1 = ClassifierVIT(img_size, num_classes, nf, self.device)
-        self.model_2 = ClassifierResnet(img_size, num_classes, nf, self.device)
-        self.model_3 = ClassifierMLP(img_size, num_classes, nf, self.device)
-        self.models = [
-            self.model_2,
-            self.model_3,
-        ]
-        # TO DISCUSS
-        self.predictor = nn.Sequential(
-            nn.Linear(len(self.models), 1),
-            nn.Sigmoid(),
-        )
-        # TO DISCUSS
-
-    def forward(self, x, output_feature_maps=False):
-        output = torch.Tensor().to(self.device)
-        feat_maps = []
-        for m in self.models:
-            out = m(x.clone(), output_feature_maps)
-            output = torch.cat((output, out), dim=1)
-
-        feat_maps.append(output)
-        output = self.predictor(output).squeeze(1)
-        feat_maps.append(output)
-
-        if output_feature_maps:
-            return feat_maps
-        else:
-            return output
+        output = self.model(images)
+        if output.shape[-1] == 1:  # Apply squeeze if binary classification (output is 1D)
+            output = output.squeeze(-1)
+        return output
