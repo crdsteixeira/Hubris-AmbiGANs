@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "src"
-version = "0.1.1"
+version = "0.1.2"
 description = "Hubris Benchmarking with AmbiGANs for publication"
 authors = ["Catia Teixeira <catia.rds.teixeira@gmail.com>"]
 readme = "README.md"
