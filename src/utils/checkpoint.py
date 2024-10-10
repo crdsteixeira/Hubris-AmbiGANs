@@ -17,12 +17,12 @@ def checkpoint(model, model_name, model_params, train_stats, args, output_dir=No
     save_dict = {
         'name': model_name,
         'state': model.state_dict(),
-        'stats': train_stats,
+        'stats': train_stats.__dict__,
         'params': model_params,
         'args': args
     }
 
-    json.dump({'train_stats': train_stats, 'model_params': model_params, 'args': vars(args)},
+    json.dump({'train_stats': train_stats.__dict__, 'model_params': model_params.__dict__, 'args': vars(args)},
               open(os.path.join(output_dir, 'stats.json'), 'w'), indent=2)
 
     if optimizer is not None:
