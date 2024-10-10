@@ -28,6 +28,7 @@ pytest = "^8.3.3"
 torchaudio = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
 torch = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
 torchvision = {version = "^0.19.1+cu124", source = "pytorch-gpu"}
+pre-commit = "^4.0.1"
 
 
 [[tool.poetry.source]]

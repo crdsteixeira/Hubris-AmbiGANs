@@ -10,7 +10,10 @@ class BinaryDataset(torch.utils.data.Dataset):
             if y == pos_class or y == neg_class:
                 data.append(torch.unsqueeze(X, dim=0))
                 targets.append(
-                    torch.ones((1,), dtype=torch.float32) if y == pos_class else torch.zeros((1,), dtype=torch.float32))
+                    torch.ones((1,), dtype=torch.float32)
+                    if y == pos_class
+                    else torch.zeros((1,), dtype=torch.float32)
+                )
 
         self.data = torch.vstack(data)
         self.targets = torch.hstack(targets)

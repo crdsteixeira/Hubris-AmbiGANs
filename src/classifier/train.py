@@ -1,24 +1,27 @@
-from sklearn.utils import shuffle
-from tqdm import tqdm
+import os
+from typing import Any, Callable, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
 from dotenv import load_dotenv
-import os
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-from torch.utils.data import DataLoader
 from pydantic import ValidationError
 from torch import Tensor
-from typing import Callable, Tuple, Any
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from src.classifier import construct_classifier
 from src.datasets import load_dataset
 from src.metrics.accuracy import binary_accuracy, multiclass_accuracy
+from src.models import (ClassifierParams, CLTrainArgs, DefaultTrainParams,
+                        DeviceType, EvaluateParams, TrainArgs, TrainingStage,
+                        TrainingStats)
 from src.utils import setup_reprod
-from src.utils.checkpoint import checkpoint, construct_classifier_from_checkpoint
-from src.classifier import construct_classifier
-from src.models import EvaluateParams, DefaultTrainParams, TrainArgs, TrainingStats, ClassifierParams, TrainingStage, CLTrainArgs, DeviceType
+from src.utils.checkpoint import (checkpoint,
+                                  construct_classifier_from_checkpoint)
 
 
 def evaluate(
@@ -26,7 +29,7 @@ def evaluate(
     dataloader: DataLoader,
     criterion: nn.Module,
     acc_fun: Callable[[torch.Tensor, torch.Tensor, bool], float],
-    params: EvaluateParams  # Using the new Pydantic model
+    params: EvaluateParams,  # Using the new Pydantic model
 ) -> Tuple[float, float]:
     """Evaluate the classifier and return accuracy and loss."""
     training = C.training
@@ -66,7 +69,8 @@ def evaluate(
                 running_loss += loss.item() * X.shape[0]
 
                 for j in range(y_c_hat.size(-1)):
-                    accuracies.append(acc_fun(y_c_hat[:, j], y, avg=True).cpu())
+                    accuracies.append(
+                        acc_fun(y_c_hat[:, j], y, avg=True).cpu())
 
         per_C_accuracy.append(accuracies)
 
@@ -76,48 +80,50 @@ def evaluate(
     if training:
         C.train()
 
-
     per_C_accuracy = np.array(per_C_accuracy)
     print("per classifier accuracy: ", np.mean(per_C_accuracy, axis=0))
     return acc.item(), loss
 
+
 # Assume DefaultTrainParams is already defined
 
+
 def default_train_fn(
-    C: nn.Module, 
-    X: Tensor, 
-    Y: Tensor, 
-    crit: Callable[[Tensor, Tensor], Tensor], 
+    C: nn.Module,
+    X: Tensor,
+    Y: Tensor,
+    crit: Callable[[Tensor, Tensor], Tensor],
     acc_fun: Callable[[Tensor, Tensor, bool], float],
-    params: DefaultTrainParams  # Using the new Pydantic model
+    params: DefaultTrainParams,  # Using the new Pydantic model
 ) -> Tuple[Tensor, Tensor]:
     """Default training function for a single batch."""
-    X = X.to(params.device.value)  
-    Y = Y.to(params.device.value) 
+    X = X.to(params.device.value)
+    Y = Y.to(params.device.value)
     y_hat = C(X)
     loss = crit(y_hat, Y)
     acc = acc_fun(y_hat, Y, avg=False).cpu()
-    
+
     if params.early_acc > (acc / len(Y)):
         loss.backward()
 
     return loss, acc
 
+
 def train(
-    C: nn.Module, 
-    opt: optim.Optimizer, 
+    C: nn.Module,
+    opt: optim.Optimizer,
     crit: Any,  # Loss function
-    train_loader: torch.utils.data.DataLoader, 
-    val_loader: torch.utils.data.DataLoader, 
-    test_loader: torch.utils.data.DataLoader, 
+    train_loader: torch.utils.data.DataLoader,
+    val_loader: torch.utils.data.DataLoader,
+    test_loader: torch.utils.data.DataLoader,
     acc_fun: Any,  # Accuracy function
     args: TrainArgs,  # Use Pydantic model for args
-    name: str, 
+    name: str,
     model_params: ClassifierParams,  # Use ClassifierParams for model parameters
-    device: DeviceType
+    device: DeviceType,
 ) -> Tuple[TrainingStats, str]:  # Use TrainingStats model for stats
     """Training loop with validation and checkpointing."""
-    
+
     stats = TrainingStats()  # Initialize the stats using the Pydantic model
 
     C.to(device.value)
@@ -132,17 +138,25 @@ def train(
             if C.train_models:
                 C_fn = C.train_helper
             else:
-                params = DefaultTrainParams(early_acc=args.early_acc, device=device)
-                C_fn = lambda *args: default_train_fn(*args, params=params)
+                params = DefaultTrainParams(
+                    early_acc=args.early_acc, device=device)
+
+                def C_fn(*args):
+                    return default_train_fn(*args, params=params)
 
         for epoch in range(args.epochs):
             stats.cur_epoch = epoch
-            print(f"\n --- {stage.value.capitalize()}: Epoch {epoch + 1} ---\n", flush=True)
+            print(
+                f"\n --- {stage.value.capitalize()}: Epoch {epoch + 1} ---\n",
+                flush=True,
+            )
 
             running_accuracy = 0.0
             running_loss = 0.0
 
-            for i, data in enumerate(tqdm(train_loader, desc=stage.value.capitalize()), 0):
+            for i, data in enumerate(
+                tqdm(train_loader, desc=stage.value.capitalize()), 0
+            ):
                 X, y = data
                 X = X.to(device.value)
                 y = y.to(device.value)
@@ -164,17 +178,18 @@ def train(
 
             # Validation step
             evaluate_params = EvaluateParams(
-                device=device,      # The device can be 'cpu' or 'cuda' (using your Pydantic DeviceType model)
-                verbose=True,       # Whether to show progress bar
-                desc='Validate',    # Description for progress bar during validation
-                header='Validation' # Optional header for logging
+                # The device can be 'cpu' or 'cuda' (using your Pydantic DeviceType model)
+                device=device,
+                verbose=True,  # Whether to show progress bar
+                desc="Validate",  # Description for progress bar during validation
+                header="Validation",  # Optional header for logging
             )
             val_acc, val_loss = evaluate(
-                C, 
-                val_loader, 
-                crit, 
-                acc_fun, 
-                params=evaluate_params  # Pass the params instance
+                C,
+                val_loader,
+                crit,
+                acc_fun,
+                params=evaluate_params,  # Pass the params instance
             )
             stats.val_acc.append(val_acc)
             stats.val_loss.append(val_loss)
@@ -188,12 +203,16 @@ def train(
                 stats.best_epoch = epoch
                 stats.early_stop_tracker = 0
 
-                cp_path = checkpoint(C, name, model_params, stats, args, output_dir=args.out_dir)
+                cp_path = checkpoint(
+                    C, name, model_params, stats, args, output_dir=args.out_dir
+                )
                 print(f" > Saved checkpoint to {cp_path}")
             else:
                 if args.early_stop is not None:
                     stats.early_stop_tracker += 1
-                    print(f" > Early stop counter: {stats.early_stop_tracker}/{args.early_stop}")
+                    print(
+                        f" > Early stop counter: {stats.early_stop_tracker}/{args.early_stop}"
+                    )
 
                     if stats.early_stop_tracker == args.early_stop:
                         break
@@ -206,13 +225,18 @@ def parse_args() -> CLTrainArgs:
     args = CLTrainArgs()  # Default values are used from Pydantic model.
     return args
 
-import torch
 
-def save_predictions(model: nn.Module, dataloader: DataLoader, device: DeviceType, dataset_name: TrainingStage, cp_path: str):
+def save_predictions(
+    model: nn.Module,
+    dataloader: DataLoader,
+    device: DeviceType,
+    dataset_name: TrainingStage,
+    cp_path: str,
+):
     """
-    Generate predictions using the model, save the predicted values as .npy, 
+    Generate predictions using the model, save the predicted values as .npy,
     and generate histograms for visualization.
-    
+
     Args:
         model (nn.Module): The trained model to generate predictions.
         dataloader (DataLoader): The dataloader for which predictions are needed (train or test).
@@ -235,15 +259,20 @@ def save_predictions(model: nn.Module, dataloader: DataLoader, device: DeviceTyp
     y_hat_full = torch.cat(y_hat_full)
 
     # Save predictions as .npy file
-    np.save(os.path.join(cp_path, f'{dataset_name.value}_y_hat.npy'), y_hat_full.numpy(), allow_pickle=False)
+    np.save(
+        os.path.join(cp_path, f"{dataset_name.value}_y_hat.npy"),
+        y_hat_full.numpy(),
+        allow_pickle=False,
+    )
 
     # Create and save histogram of predictions
-    sns.histplot(data=y_hat_full.numpy(), stat='proportion', bins=20)
-    plt.savefig(os.path.join(cp_path, f'{dataset_name.value}_y_hat.svg'), dpi=300)
+    sns.histplot(data=y_hat_full.numpy(), stat="proportion", bins=20)
+    plt.savefig(os.path.join(
+        cp_path, f"{dataset_name.value}_y_hat.svg"), dpi=300)
     plt.clf()
 
-    print(f' > Saved {dataset_name.value} predictions and histogram to {cp_path}')
-
+    print(
+        f" > Saved {dataset_name.value} predictions and histogram to {cp_path}")
 
 
 def main() -> None:
@@ -272,7 +301,11 @@ def main() -> None:
     print(f" > Using device: {device.value}")
 
     # Name for the classifier based on type, nf, epochs, and seed
-    name = f'{args.c_type}-{args.nf}-{args.epochs}.{args.seed}' if args.name is None else args.name
+    name = (
+        f"{args.c_type}-{args.nf}-{args.epochs}.{args.seed}"
+        if args.name is None
+        else args.name
+    )
 
     # Load dataset
     dataset_name = args.dataset_name
@@ -284,23 +317,34 @@ def main() -> None:
     # Determine if binary classification
     binary_classification = num_classes == 2
     if binary_classification:
-        print(f"\t> Binary classification between {args.pos_class} and {args.neg_class}")
-        dataset_name = f'{dataset_name}.{args.pos_class}v{args.neg_class}'
+        print(
+            f"\t> Binary classification between {args.pos_class} and {args.neg_class}"
+        )
+        dataset_name = f"{dataset_name}.{args.pos_class}v{args.neg_class}"
 
     # Prepare output directory
     out_dir = os.path.join(args.out_dir, dataset_name)
 
     # Split dataset into training and validation sets
     train_set, val_set = torch.utils.data.random_split(
-        dataset, [int(5 / 6 * len(dataset)), len(dataset) - int(5 / 6 * len(dataset))]
+        dataset, [int(5 / 6 * len(dataset)), len(dataset) -
+                  int(5 / 6 * len(dataset))]
     )
 
     # Create data loaders for training, validation, and testing
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
-    
-    test_set = load_dataset(args.dataset_name, args.data_dir, args.pos_class, args.neg_class, train=False)[0]
-    test_loader = torch.utils.data.DataLoader(test_set, batch_size=args.batch_size, shuffle=False)
+    train_loader = torch.utils.data.DataLoader(
+        train_set, batch_size=args.batch_size, shuffle=True
+    )
+    val_loader = torch.utils.data.DataLoader(
+        val_set, batch_size=args.batch_size, shuffle=False
+    )
+
+    test_set = load_dataset(
+        args.dataset_name, args.data_dir, args.pos_class, args.neg_class, train=False
+    )[0]
+    test_loader = torch.utils.data.DataLoader(
+        test_set, batch_size=args.batch_size, shuffle=False
+    )
 
     # Create ClassifierParams using the parsed args
     model_params = ClassifierParams(
@@ -308,7 +352,7 @@ def main() -> None:
         img_size=img_size,
         nf=args.nf,
         n_classes=num_classes,
-        device=args.device  # Using DeviceType from args
+        device=args.device,  # Using DeviceType from args
     )
 
     # Construct classifier (pass the Pydantic model directly)
@@ -328,47 +372,60 @@ def main() -> None:
 
     # Train the model
     stats, cp_path = train(
-        C, opt, criterion, train_loader, val_loader, test_loader, acc_fun, args, name, model_params, device
+        C,
+        opt,
+        criterion,
+        train_loader,
+        val_loader,
+        test_loader,
+        acc_fun,
+        args,
+        name,
+        model_params,
+        device,
     )
 
     # Load the best model checkpoint
     best_C = construct_classifier_from_checkpoint(cp_path, device=device)[0]
     print("\n > Loading checkpoint from best epoch for testing ...")
-    
+
     # Test the model
     evaluate_params = EvaluateParams(
-        device=device,      # The device can be 'cpu' or 'cuda' (using your Pydantic DeviceType model)
-        verbose=True,       # Set to True to show progress bar
-        desc='Test',        # Description for progress bar
-        header='Test'       # Optional header for logging
+        # The device can be 'cpu' or 'cuda' (using your Pydantic DeviceType model)
+        device=device,
+        verbose=True,  # Set to True to show progress bar
+        desc="Test",  # Description for progress bar
+        header="Test",  # Optional header for logging
     )
-    
+
     test_acc, test_loss = evaluate(
-        best_C, 
-        test_loader, 
-        criterion, 
-        acc_fun, 
-        params=evaluate_params  # Pass the params instance
+        best_C,
+        test_loader,
+        criterion,
+        acc_fun,
+        params=evaluate_params,  # Pass the params instance
     )
     stats.test_acc = test_acc
-    stats.test_loss= test_loss
-    print(f'Test acc. = {test_acc}')
-    print(f'test loss. = {test_loss}')
+    stats.test_loss = test_loss
+    print(f"Test acc. = {test_acc}")
+    print(f"test loss. = {test_loss}")
 
     # Save checkpoint
-    cp_path = checkpoint(best_C, name, model_params, stats, args, output_dir=out_dir)
+    cp_path = checkpoint(best_C, name, model_params,
+                         stats, args, output_dir=out_dir)
 
     # Predictions on training data
-    save_predictions(best_C, train_loader, device, TrainingStage.train, cp_path)
+    save_predictions(best_C, train_loader, device,
+                     TrainingStage.train, cp_path)
 
     # Predictions on testing data
     save_predictions(best_C, test_loader, device, TrainingStage.test, cp_path)
 
-    print(f'\n > Saved checkpoint to {cp_path}')
+    print(f"\n > Saved checkpoint to {cp_path}")
     print(cp_path)
     print(test_acc)
     print(test_loss)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

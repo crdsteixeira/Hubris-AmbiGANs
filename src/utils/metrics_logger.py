@@ -1,5 +1,5 @@
-import wandb
 import matplotlib.pyplot as plt
+import wandb
 
 
 class MetricsLogger:
@@ -14,7 +14,7 @@ class MetricsLogger:
         self.epoch = 1
 
     def add_media_metric(self, name):
-        wandb.define_metric(name, step_metric=self.apply_prefix('epoch'))
+        wandb.define_metric(name, step_metric=self.apply_prefix("epoch"))
         self.log_dict[self.apply_prefix(name)] = None
 
     def log_image(self, name, image, caption=None):
@@ -25,17 +25,18 @@ class MetricsLogger:
         wandb.log({self.apply_prefix(name): plt})
 
     def apply_prefix(self, name):
-        return f'{self.prefix}/{name}' if self.prefix is not None else name
+        return f"{self.prefix}/{name}" if self.prefix is not None else name
 
     def add(self, name, iteration_metric=False):
         self.stats[name] = []
-        wandb.define_metric(self.apply_prefix(name),
-                            step_metric=self.apply_prefix('epoch'))
+        wandb.define_metric(
+            self.apply_prefix(name), step_metric=self.apply_prefix("epoch")
+        )
         self.log_dict[self.apply_prefix(name)] = None
 
         if iteration_metric:
             self.iteration_metrics.append(name)
-            self.stats[f'{name}_per_it'] = []
+            self.stats[f"{name}_per_it"] = []
             self.running_stats[name] = 0
             self.it_counter[name] = 0
 
@@ -65,7 +66,7 @@ class MetricsLogger:
             if self.log_epoch:
                 print(name, " = ", epoch_value)
 
-        self.log_dict[self.apply_prefix('epoch')] = self.epoch
+        self.log_dict[self.apply_prefix("epoch")] = self.epoch
         self.epoch += 1
 
         wandb.log(self.log_dict, commit=True)

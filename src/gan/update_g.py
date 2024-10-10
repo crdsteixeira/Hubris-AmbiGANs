@@ -1,9 +1,10 @@
-import torch.autograd as autograd
-from src.utils.min_norm_solvers import MinNormSolver
 import numpy as np
-from torch.nn.utils import clip_grad_norm_ 
-from torch.nn import GaussianNLLLoss, KLDivLoss, BCELoss
-from torch import full_like, hstack, log, randn_like
+import torch.autograd as autograd
+from torch import full_like, hstack, log
+from torch.nn import BCELoss, GaussianNLLLoss, KLDivLoss
+from torch.nn.utils import clip_grad_norm_
+
+from src.utils.min_norm_solvers import MinNormSolver
 
 
 class UpdateGenerator:
@@ -60,10 +61,10 @@ class UpdateGeneratorGASTEN(UpdateGenerator):
         loss.backward()
         optim.step()
 
-        return loss, {'original_g_loss': term_1.item(), 'conf_dist_loss': term_2.item()}
+        return loss, {"original_g_loss": term_1.item(), "conf_dist_loss": term_2.item()}
 
     def get_loss_terms(self):
-        return ['original_g_loss', 'conf_dist_loss']
+        return ["original_g_loss", "conf_dist_loss"]
 
 
 class UpdateGeneratorGASTEN_MGDA(UpdateGenerator):
@@ -74,8 +75,9 @@ class UpdateGeneratorGASTEN_MGDA(UpdateGenerator):
         self.normalize = normalize
 
     def gradient_normalizers(self, grads, loss):
-        return loss.item() * np.sqrt(np.sum([gr.pow(2).sum().data.cpu()
-                                             for gr in grads]))
+        return loss.item() * np.sqrt(
+            np.sum([gr.pow(2).sum().data.cpu() for gr in grads])
+        )
 
     def __call__(self, G, D, optim, noise, device):
         # Compute gradients of each loss function wrt parameters
@@ -93,7 +95,9 @@ class UpdateGeneratorGASTEN_MGDA(UpdateGenerator):
         for param in G.parameters():
             if param.grad is not None:
                 term_1_grads.append(
-                    autograd.Variable(param.grad.data.clone(), requires_grad=False))
+                    autograd.Variable(param.grad.data.clone(),
+                                      requires_grad=False)
+                )
 
         # Term 2
         G.zero_grad()
@@ -108,7 +112,9 @@ class UpdateGeneratorGASTEN_MGDA(UpdateGenerator):
         for param in G.parameters():
             if param.grad is not None:
                 term_2_grads.append(
-                    autograd.Variable(param.grad.data.clone(), requires_grad=False))
+                    autograd.Variable(param.grad.data.clone(),
+                                      requires_grad=False)
+                )
 
         if self.normalize:
             gn1 = self.gradient_normalizers(term_1_grads, term_1)
@@ -120,7 +126,8 @@ class UpdateGeneratorGASTEN_MGDA(UpdateGenerator):
                 term_2_grads[gr_i] = term_2_grads[gr_i] / gn2
 
         scale, min_norm = MinNormSolver.find_min_norm_element(
-            [term_1_grads, term_2_grads])
+            [term_1_grads, term_2_grads]
+        )
 
         # Scaled back-propagation
         G.zero_grad()
@@ -138,10 +145,16 @@ class UpdateGeneratorGASTEN_MGDA(UpdateGenerator):
         loss.backward()
         optim.step()
 
-        return loss, {'original_g_loss': term_1.item(), 'conf_dist_loss': term_2.item(), 'scale1': scale[0], 'scale2': scale[1]}
+        return loss, {
+            "original_g_loss": term_1.item(),
+            "conf_dist_loss": term_2.item(),
+            "scale1": scale[0],
+            "scale2": scale[1],
+        }
 
     def get_loss_terms(self):
-        return ['original_g_loss', 'conf_dist_loss', 'scale1', 'scale2']
+        return ["original_g_loss", "conf_dist_loss", "scale1", "scale2"]
+
 
 class UpdateGeneratorGASTEN_gaussian(UpdateGenerator):
     def __init__(self, crit, C, alpha, var):
@@ -159,7 +172,8 @@ class UpdateGeneratorGASTEN_gaussian(UpdateGenerator):
         fake_data = G(noise)
         clf_output = self.C(fake_data)
         # update from ensemble
-        target = full_like(input=clf_output, fill_value=self.target, device=device)
+        target = full_like(
+            input=clf_output, fill_value=self.target, device=device)
         var = full_like(input=clf_output, fill_value=self.var, device=device)
         loss_1 = self.c_loss(clf_output, target, var)
         loss_1.backward()
@@ -176,10 +190,11 @@ class UpdateGeneratorGASTEN_gaussian(UpdateGenerator):
 
         loss = loss_1 + loss_2
 
-        return loss, {'original_g_loss': loss_2.item(), 'conf_dist_loss': loss_1.item()}
+        return loss, {"original_g_loss": loss_2.item(), "conf_dist_loss": loss_1.item()}
 
     def get_loss_terms(self):
-        return ['original_g_loss', 'conf_dist_loss']
+        return ["original_g_loss", "conf_dist_loss"]
+
 
 class UpdateGeneratorGASTEN_KLDiv(UpdateGenerator):
     def __init__(self, crit, C, alpha):
@@ -190,7 +205,7 @@ class UpdateGeneratorGASTEN_KLDiv(UpdateGenerator):
         self.target = 0.5
         self.eps = 1e-9
         self.crit = BCELoss(reduction="none")
-            
+
     def __call__(self, G, D, optim, noise, device):
         G.zero_grad()
 
@@ -200,8 +215,10 @@ class UpdateGeneratorGASTEN_KLDiv(UpdateGenerator):
         # update from ensemble
         loss_1 = 0
         for c_pred in clf_output[0].T:
-            class_prob = hstack((c_pred.unsqueeze(-1), 1.0-c_pred.unsqueeze(-1)))
-            target = full_like(input=class_prob, fill_value=self.target, device=device)
+            class_prob = hstack(
+                (c_pred.unsqueeze(-1), 1.0 - c_pred.unsqueeze(-1)))
+            target = full_like(
+                input=class_prob, fill_value=self.target, device=device)
             loss_1 += self.c_loss(log(class_prob.clip(self.eps, 1.0)), target)
         # update from discriminator
         output = D(fake_data)
@@ -211,10 +228,14 @@ class UpdateGeneratorGASTEN_KLDiv(UpdateGenerator):
         loss.backward()
         optim.step()
 
-        return loss, {'original_g_loss': loss_2.sum().item(), 'conf_dist_loss': loss_1.sum().item()}
+        return loss, {
+            "original_g_loss": loss_2.sum().item(),
+            "conf_dist_loss": loss_1.sum().item(),
+        }
 
     def get_loss_terms(self):
-        return ['original_g_loss', 'conf_dist_loss']
+        return ["original_g_loss", "conf_dist_loss"]
+
 
 class UpdateGeneratorGASTEN_gaussianV2(UpdateGenerator):
     def __init__(self, crit, C, alpha, var):
@@ -235,7 +256,8 @@ class UpdateGeneratorGASTEN_gaussianV2(UpdateGenerator):
         # update from ensemble
         loss_1 = 0
         for c_pred in clf_output[0].T:
-            target = full_like(input=c_pred, fill_value=self.target, device=device)
+            target = full_like(
+                input=c_pred, fill_value=self.target, device=device)
             var = full_like(input=c_pred, fill_value=self.var, device=device)
             loss_1 += self.c_loss(c_pred, target, var)
         # update from discriminator
@@ -246,7 +268,10 @@ class UpdateGeneratorGASTEN_gaussianV2(UpdateGenerator):
         loss.backward()
         optim.step()
 
-        return loss, {'original_g_loss': loss_2.sum().item(), 'conf_dist_loss': loss_1.sum().item()}
+        return loss, {
+            "original_g_loss": loss_2.sum().item(),
+            "conf_dist_loss": loss_1.sum().item(),
+        }
 
     def get_loss_terms(self):
-        return ['original_g_loss', 'conf_dist_loss']
+        return ["original_g_loss", "conf_dist_loss"]

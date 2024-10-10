@@ -1,9 +1,13 @@
-from src.classifier.pretrained import ClassifierResnet, ClassifierMLP
-from src.classifier.simple_cnn import Classifier
-from src.models import ClassifierParams, ClassifierType, EnsembleType, OutputMethod, DeviceType
-from typing import Union, Tuple, List
-import torch.nn as nn
+from typing import List, Tuple, Union
+
 import torch
+import torch.nn as nn
+
+from src.classifier.pretrained import ClassifierMLP, ClassifierResnet
+from src.classifier.simple_cnn import Classifier
+from src.models import (ClassifierParams, ClassifierType, EnsembleType,
+                        OutputMethod)
+
 
 class Ensemble(nn.Module):
     def __init__(self, params: ClassifierParams) -> None:
@@ -41,8 +45,10 @@ class Ensemble(nn.Module):
                             ensemble_type=None,
                             output_method=None,
                             n_classes=params.n_classes,
-                            device=params.device)
-                        ) for cnn in self.cnn_list
+                            device=params.device,
+                        )
+                    )
+                    for cnn in self.cnn_list
                 ]
             )
 
@@ -76,12 +82,12 @@ class Ensemble(nn.Module):
             self.optimize = False
             self.m_val = True
             # Raw outputs with no combination
-            self.predictor = nn.Sequential(
-                nn.Identity()
-            )
+            self.predictor = nn.Sequential(nn.Identity())
 
-    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
-        """"Perform forward pass through the ensemble and optionally return feature maps."""
+    def forward(
+        self, x: torch.Tensor, output_feature_maps: bool = False
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
+        """ "Perform forward pass through the ensemble and optionally return feature maps."""
         # Initialize the output as a list to avoid shape mismatches in stacking
         outputs = []
         feature_maps = []
@@ -91,9 +97,13 @@ class Ensemble(nn.Module):
             # Get the output of each model
             out = model(x.clone(), output_feature_maps=output_feature_maps)
             if output_feature_maps and isinstance(out, tuple):
-                feature_maps.append(out[0])  # Assume first element in tuple is feature maps
+                feature_maps.append(
+                    out[0]
+                )  # Assume first element in tuple is feature maps
                 out = out[1]  # Assume second element is the final output
-            outputs.append(out.unsqueeze(-1))  # Add a new dimension to align for stacking
+            outputs.append(
+                out.unsqueeze(-1)
+            )  # Add a new dimension to align for stacking
 
         # Concatenate outputs along the last dimension
         output = torch.cat(outputs, dim=-1)
@@ -106,11 +116,22 @@ class Ensemble(nn.Module):
         else:
             return combined_output
 
-
-    def train_helper(self, _: None, X: torch.Tensor, Y: torch.Tensor, 
-                     crit: nn.Module, acc_fun: nn.Module, early_acc: float = 1.00) -> Tuple[torch.Tensor, float]:
+    def train_helper(
+        self,
+        _: None,
+        X: torch.Tensor,
+        Y: torch.Tensor,
+        crit: nn.Module,
+        acc_fun: nn.Module,
+        early_acc: float = 1.00,
+    ) -> Tuple[torch.Tensor, float]:
         """Helper function for training ensemble models."""
-        chunks = list(zip(torch.tensor_split(X, len(self.models)+1), torch.tensor_split(Y, len(self.models)+1)))[1:]
+        chunks = list(
+            zip(
+                torch.tensor_split(X, len(self.models) + 1),
+                torch.tensor_split(Y, len(self.models) + 1),
+            )
+        )[1:]
         loss_overall = 0
         acc = 0
 
@@ -126,10 +147,22 @@ class Ensemble(nn.Module):
 
         return loss_overall / len(self.models), acc / len(self.models)
 
-    def optimize_helper(self, _: None, X: torch.Tensor, Y: torch.Tensor, 
-                        crit: nn.Module, acc_fun: nn.Module, early_acc: float = 1.00) -> Tuple[torch.Tensor, float]:
+    def optimize_helper(
+        self,
+        _: None,
+        X: torch.Tensor,
+        Y: torch.Tensor,
+        crit: nn.Module,
+        acc_fun: nn.Module,
+        early_acc: float = 1.00,
+    ) -> Tuple[torch.Tensor, float]:
         """Helper function to optimize ensemble models."""
-        chunks = list(zip(torch.tensor_split(X, len(self.models)+1), torch.tensor_split(Y, len(self.models)+1)))[0]
+        chunks = list(
+            zip(
+                torch.tensor_split(X, len(self.models) + 1),
+                torch.tensor_split(Y, len(self.models) + 1),
+            )
+        )[0]
         x, y = chunks[0], chunks[1]
 
         for p in self.models.parameters():

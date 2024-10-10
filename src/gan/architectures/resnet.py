@@ -7,33 +7,32 @@ class ConvScale(nn.Module):
         self.block = nn.Sequential()
 
         if scale == "up":
-            self.block.append(
-                nn.Upsample(scale_factor=2, mode="nearest")
-            )
+            self.block.append(nn.Upsample(scale_factor=2, mode="nearest"))
 
         self.block.append(
-            nn.Conv2d(in_channels, out_channels, kernel_size,
-                      stride=stride, padding="same")
+            nn.Conv2d(
+                in_channels, out_channels, kernel_size, stride=stride, padding="same"
+            )
         )
 
         if scale == "down":
-            self.block.append(
-                nn.AvgPool2d(2)
-            )
+            self.block.append(nn.AvgPool2d(2))
 
     def forward(self, x):
         return self.block(x)
 
 
 class ResNetBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, scale=None, batch_norm=True, size=(-1,-1)):
+    def __init__(
+        self, in_channels, out_channels, scale=None, batch_norm=True, size=(-1, -1)
+    ):
         super(ResNetBlock, self).__init__()
         self.scale = scale
         self.in_channels = in_channels
         self.out_channels = out_channels
         nh, nw = size
 
-        if in_channels == out_channels and scale == None:
+        if in_channels == out_channels and scale is None:
             self.shortcut = nn.Identity()
         else:
             self.shortcut = ConvScale(in_channels, out_channels, scale=scale)
@@ -50,16 +49,18 @@ class ResNetBlock(nn.Module):
         else:
             raise Exception("invalid scale option")
 
-        norm1 = nn.BatchNorm2d(in_channels) if batch_norm else \
-            nn.Identity() #nn.LayerNorm([in_channels, nh, nw])
+        norm1 = (
+            nn.BatchNorm2d(in_channels) if batch_norm else nn.Identity()
+        )  # nn.LayerNorm([in_channels, nh, nw])
 
         nc = in_channels if scale == "down" else out_channels
         if scale == "up":
-          nh *= 2
-          nw *= 2
+            nh *= 2
+            nw *= 2
 
-        norm2 = nn.BatchNorm2d(nc) if batch_norm else \
-            nn.Identity() #nn.LayerNorm([nc, nh, nw])
+        norm2 = (
+            nn.BatchNorm2d(nc) if batch_norm else nn.Identity()
+        )  # nn.LayerNorm([nc, nh, nw])
 
         self.conv1 = nn.Sequential(
             norm1,
@@ -91,7 +92,7 @@ class Generator(nn.Module):
         n_channels = image_size[0]
 
         self.project = nn.Sequential(
-            nn.Linear(z_dim, 4*4*gf_dim, bias=False),
+            nn.Linear(z_dim, 4 * 4 * gf_dim, bias=False),
         )
         self.blocks = nn.Sequential(
             ResNetBlock(gf_dim, gf_dim, scale="up"),
@@ -99,9 +100,7 @@ class Generator(nn.Module):
             ResNetBlock(gf_dim, gf_dim, scale="up"),
         )
         self.gen = nn.Sequential(
-            nn.BatchNorm2d(gf_dim),
-            ConvScale(gf_dim, n_channels),
-            nn.Tanh()
+            nn.BatchNorm2d(gf_dim), ConvScale(gf_dim, n_channels), nn.Tanh()
         )
 
     def forward(self, z):
@@ -129,20 +128,26 @@ class Discriminator(nn.Module):
         n_channels = image_size[0]
 
         self.blocks = nn.Sequential(
-            ResNetBlock(n_channels, df_dim,
-                        scale="down", batch_norm=use_batch_norm, size=(32, 32)),
-            ResNetBlock(df_dim, df_dim,
-                        scale="down", batch_norm=use_batch_norm, size=(16, 16)),
-            ResNetBlock(df_dim, df_dim,
-                        scale=None, batch_norm=use_batch_norm, size=(8, 8)),
-            ResNetBlock(df_dim, df_dim,
-                        scale=None, batch_norm=use_batch_norm, size=(8,8)),
+            ResNetBlock(
+                n_channels,
+                df_dim,
+                scale="down",
+                batch_norm=use_batch_norm,
+                size=(32, 32),
+            ),
+            ResNetBlock(
+                df_dim, df_dim, scale="down", batch_norm=use_batch_norm, size=(16, 16)
+            ),
+            ResNetBlock(
+                df_dim, df_dim, scale=None, batch_norm=use_batch_norm, size=(8, 8)
+            ),
+            ResNetBlock(
+                df_dim, df_dim, scale=None, batch_norm=use_batch_norm, size=(8, 8)
+            ),
         )
 
         self.predict = nn.Sequential(
-            nn.ReLU(),
-            ReduceMean(dim=[2, 3]),
-            nn.Linear(df_dim, 1)
+            nn.ReLU(), ReduceMean(dim=[2, 3]), nn.Linear(df_dim, 1)
         )
 
         if not is_critic:

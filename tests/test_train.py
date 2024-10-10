@@ -1,13 +1,19 @@
-import pytest
 import os
+from typing import Tuple
+
+import pytest
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from src.classifier.train import evaluate, train, default_train_fn, save_predictions, main
+
+from src.classifier.train import (default_train_fn, evaluate, main,
+                                  save_predictions, train)
 from src.metrics.accuracy import binary_accuracy
-from src.models import EvaluateParams, DefaultTrainParams, ClassifierParams, CLTrainArgs, TrainArgs, DeviceType, ClassifierType, TrainingStage
-from typing import Tuple
+from src.models import (ClassifierParams, ClassifierType, CLTrainArgs,
+                        DefaultTrainParams, DeviceType, EvaluateParams,
+                        TrainArgs, TrainingStage)
+
 
 # Mock Dataset
 @pytest.fixture
@@ -28,7 +34,9 @@ class MockClassifier(nn.Module):
         self.train_models: bool = False
         self.optimize: bool = False
 
-    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, output_feature_maps: bool = False
+    ) -> torch.Tensor:
         """Perform forward pass through the mock classifier."""
         x: torch.Tensor = x.view(x.size(0), -1)
         print(f"Input to linear layer shape: {x.shape}")
@@ -49,7 +57,9 @@ def test_evaluate(mock_dataloader: DataLoader) -> None:
     model: MockClassifier = MockClassifier()
     criterion: nn.Module = nn.BCELoss()
     acc_fun = binary_accuracy
-    params: EvaluateParams = EvaluateParams(device=DeviceType.cpu, verbose=False, desc="Testing")
+    params: EvaluateParams = EvaluateParams(
+        device=DeviceType.cpu, verbose=False, desc="Testing"
+    )
 
     acc, loss = evaluate(model, mock_dataloader, criterion, acc_fun, params)
     assert isinstance(acc, float), "Accuracy should be a float"
@@ -62,13 +72,17 @@ def test_default_train_fn(mock_dataloader: DataLoader) -> None:
     model: MockClassifier = MockClassifier()
     criterion: nn.Module = nn.BCELoss()
     acc_fun = binary_accuracy
-    params: DefaultTrainParams = DefaultTrainParams(early_acc=0.9, device=DeviceType.cpu)
+    params: DefaultTrainParams = DefaultTrainParams(
+        early_acc=0.9, device=DeviceType.cpu
+    )
 
     for X, Y in mock_dataloader:
         X, Y = X.to(DeviceType.cpu.value), Y.to(DeviceType.cpu.value)
         loss, acc = default_train_fn(model, X, Y, criterion, acc_fun, params)
         assert loss.requires_grad, "Loss should require gradients"
-        assert isinstance(acc, torch.Tensor), "Accuracy should be a Tensor (torch.float)"
+        assert isinstance(
+            acc, torch.Tensor
+        ), "Accuracy should be a Tensor (torch.float)"
 
 
 # Test for the `train` function
@@ -84,12 +98,21 @@ def test_train(mock_dataloader: DataLoader, tmp_path: str) -> None:
         img_size=(3, 28, 28),
         nf=64,
         n_classes=2,
-        device=DeviceType.cpu
+        device=DeviceType.cpu,
     )
 
     stats, cp_path = train(
-        model, opt, criterion, mock_dataloader, mock_dataloader, mock_dataloader,
-        acc_fun, args, name="mock_model", model_params=model_params, device=DeviceType.cpu
+        model,
+        opt,
+        criterion,
+        mock_dataloader,
+        mock_dataloader,
+        mock_dataloader,
+        acc_fun,
+        args,
+        name="mock_model",
+        model_params=model_params,
+        device=DeviceType.cpu,
     )
 
     assert isinstance(stats.train_acc, list), "Train accuracy should be a list"
@@ -107,33 +130,56 @@ def test_save_predictions(mock_dataloader: DataLoader, tmp_path: str) -> None:
     dataloader: DataLoader = mock_dataloader
     save_predictions(model, dataloader, device, dataset_name, cp_path)
 
-    assert os.path.exists(os.path.join(cp_path, "test_y_hat.npy")), "Numpy file should be saved"
-    assert os.path.exists(os.path.join(cp_path, "test_y_hat.svg")), "SVG file should be saved"
+    assert os.path.exists(
+        os.path.join(cp_path, "test_y_hat.npy")
+    ), "Numpy file should be saved"
+    assert os.path.exists(
+        os.path.join(cp_path, "test_y_hat.svg")
+    ), "SVG file should be saved"
 
 
 @pytest.mark.parametrize("device", [DeviceType.cpu, DeviceType.cuda])
-def test_main(monkeypatch: pytest.MonkeyPatch, tmp_path: str, device: DeviceType, mock_dataloader: DataLoader) -> None:
+def test_main(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: str,
+    device: DeviceType,
+    mock_dataloader: DataLoader,
+) -> None:
     """Test main function to ensure all training steps execute correctly."""
+
     def mock_parse_args() -> CLTrainArgs:
         return CLTrainArgs(
             data_dir=str(tmp_path),
             out_dir=str(tmp_path),
             dataset_name="mnist",
-            device=device
+            device=device,
         )
 
     monkeypatch.setattr("src.classifier.train.parse_args", mock_parse_args)
 
-    def mock_load_dataset(*args, **kwargs) -> Tuple[TensorDataset, int, Tuple[int, int, int]]:
+    def mock_load_dataset(
+        *args, **kwargs
+    ) -> Tuple[TensorDataset, int, Tuple[int, int, int]]:
         dataset = mock_dataloader.dataset
         return dataset, 2, (3, 28, 28)
 
     monkeypatch.setattr("src.classifier.train.load_dataset", mock_load_dataset)
     monkeypatch.setattr("src.classifier.train.setup_reprod", lambda x: None)
-    monkeypatch.setattr("src.classifier.train.construct_classifier_from_checkpoint", lambda *args, **kwargs: [MockClassifier()])
-    monkeypatch.setattr("src.classifier.train.construct_classifier", lambda *args, **kwargs: MockClassifier())
-    monkeypatch.setattr("src.classifier.train.DataLoader", lambda *args, **kwargs: mock_dataloader)
-    monkeypatch.setattr("src.utils.checkpoint.checkpoint", lambda *args, **kwargs: str(tmp_path))
+    monkeypatch.setattr(
+        "src.classifier.train.construct_classifier_from_checkpoint",
+        lambda *args, **kwargs: [MockClassifier()],
+    )
+    monkeypatch.setattr(
+        "src.classifier.train.construct_classifier",
+        lambda *args, **kwargs: MockClassifier(),
+    )
+    monkeypatch.setattr(
+        "src.classifier.train.DataLoader", lambda *args, **kwargs: mock_dataloader
+    )
+    monkeypatch.setattr(
+        "src.utils.checkpoint.checkpoint", lambda *args, **kwargs: str(
+            tmp_path)
+    )
 
     main()
 

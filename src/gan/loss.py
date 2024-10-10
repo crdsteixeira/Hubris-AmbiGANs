@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 def valid_loss(config):
-    valid_names = {'wgan-gp', 'ns'}
+    valid_names = {"wgan-gp", "ns"}
     if config["name"].lower() not in valid_names:
         return False
 
@@ -33,7 +33,9 @@ class NS_DiscriminatorLoss(DiscriminatorLoss):
         ones = torch.ones_like(real_output, dtype=torch.float, device=device)
         zeros = torch.zeros_like(fake_output, dtype=torch.float, device=device)
 
-        return F.binary_cross_entropy(real_output, ones) + F.binary_cross_entropy(fake_output, zeros), {}
+        return F.binary_cross_entropy(real_output, ones) + F.binary_cross_entropy(
+            fake_output, zeros
+        ), {}
 
 
 class W_DiscrimatorLoss(DiscriminatorLoss):
@@ -49,7 +51,7 @@ class W_DiscrimatorLoss(DiscriminatorLoss):
 
 class WGP_DiscriminatorLoss(DiscriminatorLoss):
     def __init__(self, D, lmbda):
-        super().__init__(['W_distance', 'D_loss', 'GP'])
+        super().__init__(["W_distance", "D_loss", "GP"])
         self.D = D
         self.lmbda = lmbda
 
@@ -65,12 +67,16 @@ class WGP_DiscriminatorLoss(DiscriminatorLoss):
         disc_interpolates = self.D(interpolates)
         grad_outputs = torch.ones(disc_interpolates.size(), device=device)
 
-        gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,
-                                  grad_outputs=grad_outputs,
-                                  create_graph=True, retain_graph=True)[0]
+        gradients = autograd.grad(
+            outputs=disc_interpolates,
+            inputs=interpolates,
+            grad_outputs=grad_outputs,
+            create_graph=True,
+            retain_graph=True,
+        )[0]
 
-        gradients_norm = torch.sqrt(torch.sum(gradients ** 2, dim=[1, 2, 3]))
-        gradient_penalty = ((gradients_norm - 1.) ** 2).mean()
+        gradients_norm = torch.sqrt(torch.sum(gradients**2, dim=[1, 2, 3]))
+        gradient_penalty = ((gradients_norm - 1.0) ** 2).mean()
 
         return gradient_penalty
 
@@ -82,9 +88,13 @@ class WGP_DiscriminatorLoss(DiscriminatorLoss):
         gradient_penalty = self.calc_gradient_penalty(
             real_data, fake_data, device)
 
-        w_distance = - d_loss_real - d_loss_fake
+        w_distance = -d_loss_real - d_loss_fake
 
-        return d_loss + self.lmbda * gradient_penalty, {'W_distance': w_distance.item(), 'D_loss': d_loss.item(), 'GP': gradient_penalty.item()}
+        return d_loss + self.lmbda * gradient_penalty, {
+            "W_distance": w_distance.item(),
+            "D_loss": d_loss.item(),
+            "GP": gradient_penalty.item(),
+        }
 
 
 class GeneratorLoss:
@@ -115,4 +125,4 @@ class W_GeneratorLoss(GeneratorLoss):
     def __call__(self, device, output):
         d_loss_fake = output.mean()
 
-        return - d_loss_fake
+        return -d_loss_fake

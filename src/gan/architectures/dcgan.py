@@ -1,14 +1,14 @@
-import torch.nn as nn
 import numpy as np
+import torch.nn as nn
 
 
 def weights_init(m):
     classname = m.__class__.__name__
-    if classname.find('Same') != -1:
+    if classname.find("Same") != -1:
         nn.init.normal_(m.conv_t_2d.weight.data, 0.0, 0.02)
-    elif classname.find('Conv') != -1:
+    elif classname.find("Conv") != -1:
         nn.init.normal_(m.weight.data, 0.0, 0.02)
-    elif classname.find('BatchNorm') != -1:
+    elif classname.find("BatchNorm") != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
 
@@ -30,7 +30,9 @@ def compute_padding_same(in_size, out_size, kernel, stride):
 
 
 class ConvTranspose2dSame(nn.Module):
-    def __init__(self, in_channels, out_channels, in_size, out_size, kernel, stride, bias=True):
+    def __init__(
+        self, in_channels, out_channels, in_size, out_size, kernel, stride, bias=True
+    ):
         super(ConvTranspose2dSame, self).__init__()
 
         in_h, in_w = in_size
@@ -43,7 +45,8 @@ class ConvTranspose2dSame(nn.Module):
         out_pad = (out_pad_h, out_pad_w)
 
         self.conv_t_2d = nn.ConvTranspose2d(
-            in_channels, out_channels, kernel, stride, pad, out_pad, bias=bias)
+            in_channels, out_channels, kernel, stride, pad, out_pad, bias=bias
+        )
 
     def forward(self, x):
         return self.conv_t_2d(x)
@@ -71,22 +74,30 @@ class Generator(nn.Module):
             if i == 0:
                 block = nn.Sequential(
                     ConvTranspose2dSame(
-                        filter_dim, n_channels,
+                        filter_dim,
+                        n_channels,
                         (cur_s_h_smaller, cur_s_w_smaller),
                         (cur_s_h, cur_s_w),
-                        5, 2, bias=False),
+                        5,
+                        2,
+                        bias=False,
+                    ),
                     nn.Tanh(),
                 )
             else:
-                in_channels = filter_dim * 2 ** i
+                in_channels = filter_dim * 2**i
                 out_channels = filter_dim * 2 ** (i - 1)
 
                 block = nn.Sequential(
                     ConvTranspose2dSame(
-                        in_channels, out_channels,
+                        in_channels,
+                        out_channels,
                         (cur_s_h_smaller, cur_s_w_smaller),
                         (cur_s_h, cur_s_w),
-                        5, 2, bias=False),
+                        5,
+                        2,
+                        bias=False,
+                    ),
                     nn.BatchNorm2d(out_channels),
                     nn.ReLU(True),
                 )
@@ -99,7 +110,10 @@ class Generator(nn.Module):
             (2 ** (n_blocks - 1)) * cur_s_h * cur_s_w
 
         self.project_out_reshape_dim = (
-            filter_dim * (2 ** (n_blocks - 1)), cur_s_h, cur_s_w)
+            filter_dim * (2 ** (n_blocks - 1)),
+            cur_s_h,
+            cur_s_w,
+        )
 
         self.project = nn.Sequential(
             nn.Linear(z_dim, project_out_dim, bias=False),
@@ -124,7 +138,14 @@ class Generator(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, image_size, n_blocks=2, filter_dim=64, use_batch_norm=True, is_critic=False):
+    def __init__(
+        self,
+        image_size,
+        n_blocks=2,
+        filter_dim=64,
+        use_batch_norm=True,
+        is_critic=False,
+    ):
         super(Discriminator, self).__init__()
         self.image_size = image_size
         self.filter_dim = filter_dim
@@ -138,20 +159,21 @@ class Discriminator(nn.Module):
             cur_s_h = conv_out_size_same(cur_s_h, 2)
             cur_s_w = conv_out_size_same(cur_s_w, 2)
 
-            out_channels = filter_dim * 2 ** i
+            out_channels = filter_dim * 2**i
             if i == 0:
                 in_channels = n_channels
                 block = nn.Sequential(
                     nn.Conv2d(in_channels, out_channels, 5, 2, 2, bias=False),
-                    nn.LeakyReLU(0.2, inplace=True)
+                    nn.LeakyReLU(0.2, inplace=True),
                 )
             else:
                 in_channels = filter_dim * 2 ** (i - 1)
                 block = nn.Sequential(
                     nn.Conv2d(in_channels, out_channels, 5, 2, 2, bias=False),
-                    nn.BatchNorm2d(
-                        out_channels) if use_batch_norm else nn.LayerNorm([out_channels, cur_s_h, cur_s_w]),
-                    nn.LeakyReLU(0.2, inplace=True)
+                    nn.BatchNorm2d(out_channels)
+                    if use_batch_norm
+                    else nn.LayerNorm([out_channels, cur_s_h, cur_s_w]),
+                    nn.LeakyReLU(0.2, inplace=True),
                 )
 
             self.conv_blocks.append(block)

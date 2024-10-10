@@ -1,6 +1,6 @@
 class Metric:
     def __init__(self):
-        self.result = float('inf')
+        self.result = float("inf")
 
     def update(self, images):
         raise NotImplementedError

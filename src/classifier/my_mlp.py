@@ -1,12 +1,14 @@
-import torch.nn as nn
 import torch
+import torch.nn as nn
+
 from src.models import ClassifierParams  # Import the data model
+
 
 class Classifier(nn.Module):
     def __init__(self, params: ClassifierParams) -> None:
         """Initialize MLP classifier with the given parameters."""
         super(Classifier, self).__init__()
-        
+
         # Extract img_size, num_classes, and nf from params
         num_channels, height, width = params.img_size
         input_size = num_channels * height * width
@@ -24,11 +26,13 @@ class Classifier(nn.Module):
         # Block 2: Output layer
         predictor = nn.Sequential(
             nn.Linear(nf, 1 if num_classes == 2 else num_classes),
-            nn.Sigmoid() if num_classes == 2 else nn.Softmax(dim=1)
+            nn.Sigmoid() if num_classes == 2 else nn.Softmax(dim=1),
         )
         self.blocks.append(predictor)
 
-    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, output_feature_maps: bool = False
+    ) -> torch.Tensor:
         """Perform a forward pass through the MLP."""
         intermediate_outputs = []
 

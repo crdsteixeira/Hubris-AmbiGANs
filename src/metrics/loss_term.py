@@ -1,4 +1,5 @@
 import torch
+
 from .metric import Metric
 
 
@@ -8,7 +9,7 @@ class LossSecondTerm(Metric):
         self.C = C
         self.count = 0
         self.acc = 0
-        self.result = float('inf')
+        self.result = float("inf")
 
     def update(self, images, batch):
         start_idx, batch_size = batch
@@ -29,4 +30,4 @@ class LossSecondTerm(Metric):
     def reset(self):
         self.count = 0
         self.acc = 0
-        self.result = float('inf')
+        self.result = float("inf")
