@@ -31,7 +31,7 @@ repos:
     rev: v2.3.1
     hooks:
       - id: autoflake
-        args: 
+        args:
           - --remove-all-unused-imports
           - --remove-unused-variables
           - --in-place
