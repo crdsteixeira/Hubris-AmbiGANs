@@ -182,7 +182,7 @@ class CLTrainArgs(BaseModel):
     pos_class: int = Field(default=7, description="Positive class for binary classification")
     neg_class: int = Field(default=1, description="Negative class for binary classification")
     batch_size: int = Field(default=64, description="Batch size for training")
-    c_type: str = Field(default='mlp', description="Classifier type ('cnn', 'mlp', or 'ensemble')")
+    c_type: ClassifierType = Field(default=ClassifierType.mlp, description="Classifier type ('cnn', 'mlp', or 'ensemble')")
     epochs: int = Field(default=2, description="Number of epochs to train for")
     early_stop: Optional[int] = Field(default=None, description="Early stopping criteria (optional)")
     early_acc: float = Field(default=1.0, description="Early accuracy threshold for backpropagation")
