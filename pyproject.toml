@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "src"
-version = "0.1.0"
+version = "0.1.1"
 description = "Hubris Benchmarking with AmbiGANs for publication"
 authors = ["Catia Teixeira <catia.rds.teixeira@gmail.com>"]
 readme = "README.md"
@@ -17,15 +17,23 @@ scikit-learn = "^1.5.2"
 scipy = "^1.14.1"
 seaborn = "^0.13.2"
 setuptools = "57.5.0"
-torch = "^2.4.1"
-torchvision = "^0.19.1"
 tqdm = "^4.66.5"
 wandb = "^0.18.3"
 pillow = "^10.4.0"
 datasets = "^3.0.1"
 jaraco-functools = "^4.1.0"
 transformers = "^4.45.2"
+pydantic = "^2.9.2"
+pytest = "^8.3.3"
+torchaudio = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
+torch = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
+torchvision = {version = "^0.19.1+cu124", source = "pytorch-gpu"}
 
+
+[[tool.poetry.source]]
+name = "pytorch-gpu"
+url = "https://download.pytorch.org/whl/cu124"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
