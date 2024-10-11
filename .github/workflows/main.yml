@@ -30,6 +30,9 @@ jobs:
         run: poetry install
       - name: Install Pytest Plugins
         run: poetry add pytest-md pytest-emoji
+      - name: Display Variable
+        env:
+          FILESDIR: ${{ vars.FILESDIR }}
       - name: Run Pytest Action
         uses: pavelzw/pytest-action@v2
         with:
