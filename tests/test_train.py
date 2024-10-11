@@ -147,6 +147,10 @@ def test_main(
 ) -> None:
     """Test main function to ensure all training steps execute correctly."""
 
+    # Skip the test if CUDA is not available and the device is set to CUDA
+    if device == DeviceType.cuda and not torch.cuda.is_available():
+        pytest.skip("CUDA is not available. Skipping CUDA tests.")
+
     def mock_parse_args() -> CLTrainArgs:
         return CLTrainArgs(
             data_dir=str(tmp_path),
