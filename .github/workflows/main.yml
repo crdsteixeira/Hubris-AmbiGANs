@@ -1,27 +1,45 @@
-name: pre-commit
+name: pre-commit & unit-tests
 
 on:
   push:
+    branches: '**'
+  pull_request:
     branches: '**'
 
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v3
-    - uses: pre-commit/action@v3.0.1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v3
+        with:
+          python-version: '3.9'
+      - uses: abatilo/actions-poetry@v2
+      - name: Install Dependencies with Poetry
+        run: poetry install
+      - uses: pre-commit/action@v3.0.1
+
   unit-tests:
     runs-on: ubuntu-latest
     needs: pre-commit
     steps:
-    - name: Install depedencies
-      run: pip install pytest pytest-md pytest-emoji
-    - uses: pavelzw/pytest-action@v2
-      with:
-        verbose: true
-        emoji: true
-        job-summary: true
-        custom-arguments: '-q'
-        click-to-expand: true
-        report-title: 'Test Report'
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.9'
+      - uses: abatilo/actions-poetry@v2
+      - name: Install Dependencies with Poetry
+        run: poetry install
+      - name: Install Pytest Plugins
+        run: pip install pytest pytest-md pytest-emoji
+      - name: Run Pytest Action
+        uses: pavelzw/pytest-action@v2
+        with:
+          custom-pytest: "poetry run pytest"
+          verbose: true
+          emoji: true
+          job-summary: true
+          custom-arguments: '-q'
+          click-to-expand: true
+          report-title: 'Test Report'
