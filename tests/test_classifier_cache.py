@@ -20,32 +20,22 @@ class MockClassifier(nn.Module):
 def test_cache_basic_usage():
     """Test if cached output is reused on repeated calls with same batch_idx and batch_size."""
     mock_classifier = MockClassifier()
-    mock_classifier.forward = MagicMock(
-        return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)]
-    )
+    mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)])
 
     cache = ClassifierCache(mock_classifier)
 
     x = torch.randn(1, 3, 64, 64)
-    output_1 = cache.get(x, batch_idx=1, batch_size=1,
-                         output_feature_maps=True)
-    output_2 = cache.get(x, batch_idx=1, batch_size=1,
-                         output_feature_maps=True)
+    output_1 = cache.get(x, batch_idx=1, batch_size=1, output_feature_maps=True)
+    output_2 = cache.get(x, batch_idx=1, batch_size=1, output_feature_maps=True)
 
-    assert (
-        mock_classifier.forward.call_count == 1
-    ), "Classifier should only be called once for the same batch"
-    assert (
-        output_1 == output_2
-    ), "Cached result should be the same when the same batch is used"
+    assert mock_classifier.forward.call_count == 1, "Classifier should only be called once for the same batch"
+    assert output_1 == output_2, "Cached result should be the same when the same batch is used"
 
 
 def test_cache_invalidation():
     """Test if cache refreshes when a new batch_idx or batch_size is passed."""
     mock_classifier = MockClassifier()
-    mock_classifier.forward = MagicMock(
-        return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)]
-    )
+    mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)])
 
     cache = ClassifierCache(mock_classifier)
 
@@ -55,24 +45,18 @@ def test_cache_invalidation():
     # Second call with different batch index, should trigger recalculation
     cache.get(x, batch_idx=2, batch_size=1, output_feature_maps=True)
 
-    assert (
-        mock_classifier.forward.call_count == 2
-    ), "Classifier should be called again for different batch"
+    assert mock_classifier.forward.call_count == 2, "Classifier should be called again for different batch"
 
 
 def test_feature_maps_returned():
     """Test if feature maps and final output are returned correctly when requested."""
     mock_classifier = MockClassifier()
-    mock_classifier.forward = MagicMock(
-        return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)]
-    )
+    mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)])
 
     cache = ClassifierCache(mock_classifier)
 
     x = torch.randn(1, 3, 64, 64)
-    output, feature_maps = cache.get(
-        x, batch_idx=1, batch_size=1, output_feature_maps=True
-    )
+    output, feature_maps = cache.get(x, batch_idx=1, batch_size=1, output_feature_maps=True)
 
     assert output is not None, "Output should not be None"
     assert feature_maps is not None, "Feature maps should not be None"
@@ -89,7 +73,5 @@ def test_no_feature_maps_returned():
     x = torch.randn(1, 3, 64, 64)
     output = cache.get(x, batch_idx=1, batch_size=1, output_feature_maps=False)
 
-    assert (
-        output is not None
-    ), "Output should not be None when feature maps are not requested"
+    assert output is not None, "Output should not be None when feature maps are not requested"
     assert mock_classifier.forward.call_count == 1, "Classifier should be called once"

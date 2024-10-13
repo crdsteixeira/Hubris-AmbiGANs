@@ -147,3 +147,5 @@ wandb/
 
 # poetry
 poetry.lock
+
+.isort.cfg

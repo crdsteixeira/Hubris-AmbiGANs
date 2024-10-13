@@ -1,12 +1,16 @@
+# pylint: skip-file
+
 import numpy as np
 import torch
+from typing import Any
 
 
 class MinNormSolver:
     MAX_ITER = 250
     STOP_CRIT = 1e-5
 
-    def _min_norm_element_from2(v1v1, v1v2, v2v2):
+    @staticmethod
+    def _min_norm_element_from2(v1v1: float, v1v2: float, v2v2: float) -> tuple[float, float]:
         """
         Analytical solution for min_{c} |cx_1 + (1-c)x_2|_2^2
         d is the distance (objective) optimzed
@@ -29,8 +33,11 @@ class MinNormSolver:
         cost = v2v2 + gamma * (v1v2 - v2v2)
         return gamma, cost
 
-    def _min_norm_2d(vecs, dps):
-        """
+    @staticmethod
+    def _min_norm_2d(
+        vecs: list[list[torch.Tensor]], dps: dict[tuple[int, int], float]
+    ) -> tuple[list[Any], dict[tuple[int, int], float]]:
+        r"""
         Find the minimum norm solution as combination of two points
         This is correct only in 2D
         ie. min_c |\sum c_i x_i|_2^2 st. \sum c_i = 1 , 1 >= c_1 >= 0 for all i, c_i + c_j = 1.0 for some i, j
@@ -41,34 +48,25 @@ class MinNormSolver:
                 if (i, j) not in dps:
                     dps[(i, j)] = 0.0
                     for k in range(len(vecs[i])):
-                        dps[(i, j)] += (
-                            torch.mul(vecs[i][k], vecs[j][k]).sum().data.cpu()
-                        )
+                        dps[(i, j)] += torch.mul(vecs[i][k], vecs[j][k]).sum().data.cpu()
                     dps[(j, i)] = dps[(i, j)]
                 if (i, i) not in dps:
                     dps[(i, i)] = 0.0
                     for k in range(len(vecs[i])):
-                        dps[(i, i)] += (
-                            torch.mul(vecs[i][k], vecs[i][k]).sum().data.cpu()
-                        )
+                        dps[(i, i)] += torch.mul(vecs[i][k], vecs[i][k]).sum().data.cpu()
                 if (j, j) not in dps:
                     dps[(j, j)] = 0.0
                     for k in range(len(vecs[i])):
-                        dps[(j, j)] += (
-                            torch.mul(vecs[j][k], vecs[j][k]).sum().data.cpu()
-                        )
-                c, d = MinNormSolver._min_norm_element_from2(
-                    dps[(i, i)], dps[(i, j)], dps[(j, j)]
-                )
+                        dps[(j, j)] += torch.mul(vecs[j][k], vecs[j][k]).sum().data.cpu()
+                c, d = MinNormSolver._min_norm_element_from2(dps[(i, i)], dps[(i, j)], dps[(j, j)])
                 if d < dmin:
                     dmin = d
                     sol = [(i, j), c, d]
         return sol, dps
 
-    def _projection2simplex(y):
-        """
-        Given y, it solves argmin_z |y-z|_2 st \sum z = 1 , 1 >= z_i >= 0 for all i
-        """
+    @staticmethod
+    def _projection2simplex(y: np.ndarray) -> np.ndarray:
+        r"""Given y, it solves argmin_z |y-z|_2 st \sum z = 1 , 1 >= z_i >= 0 for all i"""
         m = len(y)
         sorted_y = np.flip(np.sort(y), axis=0)
         tmpsum = 0.0
@@ -81,7 +79,8 @@ class MinNormSolver:
                 break
         return np.maximum(y - tmax_f, np.zeros(y.shape))
 
-    def _next_point(cur_val, grad, n):
+    @staticmethod
+    def _next_point(cur_val: np.ndarray, grad: np.ndarray, n: int) -> np.ndarray:
         proj_grad = grad - (np.sum(grad) / n)
         tm1 = -1.0 * cur_val[proj_grad < 0] / proj_grad[proj_grad < 0]
         tm2 = (1.0 - cur_val[proj_grad > 0]) / (proj_grad[proj_grad > 0])
@@ -97,15 +96,16 @@ class MinNormSolver:
         next_point = MinNormSolver._projection2simplex(next_point)
         return next_point
 
-    def find_min_norm_element(vecs):
+    @staticmethod
+    def find_min_norm_element(vecs: list[list[torch.Tensor]]) -> tuple[np.ndarray, float] | tuple[None, None]:
         """
         Given a list of vectors (vecs), this method finds the minimum norm element in the convex hull
         as min |u|_2 st. u = \sum c_i vecs[i] and \sum c_i = 1.
         It is quite geometric, and the main idea is the fact that if d_{ij} = min |u|_2 st u = c x_i + (1-c) x_j; the solution lies in (0, d_{i,j})
-        Hence, we find the best 2-task solution, and then run the projected gradient descent until convergence
+        Hence, we find the best 2-task solution, and then run the projected gradient descent until convergence.
         """
         # Solution lying at the combination of two points
-        dps = {}
+        dps: dict = {}
         init_sol, dps = MinNormSolver._min_norm_2d(vecs, dps)
 
         n = len(vecs)
@@ -142,16 +142,18 @@ class MinNormSolver:
             if np.sum(np.abs(change)) < MinNormSolver.STOP_CRIT:
                 return sol_vec, nd
             sol_vec = new_sol_vec
+        return None, None
 
-    def find_min_norm_element_FW(vecs):
-        """
+    @staticmethod
+    def find_min_norm_element_FW(vecs: list[list[torch.Tensor]]) -> tuple[np.ndarray, float] | tuple[None, None]:
+        r"""
         Given a list of vectors (vecs), this method finds the minimum norm element in the convex hull
         as min |u|_2 st. u = \sum c_i vecs[i] and \sum c_i = 1.
         It is quite geometric, and the main idea is the fact that if d_{ij} = min |u|_2 st u = c x_i + (1-c) x_j; the solution lies in (0, d_{i,j})
         Hence, we find the best 2-task solution, and then run the Frank Wolfe until convergence
         """
         # Solution lying at the combination of two points
-        dps = {}
+        dps: dict = {}
         init_sol, dps = MinNormSolver._min_norm_2d(vecs, dps)
 
         n = len(vecs)
@@ -185,22 +187,23 @@ class MinNormSolver:
             if np.sum(np.abs(change)) < MinNormSolver.STOP_CRIT:
                 return sol_vec, nd
             sol_vec = new_sol_vec
+        return None, None
 
 
-def gradient_normalizers(grads, losses, normalization_type):
+def gradient_normalizers(
+    grads: dict[str, list[torch.Tensor]], losses: dict[str, float], normalization_type: str
+) -> dict[str, float]:
+    """Compute gradient normalizers based on the specified normalization type."""
     gn = {}
     if normalization_type == "l2":
         for t in grads:
-            gn[t] = np.sqrt(np.sum([gr.pow(2).sum().data.cpu()
-                            for gr in grads[t]]))
+            gn[t] = np.sqrt(np.sum([gr.pow(2).sum().data.cpu() for gr in grads[t]]))
     elif normalization_type == "loss":
         for t in grads:
             gn[t] = losses[t]
     elif normalization_type == "loss+":
         for t in grads:
-            gn[t] = losses[t] * np.sqrt(
-                np.sum([gr.pow(2).sum().data.cpu() for gr in grads[t]])
-            )
+            gn[t] = losses[t] * np.sqrt(np.sum([gr.pow(2).sum().data.cpu() for gr in grads[t]]))
     elif normalization_type == "none":
         for t in grads:
             gn[t] = 1.0

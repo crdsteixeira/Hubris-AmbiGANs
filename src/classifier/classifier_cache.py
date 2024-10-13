@@ -1,5 +1,12 @@
+"""Classifier Cache Module."""
+
+from torch import Tensor, nn
+
+
 class ClassifierCache:
-    def __init__(self, C):
+    """Cache classifier outputs to avoid redundant computations on the same batch."""
+
+    def __init__(self, C: nn.Module) -> None:
         """
         Initialize the ClassifierCache with a classifier object.
 
@@ -14,36 +21,32 @@ class ClassifierCache:
             last_output_feature_maps (tensor or None): Stores the feature maps of the last batch.
             last_batch_idx (int or None): Stores the index of the last processed batch.
             last_batch_size (int or None): Stores the size of the last processed batch.
-        """
-        super(ClassifierCache, self).__init__()
-        self.C = C
-        self.last_output = None
-        self.last_output_feature_maps = None
-        self.last_batch_idx = None
-        self.last_batch_size = None
 
-    def get(self, x, batch_idx, batch_size, output_feature_maps=False):
+        """
+        super().__init__()
+        self.C = C
+        self.last_output: Tensor | None = None
+        self.last_output_feature_maps: Tensor | None = None
+        self.last_batch_idx: int | None = None
+        self.last_batch_size: int | None = None
+
+    def get(
+        self, x: Tensor, batch_idx: int, batch_size: int, output_feature_maps: bool = False
+    ) -> Tensor | tuple[Tensor, Tensor]:
         """
         Retrieve the cached classifier output or recompute it if the batch has changed.
 
-        Args:
-            x (tensor): The input tensor to pass to the classifier.
-            batch_idx (int): The index of the current batch.
-            batch_size (int): The size of the current batch.
-            output_feature_maps (bool, optional): Whether to return feature maps. Defaults to False.
-
-        Returns:
-            tensor or tuple: The classifier output. If `output_feature_maps` is True and feature maps are available,
-            it returns a tuple of (output, feature maps). Otherwise, it returns only the output.
-
-        Caching Logic:
+        Caching Logic
             - If the batch index or size changes, it recomputes the classifier output and updates the cache.
-            - If `output_feature_maps` is True and feature maps exist, it returns both the final output and the feature maps.
+            - If `output_feature_maps` is True and feature maps exist, it returns both the final output and
+            the feature maps.
             - If `output_feature_maps` is False, it returns only the final output.
             - If the classifier does not return feature maps, the cache stores `None` for feature maps.
 
-        Raises:
+        Raises
+        ------
             IndexError: If the classifier output structure does not match the expected format.
+
         """
         if batch_idx != self.last_batch_idx or batch_size != self.last_batch_size:
             output = self.C(x, output_feature_maps=True)
@@ -61,5 +64,4 @@ class ClassifierCache:
 
         if output_feature_maps and self.last_output_feature_maps is not None:
             return self.last_output, self.last_output_feature_maps
-        else:
-            return self.last_output
+        return self.last_output

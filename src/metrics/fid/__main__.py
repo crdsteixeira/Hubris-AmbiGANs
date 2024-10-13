@@ -1,3 +1,5 @@
+# pylint: skip-file
+
 import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
@@ -42,8 +44,7 @@ parser.add_argument(
     type=int,
     help="Negative class for binary classification",
 )
-parser.add_argument("--batch-size", type=int,
-                    default=64, help="Batch size to use")
+parser.add_argument("--batch-size", type=int, default=64, help="Batch size to use")
 parser.add_argument(
     "--model-path",
     dest="model_path",
@@ -57,12 +58,8 @@ parser.add_argument(
     default=6,
     help="Number of worker processes for data loading",
 )
-parser.add_argument(
-    "--device", type=str, default="cuda:0", help="Device to use (cuda, cuda:0, or cpu)"
-)
-parser.add_argument(
-    "--name", dest="name", default=None, help="Name of generated .npz file"
-)
+parser.add_argument("--device", type=str, default="cuda:0", help="Device to use (cuda, cuda:0, or cpu)")
+parser.add_argument("--name", dest="name", default=None, help="Name of generated .npz file")
 
 
 def load_dataset(args):
@@ -124,15 +121,11 @@ def main():
     get_feature_map_fn, dims = get_feature_map_function(args, device, dset)
 
     # Calculate FID statistics
-    m, s = fid.calculate_activation_statistics_dataloader(
-        dataloader, get_feature_map_fn, dims=dims, device=device
-    )
+    m, s = fid.calculate_activation_statistics_dataloader(dataloader, get_feature_map_fn, dims=dims, device=device)
 
     # Save FID statistics
     os.makedirs(os.path.join(args.dataroot, "fid-stats"), exist_ok=True)
-    stats_filename = os.path.join(
-        args.dataroot, "fid-stats", f'{args.name or f"stats.{args.dataset}"}'
-    )
+    stats_filename = os.path.join(args.dataroot, "fid-stats", f'{args.name or f"stats.{args.dataset}"}')
     with open(f"{stats_filename}.npz", "wb") as f:
         np.savez(f, mu=m, sigma=s)
     print(f"FID statistics saved to {stats_filename}.npz")

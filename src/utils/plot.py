@@ -1,3 +1,5 @@
+# pylint: skip-file
+
 import os
 
 import matplotlib.pyplot as plt
@@ -79,8 +81,7 @@ def plot_metrics(data, path, C_name):
     is_efficient = np.ones(costs.shape[0], dtype=bool)
     for i, c in enumerate(costs):
         if is_efficient[i]:
-            is_efficient[is_efficient] = np.any(
-                costs[is_efficient] < c, axis=1)
+            is_efficient[is_efficient] = np.any(costs[is_efficient] < c, axis=1)
             is_efficient[i] = True
 
     size = [1.5 if pe else 1 for pe in is_efficient]

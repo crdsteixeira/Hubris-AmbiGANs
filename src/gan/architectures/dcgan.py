@@ -1,27 +1,36 @@
+"""Module for DCGAN."""
+
 import numpy as np
-import torch.nn as nn
+from torch import Tensor, nn
+
+from src.models import ConvParams, DisParams, GenParams, PadParams
 
 
-def weights_init(m):
+def weights_init(m: nn.Module) -> None:
+    """Initialize weights for the given neural network layer based on its class type."""
     classname = m.__class__.__name__
     if classname.find("Same") != -1:
-        nn.init.normal_(m.conv_t_2d.weight.data, 0.0, 0.02)
+        nn.init.normal_(m.conv_transpose_2d.weight.data, 0.0, 0.02)
+        if m.conv_transpose_2d.bias is not None:
+            nn.init.constant_(m.conv_transpose_2d.bias, 0)
     elif classname.find("Conv") != -1:
         nn.init.normal_(m.weight.data, 0.0, 0.02)
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
     elif classname.find("BatchNorm") != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
-        nn.init.constant_(m.bias.data, 0)
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
 
 
-def conv_out_size_same(size, stride):
+def conv_out_size_same(size: int, stride: int) -> int:
+    """Calculate the output size of a convolution operation with 'same' padding."""
     return int(np.ceil(float(size) / float(stride)))
 
 
-def compute_padding_same(in_size, out_size, kernel, stride):
-    # Hout​= (Hin​−1)×stride[0]−2×padding[0]+dilation[0]×(kernel_size[0]−1)+output_padding[0]+1
-
-    # 2 * padding - out_padding =
-    res = (in_size - 1) * stride - out_size + kernel
+def compute_padding_same(params: PadParams) -> tuple[int, int]:
+    """Compute the padding and output padding needed to maintain the same output size as the input size."""
+    res = (params.in_size - 1) * params.stride - params.out_size + params.kernel
 
     out_padding = 0 if (res % 2 == 0) else 1
     padding = (res + out_padding) / 2
@@ -30,94 +39,115 @@ def compute_padding_same(in_size, out_size, kernel, stride):
 
 
 class ConvTranspose2dSame(nn.Module):
-    def __init__(
-        self, in_channels, out_channels, in_size, out_size, kernel, stride, bias=True
-    ):
-        super(ConvTranspose2dSame, self).__init__()
+    """ConvTranspose2d layer with padding calculation to maintain the same input and output size."""
 
-        in_h, in_w = in_size
-        out_h, out_w = out_size
+    def __init__(self, params: ConvParams) -> None:
+        """Initialize ConvTranspose2d with parameters to keep the same input and output dimensions."""
+        super().__init__()
 
-        pad_h, out_pad_h = compute_padding_same(in_h, out_h, kernel, stride)
-        pad_w, out_pad_w = compute_padding_same(in_w, out_w, kernel, stride)
+        in_height, in_width = params.in_size
+        out_height, out_width = params.out_size
 
-        pad = (pad_h, pad_w)
-        out_pad = (out_pad_h, out_pad_w)
-
-        self.conv_t_2d = nn.ConvTranspose2d(
-            in_channels, out_channels, kernel, stride, pad, out_pad, bias=bias
+        pad_height, out_pad_height = compute_padding_same(
+            PadParams(in_size=in_height, out_size=out_height, kernel=params.kernel, stride=params.stride)
         )
 
-    def forward(self, x):
-        return self.conv_t_2d(x)
+        pad_width, out_pad_width = compute_padding_same(
+            PadParams(in_size=in_width, out_size=out_width, kernel=params.kernel, stride=params.stride)
+        )
+
+        pad = (pad_height, pad_width)
+        out_pad = (out_pad_height, out_pad_width)
+
+        self.conv_transpose_2d = nn.ConvTranspose2d(
+            params.in_channels, params.out_channels, params.kernel, params.stride, pad, out_pad, bias=params.bias
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass through the ConvTranspose2d layer."""
+        return self.conv_transpose_2d(x)
 
 
 class Generator(nn.Module):
-    def __init__(self, image_size, z_dim=100, n_blocks=3, filter_dim=64):
-        """
-        nz: size of latent code
-        ngf: dimension of filters in first convolutional layer
-        """
-        super(Generator, self).__init__()
-        self.image_size = image_size
-        self.z_dim = z_dim
-        self.filter_dim = filter_dim
-        self.n_blocks = n_blocks
+    """Generative model that uses transposed convolution layers to produce images from latent vectors."""
 
-        n_channels, cur_s_h, cur_s_w = image_size
+    def __init__(self, params: GenParams) -> None:
+        """
+        Initialize the Generator with specified architecture parameters.
+
+        Args:
+            params: instance of GenParams model.
+            params.image_size (Tuple[int, int, int]): Dimensions of the output image (channels, height, width).
+            params.z_dim (int): Dimension of the latent code. Default is 100.
+            params.n_blocks (int): Number of transposed convolutional blocks. Default is 3.
+            params.filter_dim (int): Base number of filters in the first transposed convolutional layer. Default is 64.
+
+        """
+        super().__init__()
+        self.params = params
+
+        n_channels, current_size_height, current_size_width = self.params.image_size
         conv_blocks_rev = nn.ModuleList()
 
-        for i in range(n_blocks):
-            cur_s_h_smaller = conv_out_size_same(cur_s_h, 2)
-            cur_s_w_smaller = conv_out_size_same(cur_s_w, 2)
+        for i in range(self.params.n_blocks):
+            current_size_height_smaller = conv_out_size_same(current_size_height, 2)
+            current_size_width_smaller = conv_out_size_same(current_size_width, 2)
 
             if i == 0:
                 block = nn.Sequential(
                     ConvTranspose2dSame(
-                        filter_dim,
-                        n_channels,
-                        (cur_s_h_smaller, cur_s_w_smaller),
-                        (cur_s_h, cur_s_w),
-                        5,
-                        2,
-                        bias=False,
+                        ConvParams(
+                            in_channels=self.params.filter_dim,
+                            out_channels=n_channels,
+                            in_size=(current_size_height_smaller, current_size_width_smaller),
+                            out_size=(current_size_height, current_size_width),
+                            kernel=4,
+                            stride=2,
+                            bias=True,
+                        )
                     ),
                     nn.Tanh(),
                 )
             else:
-                in_channels = filter_dim * 2**i
-                out_channels = filter_dim * 2 ** (i - 1)
+                in_channels = self.params.filter_dim * 2**i
+                out_channels = self.params.filter_dim * 2 ** (i - 1)
 
                 block = nn.Sequential(
                     ConvTranspose2dSame(
-                        in_channels,
-                        out_channels,
-                        (cur_s_h_smaller, cur_s_w_smaller),
-                        (cur_s_h, cur_s_w),
-                        5,
-                        2,
-                        bias=False,
+                        ConvParams(
+                            in_channels=in_channels,
+                            out_channels=out_channels,
+                            in_size=(current_size_height_smaller, current_size_width_smaller),
+                            out_size=(current_size_height, current_size_width),
+                            kernel=4,
+                            stride=2,
+                            bias=False,
+                        )
                     ),
                     nn.BatchNorm2d(out_channels),
                     nn.ReLU(True),
                 )
 
-            cur_s_h, cur_s_w = cur_s_h_smaller, cur_s_w_smaller
+            current_size_height, current_size_width = current_size_height_smaller, current_size_width_smaller
 
             conv_blocks_rev.append(block)
 
-        project_out_dim = filter_dim * \
-            (2 ** (n_blocks - 1)) * cur_s_h * cur_s_w
-
         self.project_out_reshape_dim = (
-            filter_dim * (2 ** (n_blocks - 1)),
-            cur_s_h,
-            cur_s_w,
+            self.params.filter_dim * (2 ** (self.params.n_blocks - 1)),
+            current_size_height,
+            current_size_width,
         )
 
         self.project = nn.Sequential(
-            nn.Linear(z_dim, project_out_dim, bias=False),
-            nn.BatchNorm1d(project_out_dim),
+            nn.ConvTranspose2d(
+                self.params.z_dim,
+                self.project_out_reshape_dim[0],
+                (current_size_height, current_size_width),
+                1,
+                0,
+                bias=False,
+            ),
+            nn.BatchNorm2d(self.project_out_reshape_dim[0]),
             nn.ReLU(True),
         )
 
@@ -127,71 +157,94 @@ class Generator(nn.Module):
 
         self.apply(weights_init)
 
-    def forward(self, z):
-        """
-        z: input (batch_size, z_dim)
-        """
-        z = self.project(z)
+    def forward(self, z: Tensor) -> Tensor:
+        """Forward pass through the generator."""
+        z = self.project(z.view(-1, self.params.z_dim, 1, 1))
         z = self.conv_blocks(z.view(-1, *self.project_out_reshape_dim))
-
         return z
 
 
 class Discriminator(nn.Module):
-    def __init__(
-        self,
-        image_size,
-        n_blocks=2,
-        filter_dim=64,
-        use_batch_norm=True,
-        is_critic=False,
-    ):
-        super(Discriminator, self).__init__()
-        self.image_size = image_size
-        self.filter_dim = filter_dim
-        self.n_blocks = n_blocks
+    """Discriminator model used to classify generated and real images for GAN training."""
 
-        n_channels, cur_s_h, cur_s_w = image_size
+    def __init__(self, params: DisParams) -> None:
+        """
+        Initialize the Discriminator with specified architecture parameters.
+
+        Args:
+            params: instance of DisParams model.
+            params.image_size (Tuple[int, int, int]): Input image dimensions (channels, height, width).
+            params.n_blocks (int): Number of convolutional blocks in the discriminator. Default is 2.
+            params.filter_dim (int): Base dimension of filters in convolutional layers. Default is 64.
+            params.use_batch_norm (bool): Whether to use batch normalization in intermediate layers. Default is True.
+            params.is_critic (bool=False): Indicates whether the discriminator is a critic (without sigmoid).
+
+        """
+        super().__init__()
+        self.params = params
+
+        n_channels, current_size_height, current_size_width = self.params.image_size
 
         self.conv_blocks = nn.Sequential()
 
-        for i in range(n_blocks):
-            cur_s_h = conv_out_size_same(cur_s_h, 2)
-            cur_s_w = conv_out_size_same(cur_s_w, 2)
+        for i in range(self.params.n_blocks):
+            current_size_height = conv_out_size_same(current_size_height, 2)
+            current_size_width = conv_out_size_same(current_size_width, 2)
 
-            out_channels = filter_dim * 2**i
+            out_channels = self.params.filter_dim * 2**i
             if i == 0:
                 in_channels = n_channels
                 block = nn.Sequential(
-                    nn.Conv2d(in_channels, out_channels, 5, 2, 2, bias=False),
+                    nn.Conv2d(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        kernel_size=4,
+                        stride=2,
+                        padding=1,
+                        bias=True,
+                    ),
                     nn.LeakyReLU(0.2, inplace=True),
                 )
             else:
-                in_channels = filter_dim * 2 ** (i - 1)
+                in_channels = self.params.filter_dim * 2 ** (i - 1)
                 block = nn.Sequential(
-                    nn.Conv2d(in_channels, out_channels, 5, 2, 2, bias=False),
-                    nn.BatchNorm2d(out_channels)
-                    if use_batch_norm
-                    else nn.LayerNorm([out_channels, cur_s_h, cur_s_w]),
+                    nn.Conv2d(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        kernel_size=4,
+                        stride=2,
+                        padding=1,
+                        bias=False,
+                    ),
+                    (
+                        nn.BatchNorm2d(out_channels)
+                        if self.params.use_batch_norm
+                        else nn.LayerNorm(normalized_shape=[out_channels, current_size_height, current_size_width])
+                    ),
                     nn.LeakyReLU(0.2, inplace=True),
                 )
 
             self.conv_blocks.append(block)
 
         self.predict = nn.Sequential(
-            # (b, ndf * 2, 7, 7)
+            nn.Conv2d(
+                in_channels=self.params.filter_dim * 2 ** (self.params.n_blocks - 1),
+                out_channels=1,
+                kernel_size=(current_size_height, current_size_width),
+                stride=1,
+                padding=0,
+                bias=False,
+            ),
             nn.Flatten(),
-            nn.Linear(filter_dim * 2 ** (n_blocks - 1) * cur_s_h * cur_s_w, 1),
-            # (b, 1)
         )
 
-        if not is_critic:
+        if not self.params.is_critic:
             self.predict.append(nn.Sigmoid())
 
         self.apply(weights_init)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass through the discriminator."""
         for block in self.conv_blocks:
             x = block(x)
-
         return self.predict(x).squeeze()

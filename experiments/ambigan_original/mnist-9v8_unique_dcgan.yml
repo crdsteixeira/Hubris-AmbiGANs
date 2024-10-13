@@ -21,7 +21,7 @@ dataset:
 model:
   z_dim: 64
   architecture:
-    name: dcgan
+    name: dcgan_deprecated
     g_filter_dim: 64
     d_filter_dim: 128
     g_num_blocks: 3

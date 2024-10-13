@@ -1,3 +1,5 @@
+# pylint: skip-file
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,7 +39,8 @@ class InceptionV3(nn.Module):
         requires_grad=False,
         use_fid_inception=True,
     ):
-        """Build pretrained InceptionV3
+        """
+        Build pretrained InceptionV3
 
         Parameters
         ----------
@@ -66,8 +69,9 @@ class InceptionV3(nn.Module):
             Inception model. If you want to compute FID scores, you are
             strongly advised to set this parameter to true to get comparable
             results.
+
         """
-        super(InceptionV3, self).__init__()
+        super().__init__()
 
         self.resize_input = resize_input
         self.normalize_input = normalize_input
@@ -129,7 +133,8 @@ class InceptionV3(nn.Module):
             param.requires_grad = requires_grad
 
     def forward(self, inp):
-        """Get Inception feature maps
+        """
+        Get Inception feature maps
 
         Parameters
         ----------
@@ -141,13 +146,13 @@ class InceptionV3(nn.Module):
         -------
         List of torch.autograd.Variable, corresponding to the selected output
         block, sorted ascending by index
+
         """
         outp = []
         x = inp
 
         if self.resize_input:
-            x = F.interpolate(x, size=(299, 299),
-                              mode="bilinear", align_corners=False)
+            x = F.interpolate(x, size=(299, 299), mode="bilinear", align_corners=False)
 
         if self.normalize_input:
             x = 2 * x - 1  # Scale from range (0, 1) to range (-1, 1)
@@ -164,7 +169,8 @@ class InceptionV3(nn.Module):
 
 
 def _inception_v3(*args, **kwargs):
-    """Wraps `torchvision.models.inception_v3`
+    """
+    Wraps `torchvision.models.inception_v3`
 
     Skips default weight inititialization if supported by torchvision version.
     See https://github.com/mseitzer/pytorch-fid/issues/28.
@@ -182,7 +188,8 @@ def _inception_v3(*args, **kwargs):
 
 
 def fid_inception_v3():
-    """Build pretrained Inception model for FID computation
+    """
+    Build pretrained Inception model for FID computation
 
     The Inception model for FID computation uses a different set of weights
     and has a slightly different structure than torchvision's Inception.
@@ -210,7 +217,7 @@ class FIDInceptionA(torchvision.models.inception.InceptionA):
     """InceptionA block patched for FID computation"""
 
     def __init__(self, in_channels, pool_features):
-        super(FIDInceptionA, self).__init__(in_channels, pool_features)
+        super().__init__(in_channels, pool_features)
 
     def forward(self, x):
         branch1x1 = self.branch1x1(x)
@@ -224,9 +231,7 @@ class FIDInceptionA(torchvision.models.inception.InceptionA):
 
         # Patch: Tensorflow's average pool does not use the padded zero's in
         # its average calculation
-        branch_pool = F.avg_pool2d(
-            x, kernel_size=3, stride=1, padding=1, count_include_pad=False
-        )
+        branch_pool = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1, count_include_pad=False)
         branch_pool = self.branch_pool(branch_pool)
 
         outputs = [branch1x1, branch5x5, branch3x3dbl, branch_pool]
@@ -237,7 +242,7 @@ class FIDInceptionC(torchvision.models.inception.InceptionC):
     """InceptionC block patched for FID computation"""
 
     def __init__(self, in_channels, channels_7x7):
-        super(FIDInceptionC, self).__init__(in_channels, channels_7x7)
+        super().__init__(in_channels, channels_7x7)
 
     def forward(self, x):
         branch1x1 = self.branch1x1(x)
@@ -254,9 +259,7 @@ class FIDInceptionC(torchvision.models.inception.InceptionC):
 
         # Patch: Tensorflow's average pool does not use the padded zero's in
         # its average calculation
-        branch_pool = F.avg_pool2d(
-            x, kernel_size=3, stride=1, padding=1, count_include_pad=False
-        )
+        branch_pool = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1, count_include_pad=False)
         branch_pool = self.branch_pool(branch_pool)
 
         outputs = [branch1x1, branch7x7, branch7x7dbl, branch_pool]
@@ -267,7 +270,7 @@ class FIDInceptionE_1(torchvision.models.inception.InceptionE):
     """First InceptionE block patched for FID computation"""
 
     def __init__(self, in_channels):
-        super(FIDInceptionE_1, self).__init__(in_channels)
+        super().__init__(in_channels)
 
     def forward(self, x):
         branch1x1 = self.branch1x1(x)
@@ -289,9 +292,7 @@ class FIDInceptionE_1(torchvision.models.inception.InceptionE):
 
         # Patch: Tensorflow's average pool does not use the padded zero's in
         # its average calculation
-        branch_pool = F.avg_pool2d(
-            x, kernel_size=3, stride=1, padding=1, count_include_pad=False
-        )
+        branch_pool = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1, count_include_pad=False)
         branch_pool = self.branch_pool(branch_pool)
 
         outputs = [branch1x1, branch3x3, branch3x3dbl, branch_pool]
@@ -302,7 +303,7 @@ class FIDInceptionE_2(torchvision.models.inception.InceptionE):
     """Second InceptionE block patched for FID computation"""
 
     def __init__(self, in_channels):
-        super(FIDInceptionE_2, self).__init__(in_channels)
+        super().__init__(in_channels)
 
     def forward(self, x):
         branch1x1 = self.branch1x1(x)

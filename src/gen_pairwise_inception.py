@@ -1,3 +1,5 @@
+# pylint: skip-file
+
 import itertools
 import os
 import subprocess
@@ -19,9 +21,7 @@ parser.add_argument(
     default="mnist",
     help="Dataset (mnist or fashion-mnist or cifar10)",
 )
-parser.add_argument(
-    "--n-classes", dest="n_classes", default=10, help="Number of classes in dataset"
-)
+parser.add_argument("--n-classes", dest="n_classes", default=10, help="Number of classes in dataset")
 parser.add_argument(
     "--device",
     type=str,

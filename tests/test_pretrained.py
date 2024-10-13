@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from src.classifier.pretrained import (ClassifierMLP, ClassifierResnet,
-                                       ClassifierVIT)
+from src.classifier.pretrained import ClassifierMLP, ClassifierResnet, ClassifierVIT
 from src.models import ClassifierParams, DeviceType, EnsembleType, OutputMethod
 
 
@@ -15,9 +14,7 @@ def mock_pretrained_data():
 
 @pytest.fixture
 def mock_grayscale_data():
-    return torch.randn(
-        1, 1, 28, 28
-    )  # Mock a batch of 28x28 single-channel images for MLP
+    return torch.randn(1, 1, 28, 28)  # Mock a batch of 28x28 single-channel images for MLP
 
 
 # Test initialization for each model
@@ -176,6 +173,4 @@ def test_mlp_binary_classification(mock_grayscale_data):
     )
     mlp_model = ClassifierMLP(params)
     output = mlp_model(mock_grayscale_data)
-    assert output.shape == (
-        1,
-    ), f"Expected output shape (1,) for binary classification, but got {output.shape}"
+    assert output.shape == (1,), f"Expected output shape (1,) for binary classification, but got {output.shape}"

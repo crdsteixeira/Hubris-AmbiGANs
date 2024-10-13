@@ -1,3 +1,5 @@
+# pylint: skip-file
+
 import torch
 
 from .metric import Metric
@@ -10,9 +12,7 @@ class Hubris(Metric):
         self.dataset_size = dataset_size
         self.output_clfs = False
         if self.C is not None:
-            self.output_clfs = (
-                len(self.C.C.models) if hasattr(self.C.C, "models") else 0
-            )
+            self.output_clfs = len(self.C.C.models) if hasattr(self.C.C, "models") else 0
             if self.output_clfs:
                 self.clf_preds = torch.zeros(
                     (
@@ -27,14 +27,11 @@ class Hubris(Metric):
         start_idx, batch_size = batch
 
         with torch.no_grad():
-            c_output, c_all_output = self.C.get(
-                images, start_idx, batch_size, output_feature_maps=True
-            )
+            c_output, c_all_output = self.C.get(images, start_idx, batch_size, output_feature_maps=True)
 
-        self.preds[start_idx: start_idx + batch_size] = c_output
+        self.preds[start_idx : start_idx + batch_size] = c_output
         for i in range(self.output_clfs):
-            self.clf_preds[i, start_idx: start_idx +
-                           batch_size] = c_all_output[0][i]
+            self.clf_preds[i, start_idx : start_idx + batch_size] = c_all_output[0][i]
 
     def compute(self, preds, ref_preds=None):
         worst_preds = torch.linspace(0.0, 1.0, steps=preds.size(0))
@@ -49,15 +46,10 @@ class Hubris(Metric):
         binary_worst_preds = torch.hstack((worst_preds, 1.0 - worst_preds))
         predictions_full = torch.distributions.Categorical(probs=binary_preds)
         reference_full = torch.distributions.Categorical(probs=reference)
-        worst_preds_full = torch.distributions.Categorical(
-            probs=binary_worst_preds)
+        worst_preds_full = torch.distributions.Categorical(probs=binary_worst_preds)
 
-        ref_kl = torch.distributions.kl.kl_divergence(
-            worst_preds_full, reference_full
-        ).mean()
-        amb_kl = torch.distributions.kl.kl_divergence(
-            predictions_full, reference_full
-        ).mean()
+        ref_kl = torch.distributions.kl.kl_divergence(worst_preds_full, reference_full).mean()
+        amb_kl = torch.distributions.kl.kl_divergence(predictions_full, reference_full).mean()
 
         return 1.0 - torch.exp(-(amb_kl / ref_kl)).item()
 

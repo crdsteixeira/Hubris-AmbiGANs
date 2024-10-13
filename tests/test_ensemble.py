@@ -12,12 +12,12 @@ from src.models import ClassifierParams, DeviceType, EnsembleType, OutputMethod
 # Mock classifiers for testing purposes
 class MockCNN(nn.Module):
     def __init__(self, n_classes: int, *args, **kwargs) -> None:
-        super(MockCNN, self).__init__()
+        super().__init__()
         self.n_classes = 1 if n_classes == 2 else n_classes
 
     def forward(
         self, x: torch.Tensor, output_feature_maps: bool = False
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         if output_feature_maps:
             return torch.randn(x.shape[0], 64, 64, 64, requires_grad=True), torch.randn(
                 x.shape[0], self.n_classes, requires_grad=True
@@ -27,11 +27,9 @@ class MockCNN(nn.Module):
 
 class MockPretrained(nn.Module):
     def __init__(self, *args, **kwargs) -> None:
-        super(MockPretrained, self).__init__()
+        super().__init__()
 
-    def forward(
-        self, x: torch.Tensor, output_feature_maps: bool = False
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
         return torch.randn(x.shape[0], 10)
 
 
@@ -48,9 +46,7 @@ def test_ensemble_cnn_initialization() -> None:
         device=DeviceType.cpu,
     )
     ensemble = Ensemble(params)
-    assert len(ensemble.models) == len(
-        params.nf
-    ), "CNN ensemble should have the same number of models as nf length."
+    assert len(ensemble.models) == len(params.nf), "CNN ensemble should have the same number of models as nf length."
 
 
 def test_ensemble_pretrained_initialization() -> None:
@@ -65,15 +61,12 @@ def test_ensemble_pretrained_initialization() -> None:
         device=DeviceType.cpu,
     )
     ensemble = Ensemble(params)
-    assert (
-        len(ensemble.models) == 2
-    ), "Pretrained ensemble should initialize with 2 models."
+    assert len(ensemble.models) == 2, "Pretrained ensemble should initialize with 2 models."
     assert not ensemble.train_models, "Pretrained models should not be set to train."
 
 
 def test_ensemble_missing_ensemble_type_and_output_method():
     """Test that a ValueError is raised if ensemble_type or output_method are missing for ensemble classifiers."""
-
     # Case 1: Missing both ensemble_type and output_method
     with pytest.raises(
         ValueError,
@@ -103,9 +96,7 @@ def test_ensemble_missing_ensemble_type_and_output_method():
         )
 
     # Case 3: Missing only output_method
-    with pytest.raises(
-        ValueError, match="output_method must be provided for ensemble type classifiers"
-    ):
+    with pytest.raises(ValueError, match="output_method must be provided for ensemble type classifiers"):
         ClassifierParams(
             type="ensemble",
             img_size=(3, 64, 64),
@@ -131,14 +122,13 @@ def test_ensemble_forward_mean() -> None:
     )
     ensemble = Ensemble(params)
     ensemble.models = nn.ModuleList(
-        [MockCNN(ensemble.n_classes), MockCNN(ensemble.n_classes)]
+        [MockCNN(ensemble.params.n_classes), MockCNN(ensemble.params.n_classes)]
     )  # Mock the CNN models
     x = torch.randn(1, 3, 64, 64)
 
     output = ensemble(x, output_feature_maps=False)
     assert output is not None, "Output should not be None"
-    assert output.shape == (
-        1, 10), "Output shape should be correct for classification."
+    assert output.shape == (1, 10), "Output shape should be correct for classification."
 
 
 def test_ensemble_forward_with_feature_maps() -> None:
@@ -154,15 +144,13 @@ def test_ensemble_forward_with_feature_maps() -> None:
     )
     ensemble = Ensemble(params)
     ensemble.models = nn.ModuleList(
-        [MockCNN(ensemble.n_classes), MockCNN(ensemble.n_classes)]
+        [MockCNN(ensemble.params.n_classes), MockCNN(ensemble.params.n_classes)]
     )  # Mock the CNN models
     x = torch.randn(1, 3, 64, 64)
 
     output, feature_maps = ensemble(x, output_feature_maps=True)
     assert output is not None, "Output should not be None"
-    assert len(feature_maps) == len(
-        params.nf
-    ), f"Expected {len(params.nf)} feature maps, but got {len(feature_maps)}"
+    assert len(feature_maps) == len(params.nf), f"Expected {len(params.nf)} feature maps, but got {len(feature_maps)}"
     for fmap in feature_maps:
         assert fmap.shape == (
             1,
@@ -186,7 +174,7 @@ def test_ensemble_meta_learner() -> None:
     )
     ensemble = Ensemble(params)
     ensemble.models = nn.ModuleList(
-        [MockCNN(ensemble.n_classes), MockCNN(ensemble.n_classes)]
+        [MockCNN(ensemble.params.n_classes), MockCNN(ensemble.params.n_classes)]
     )  # Mock the CNN models
     x = torch.randn(1, 3, 64, 64)
 
@@ -210,14 +198,12 @@ def test_ensemble_mean_output_binary() -> None:
     )
     ensemble = Ensemble(params)
     ensemble.models = nn.ModuleList(
-        [MockCNN(ensemble.n_classes), MockCNN(ensemble.n_classes)]
+        [MockCNN(ensemble.params.n_classes), MockCNN(ensemble.params.n_classes)]
     )  # Mock the CNN models
     x = torch.randn(1, 3, 64, 64)
 
     output = ensemble(x, output_feature_maps=False)
-    assert output.shape == (
-        1,
-    ), f"Expected output shape (1,) for binary classification, but got {output.shape}"
+    assert output.shape == (1,), f"Expected output shape (1,) for binary classification, but got {output.shape}"
 
 
 def test_ensemble_linear_output_binary() -> None:
@@ -233,14 +219,12 @@ def test_ensemble_linear_output_binary() -> None:
     )
     ensemble = Ensemble(params)
     ensemble.models = nn.ModuleList(
-        [MockCNN(ensemble.n_classes), MockCNN(ensemble.n_classes)]
+        [MockCNN(ensemble.params.n_classes), MockCNN(ensemble.params.n_classes)]
     )  # Mock the CNN models
     x = torch.randn(1, 3, 64, 64)
 
     output = ensemble(x, output_feature_maps=False)
-    assert output.shape == (
-        1,
-    ), f"Expected output shape (1,) for binary classification, but got {output.shape}"
+    assert output.shape == (1,), f"Expected output shape (1,) for binary classification, but got {output.shape}"
 
 
 # Test: Train Helper
@@ -257,7 +241,7 @@ def test_train_helper() -> None:
     )
     ensemble = Ensemble(params)
     ensemble.models = nn.ModuleList(
-        [MockCNN(ensemble.n_classes), MockCNN(ensemble.n_classes)]
+        [MockCNN(ensemble.params.n_classes), MockCNN(ensemble.params.n_classes)]
     )  # Mock the CNN models
     X = torch.randn(10, 3, 64, 64)
     Y = torch.randint(0, 10, (10,))
@@ -283,7 +267,7 @@ def test_optimize_helper() -> None:
     )
     ensemble = Ensemble(params)
     ensemble.models = nn.ModuleList(
-        [MockCNN(ensemble.n_classes), MockCNN(ensemble.n_classes)]
+        [MockCNN(ensemble.params.n_classes), MockCNN(ensemble.params.n_classes)]
     )  # Mock the CNN models
     X = torch.randn(10, 3, 64, 64)
     Y = torch.randint(0, 10, (10,))

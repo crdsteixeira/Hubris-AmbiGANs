@@ -1,9 +1,12 @@
+# pylint: skip-file
+
 import argparse
 import os
 
 from dotenv import load_dotenv
 
-from src.utils import create_and_store_z, gen_seed, set_seed
+from src.utils.utility_functions import create_and_store_z
+from src.utils.utility_functions import gen_seed, set_seed
 
 if __name__ == "__main__":
     load_dotenv()

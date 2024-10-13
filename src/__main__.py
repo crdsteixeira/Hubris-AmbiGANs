@@ -1,5 +1,9 @@
+# pylint: skip-file
+
+
 import argparse
 import os
+import logging
 
 import numpy as np
 import pandas as pd
@@ -8,40 +12,69 @@ import wandb
 from dotenv import load_dotenv
 
 from src.classifier import ClassifierCache
-from src.datasets import load_dataset
-from src.gan import construct_gan, construct_loss
+from src.datasets.load import load_dataset
+from src.gan.construct_gan import construct_loss
+from src.gan.construct_gan import construct_gan
 from src.gan.train import train
-from src.gan.update_g import (UpdateGeneratorGAN, UpdateGeneratorGASTEN,
-                              UpdateGeneratorGASTEN_gaussian,
-                              UpdateGeneratorGASTEN_gaussianV2,
-                              UpdateGeneratorGASTEN_KLDiv,
-                              UpdateGeneratorGASTEN_MGDA)
+from src.gan.update_g import (
+    UpdateGeneratorGAN,
+    UpdateGeneratorGASTEN,
+    UpdateGeneratorAmbiGanGaussian,
+    UpdateGeneratorAmbiGanGaussianIdentity,
+    UpdateGeneratorAmbiGanKLDiv,
+    UpdateGeneratorGastenMgda,
+)
 from src.metrics import Hubris, LossSecondTerm, fid
 from src.metrics.c_output_hist import OutputsHistogram
-from src.utils import (create_checkpoint_path, gen_seed, load_z, seed_worker,
-                       set_seed, setup_reprod)
-from src.utils.checkpoint import (construct_classifier_from_checkpoint,
-                                  construct_gan_from_checkpoint,
-                                  get_gan_path_at_epoch, load_gan_train_state)
-from src.utils.config import read_config
+import src.metrics.fid.FID
+from src.utils.utility_functions import (
+    load_z,
+)
+from src.utils.checkpoint import (
+    construct_classifier_from_checkpoint,
+    construct_gan_from_checkpoint,
+    get_gan_path_at_epoch,
+    load_gan_train_state,
+)
+from src.utils.utility_functions import create_checkpoint_path, gen_seed, seed_worker, set_seed, setup_reprod
+from src.utils.read_config import read_config
 from src.utils.plot import plot_metrics
+from src.utils.logging import configure_logging
+from src.models import CLAmbigan, LoadDatasetParams
+from pydantic import ValidationError
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--config", dest="config_path", required=True, help="Config file"
-    )
-    return parser.parse_args()
+configure_logging()
+logger = logging.getLogger(__name__)
+logger.info("AmbiGANs is starting...")
+
+
+def parse_args() -> CLAmbigan:
+    """Parse arguments from command line for step 2."""
+
+    parser = argparse.ArgumentParser(description="Train AmbiGAN with a config file")
+
+    parser.add_argument("--config", type=str, dest="config_path", required=True, help="Config file")
+
+    # Parse the arguments from command line
+    args = parser.parse_args()
+
+    # Convert argparse Namespace to dictionary for validation
+    args_dict = vars(args)
+
+    # Validate parsed arguments using Pydantic model
+    try:
+        validated_args = CLAmbigan.model_validate(args_dict)
+        return validated_args
+    except ValidationError as e:
+        # Print validation error and exit
+        logger.error(f"Validation error: {e}")
+        raise ValidationError(e) from e
 
 
 def construct_optimizers(config, G, D):
-    g_optim = torch.optim.Adam(
-        G.parameters(), lr=config["lr"], betas=(config["beta1"], config["beta2"])
-    )
-    d_optim = torch.optim.Adam(
-        D.parameters(), lr=config["lr"], betas=(config["beta1"], config["beta2"])
-    )
+    g_optim = torch.optim.Adam(G.parameters(), lr=config["lr"], betas=(config["beta1"], config["beta2"]))
+    d_optim = torch.optim.Adam(D.parameters(), lr=config["lr"], betas=(config["beta1"], config["beta2"]))
 
     return g_optim, d_optim
 
@@ -67,26 +100,17 @@ def train_modified_gan(
     run_id,
     s1_epoch,
 ):
-    print(
-        "Running experiment with classifier {} and weight {} ...".format(
-            C_name, weight)
-    )
+    print(f"Running experiment with classifier {C_name} and weight {weight} ...")
 
     weight_txt = weight
     if isinstance(weight, dict) and "gaussian" in weight:
-        weight_txt = "gauss_" + "_".join(
-            [f"{key}_{value}" for key, value in weight["gaussian"].items()]
-        )
+        weight_txt = "gauss_" + "_".join([f"{key}_{value}" for key, value in weight["gaussian"].items()])
     elif isinstance(weight, dict) and "kldiv" in weight:
-        weight_txt = "kldiv_" + "_".join(
-            [f"{key}_{value}" for key, value in weight["kldiv"].items()]
-        )
+        weight_txt = "kldiv_" + "_".join([f"{key}_{value}" for key, value in weight["kldiv"].items()])
     elif isinstance(weight, dict) and "gaussian-v2" in weight:
-        weight_txt = "gauss_v2_" + "_".join(
-            [f"{key}_{value}" for key, value in weight["gaussian-v2"].items()]
-        )
+        weight_txt = "gauss_v2_" + "_".join([f"{key}_{value}" for key, value in weight["gaussian-v2"].items()])
 
-    run_name = "{}_{}_{}".format(C_name, weight_txt, s1_epoch)
+    run_name = f"{C_name}_{weight_txt}_{s1_epoch}"
 
     gan_cp_dir = os.path.join(cp_dir, run_name)
 
@@ -105,21 +129,18 @@ def train_modified_gan(
         if isinstance(weight, dict) and "gaussian" in weight:
             alpha = weight["gaussian"]["alpha"]
             var = weight["gaussian"]["var"]
-            g_updater = UpdateGeneratorGASTEN_gaussian(
-                g_crit, C, alpha=alpha, var=var)
+            g_updater = UpdateGeneratorAmbiGanGaussian(g_crit, C, alpha=alpha, var=var)
         elif isinstance(weight, dict) and "kldiv" in weight:
             alpha = weight["kldiv"]["alpha"]
-            g_updater = UpdateGeneratorGASTEN_KLDiv(g_crit, C, alpha=alpha)
+            g_updater = UpdateGeneratorAmbiGanKLDiv(g_crit, C, alpha=alpha)
         elif isinstance(weight, dict) and "gaussian-v2" in weight:
             alpha = weight["gaussian-v2"]["alpha"]
             var = weight["gaussian-v2"]["var"]
-            g_updater = UpdateGeneratorGASTEN_gaussianV2(
-                g_crit, C, alpha=alpha, var=var
-            )
+            g_updater = UpdateGeneratorAmbiGanGaussianIdentity(g_crit, C, alpha=alpha, var=var)
         elif weight == "mgda":
-            g_updater = UpdateGeneratorGASTEN_MGDA(g_crit, C, normalize=False)
+            g_updater = UpdateGeneratorGastenMgda(g_crit, C, normalize=False)
         elif weight == "mgda:norm":
-            g_updater = UpdateGeneratorGASTEN_MGDA(g_crit, C, normalize=True)
+            g_updater = UpdateGeneratorGastenMgda(g_crit, C, normalize=True)
         else:
             g_updater = UpdateGeneratorGASTEN(g_crit, C, alpha=weight)
     else:
@@ -127,9 +148,7 @@ def train_modified_gan(
 
     early_stop_key = "conf_dist"
     early_stop_crit = (
-        None
-        if "early-stop" not in config["train"]["step-2"]
-        else config["train"]["step-2"]["early-stop"]["criteria"]
+        None if "early-stop" not in config["train"]["step-2"] else config["train"]["step-2"]["early-stop"]["criteria"]
     )
     early_stop_crit_step_1 = (
         early_stop_crit
@@ -137,11 +156,7 @@ def train_modified_gan(
         else config["train"]["step-1"]["early-stop"]["criteria"]
     )
 
-    early_stop = (
-        (early_stop_key, early_stop_crit)
-        if early_stop_crit is not None
-        else (early_stop_key, None)
-    )
+    early_stop = (early_stop_key, early_stop_crit) if early_stop_crit is not None else (early_stop_key, None)
 
     set_seed(seed)
     wandb.init(
@@ -192,9 +207,7 @@ def train_modified_gan(
     return eval_metrics
 
 
-def compute_dataset_fid_stats(
-    dset, get_feature_map_fn, dims, batch_size=64, device="cpu", num_workers=0
-):
+def compute_dataset_fid_stats(dset, get_feature_map_fn, dims, batch_size=64, device="cpu", num_workers=0):
     dataloader = torch.utils.data.DataLoader(
         dset,
         batch_size=batch_size,
@@ -203,9 +216,7 @@ def compute_dataset_fid_stats(
         worker_init_fn=seed_worker,
     )
 
-    m, s = fid.calculate_activation_statistics_dataloader(
-        dataloader, get_feature_map_fn, dims=dims, device=device
-    )
+    m, s = fid.calculate_activation_statistics_dataloader(dataloader, get_feature_map_fn, dims=dims, device=device)
 
     return m, s
 
@@ -214,59 +225,51 @@ def main():
     load_dotenv()
     args = parse_args()
     config = read_config(args.config_path)
-    print("Loaded experiment configuration from {}".format(args.config_path))
+    logger.info(f"Loaded experiment configuration from {args.config_path}")
 
-    if "step-1-seeds" not in config:
-        run_seeds = [gen_seed() for _ in range(config["num-runs"])]
-    else:
-        run_seeds = config["step-1-seeds"]
+    if not config.step_1_seeds:
+        config.step_1_seeds = [gen_seed() for _ in range(config.num_runs)]
+    if not config.step_2_seeds:
+        config.step_2_seeds = [gen_seed() for _ in range(config.num_runs)]
+  
 
-    if "step-2-seeds" not in config:
-        step_2_seeds = [gen_seed() for _ in range(config["num-runs"])]
-    else:
-        step_2_seeds = config["step-2-seeds"]
 
-    device = torch.device(config["device"])
-    print("Using device {}".format(device))
+    logger.info(f"Using device {config.device}")
+    logger.info(f" > Num workers {config.num_workers}")
 
     ###
     # Setup
     ###
-    pos_class = None
-    neg_class = None
-    if "binary" in config["dataset"]:
-        pos_class = config["dataset"]["binary"]["pos"]
-        neg_class = config["dataset"]["binary"]["neg"]
 
     dataset, num_classes, img_size = load_dataset(
-        config["dataset"]["name"], config["data-dir"], pos_class, neg_class
-    )
-
-    num_workers = config["num-workers"]
-    print(" > Num workers", num_workers)
-
-    if type(config["fixed-noise"]) is str:
-        arr = np.load(config["fixed-noise"])
-        fixed_noise = torch.Tensor(arr).to(device)
-    else:
-        fixed_noise = torch.randn(
-            config["fixed-noise"], config["model"]["z_dim"], device=device
+        LoadDatasetParams(
+            dataset_name=config.dataset.name,
+            dataroot=config.data_dir,
+            pos_class=config.dataset.binary.pos,
+            neg_class=config.dataset.binary.neg,
+            train=True
         )
+    )
+        
 
-    test_noise, test_noise_conf = load_z(config["test-noise"])
-    print("Loaded test noise from", config["test-noise"])
-    print("\t", test_noise_conf)
+    if type(config.fixed_noise) is str:
+        arr = np.load(config.fixed_noise)
+        fixed_noise = torch.Tensor(arr).to(config.device.value)
+    else:
+        fixed_noise = torch.randn(config.fixed_noise, config.model.z_dim, device=config.device.value)
 
-    mu, sigma = fid.load_statistics_from_path(config["fid-stats-path"])
-    fm_fn, dims = fid.get_inception_feature_map_fn(device)
-    original_fid = fid.FID(
-        fm_fn, dims, test_noise.size(0), mu, sigma, device=device)
+    test_noise, test_noise_conf = load_z(config.test_noise)
+    logger.info(f"Loaded test noise from {config.test_noise}")
+    logger.info("\t {test_noise_conf}")
 
-    num_runs = config["num-runs"]
-    for i in range(num_runs):
-        print("##")
-        print("# Starting run", i)
-        print("##")
+    mu, sigma = fid.load_statistics_from_path(config.fid_stats_path)
+    fm_fn, dims = fid.get_inception_feature_map_fn(config.device.value)
+    original_fid = src.metrics.fid.FID.FID(fm_fn, dims, test_noise.size(0), mu, sigma, device=config.device.value)
+
+    for i in range(config.num_runs):
+        logger.info("##\n")
+        logger.info("# Starting run {i}\n")
+        logger.info("##")
 
         run_id = wandb.util.generate_id()
         cp_dir = create_checkpoint_path(config, run_id)
@@ -275,27 +278,21 @@ def main():
 
         #################
         # Set seed
-        seed = run_seeds[i]
+        seed = config.step_1_seeds[i]
         setup_reprod(seed)
 
-        config["model"]["image-size"] = img_size
-
-        G, D = construct_gan(config["model"], img_size, device)
-        g_optim, d_optim = construct_optimizers(config["optimizer"], G, D)
-        g_crit, d_crit = construct_loss(config["model"]["loss"], D)
+        G, D = construct_gan(config, img_size)
+        g_optim, d_optim = construct_optimizers(config.optimizer, G, D)
+        g_crit, d_crit = construct_loss(config.model.loss, D)
         g_updater = UpdateGeneratorGAN(g_crit)
 
-        print("Storing generated artifacts in {}".format(cp_dir))
-        original_gan_cp_dir = os.path.join(cp_dir, "step-1")
+        logger.info(f"Storing generated artifacts in {cp_dir}")
+        original_gan_cp_dir = os.path.join(cp_dir, "step_1")
 
         ###
         # Step 1 (train GAN with normal GAN loss)
         ###
-        if type(config["train"]["step-1"]) is not str:
-            batch_size = config["train"]["step-1"]["batch-size"]
-            n_epochs = config["train"]["step-1"]["epochs"]
-            n_disc_iters = config["train"]["step-1"]["disc-iters"]
-            checkpoint_every = config["train"]["step-1"]["checkpoint-every"]
+        if type(config.train.step_1) is not str:
 
             fid_metrics = {"fid": original_fid}
             early_stop_key = "fid"
@@ -305,25 +302,23 @@ def main():
                 else config["train"]["step-1"]["early-stop"]["criteria"]
             )
             early_stop = (
-                None
-                if early_stop_key is None and early_stop_key is None
-                else (early_stop_key, early_stop_crit)
+                None if early_stop_key is None and early_stop_key is None else (early_stop_key, early_stop_crit)
             )
 
             wandb.init(
-                project=config["project"],
-                group=config["name"],
+                project=config.project,
+                group=config.name,
                 entity=os.environ["ENTITY"],
-                job_type="step-1",
-                name=f"{run_id}-step-1",
+                job_type="step_1",
+                name=f"{run_id}_step_1",
                 config={
                     "id": run_id,
                     "seed": seed,
-                    "gan": config["model"],
-                    "optim": config["optimizer"],
-                    "train": config["train"]["step-1"],
-                    "dataset": config["dataset"],
-                    "num-workers": config["num-workers"],
+                    "gan": config.model,
+                    "optim": config.optimizer,
+                    "train": config.train.step_1,
+                    "dataset": config.dataset,
+                    "num-workers": config.num_workers,
                     "test-noise": test_noise_conf,
                 },
             )
@@ -331,9 +326,9 @@ def main():
             step_1_train_state, _, _, _ = train(
                 config,
                 dataset,
-                device,
-                n_epochs,
-                batch_size,
+                config.device,
+                config.train.step_1.epochs,
+                config.train.step_1.batch_size,
                 G,
                 g_optim,
                 g_updater,
@@ -342,21 +337,23 @@ def main():
                 d_crit,
                 test_noise,
                 fid_metrics,
-                n_disc_iters,
+                config.train.step_1.disc_iters,
                 early_stop=early_stop,
                 checkpoint_dir=original_gan_cp_dir,
                 fixed_noise=fixed_noise,
-                checkpoint_every=checkpoint_every,
+                checkpoint_every=config.train.step_1.checkpoint_every,
             )
 
             wandb.finish()
         else:
-            original_gan_cp_dir = config["train"]["step-1"]
+            original_gan_cp_dir = config.train.step_1
             step_1_train_state = load_gan_train_state(original_gan_cp_dir)
 
-        print(" > Start step 2 (gan with modified (loss)")
+        logger.info(" > Start step 2 (gan with modified (loss)")
 
-        if "step-1-epochs" not in config["train"]["step-2"]:
+        ## TODO acabar isto
+
+        if not config.train.step_2.step_1_epochs not in config["train"]["step-2"]:
             step_1_epochs = ["best"]
         else:
             step_1_epochs = config["train"]["step-2"]["step-1-epochs"]
@@ -372,9 +369,7 @@ def main():
 
         for c_path in classifier_paths:
             C_name = os.path.splitext(os.path.basename(c_path))[0]
-            C, C_params, C_stats, C_args = construct_classifier_from_checkpoint(
-                c_path, device=device
-            )
+            C, C_params, C_stats, C_args = construct_classifier_from_checkpoint(c_path, device=device)
             C.to(device)
             C.eval()
             C.output_feature_maps = True
@@ -382,12 +377,9 @@ def main():
             class_cache = ClassifierCache(C)
 
             def get_feature_map_fn(images, batch_idx, batch_size):
-                return class_cache.get(
-                    images, batch_idx, batch_size, output_feature_maps=True
-                )[1]
+                return class_cache.get(images, batch_idx, batch_size, output_feature_maps=True)[1]
 
-            dims = get_feature_map_fn(
-                dataset.data[0:1].to(device), 0, 1).size(1)
+            dims = get_feature_map_fn(dataset.data[0:1].to(device), 0, 1).size(1)
 
             print(" > Computing statistics using original dataset")
             mu, sigma = compute_dataset_fid_stats(
@@ -399,9 +391,7 @@ def main():
             )
             print("   ... done")
 
-            our_class_fid = fid.FID(
-                get_feature_map_fn, dims, test_noise.size(0), mu, sigma, device=device
-            )
+            our_class_fid = src.metrics.fid.FID.FID(get_feature_map_fn, dims, test_noise.size(0), mu, sigma, device=device)
 
             conf_dist = LossSecondTerm(class_cache)
 
@@ -424,11 +414,9 @@ def main():
                 else:
                     epoch = s1_epoch
 
-                gan_path = get_gan_path_at_epoch(
-                    original_gan_cp_dir, epoch=epoch)
+                gan_path = get_gan_path_at_epoch(original_gan_cp_dir, epoch=epoch)
                 if not os.path.exists(gan_path):
-                    print(
-                        f" WARNING: gan at epoch {epoch} not found. skipping ...")
+                    print(f" WARNING: gan at epoch {epoch} not found. skipping ...")
 
                 for weight in weights:
                     eval_metrics = train_modified_gan(
@@ -454,9 +442,7 @@ def main():
                     )
 
                     if isinstance(weight, dict):
-                        weight = "_".join(
-                            [f"{key}_{value}" for key, value in weight.items()]
-                        )
+                        weight = "_".join([f"{key}_{value}" for key, value in weight.items()])
 
                     step2_metrics.append(
                         pd.DataFrame(
@@ -467,9 +453,7 @@ def main():
                                 "s1_epochs": [epoch] * len(eval_metrics.stats["fid"]),
                                 "weight": [weight] * len(eval_metrics.stats["fid"]),
                                 "classifier": [c_path] * len(eval_metrics.stats["fid"]),
-                                "epoch": [
-                                    i + 1 for i in range(len(eval_metrics.stats["fid"]))
-                                ],
+                                "epoch": [i + 1 for i in range(len(eval_metrics.stats["fid"]))],
                             }
                         )
                     )

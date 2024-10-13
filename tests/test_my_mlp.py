@@ -88,8 +88,7 @@ def test_mlp_multiclass_classification_output():
     output = model(x)
 
     # Check that output matches the number of classes for multi-class classification
-    assert output.shape == (
-        1, 10), f"Expected shape (1, 10), but got {output.shape}"
+    assert output.shape == (1, 10), f"Expected shape (1, 10), but got {output.shape}"
 
 
 def test_mlp_output_with_feature_maps():
@@ -111,16 +110,12 @@ def test_mlp_output_with_feature_maps():
     assert len(outputs) == 2, "Expected 2 sets of outputs (one for each block)"
 
     # Final output should still be scalar for binary classification
-    assert outputs[-1].shape == (
-        1,
-    ), f"Expected final output shape (1,), but got {outputs[-1].shape}"
+    assert outputs[-1].shape == (1,), f"Expected final output shape (1,), but got {outputs[-1].shape}"
 
 
 def test_invalid_input_shape():
     """Test that an invalid input shape raises an error."""
-    params = ClassifierParams(
-        type="mlp", img_size=(3, 28, 28), n_classes=10, nf=64, device=DeviceType.cpu
-    )
+    params = ClassifierParams(type="mlp", img_size=(3, 28, 28), n_classes=10, nf=64, device=DeviceType.cpu)
     model = Classifier(params)
 
     # Input with incorrect shape
@@ -131,9 +126,7 @@ def test_invalid_input_shape():
 
 def test_mlp_device_compatibility():
     """Test that the MLP model works on both CPU and GPU (if available)."""
-    params = ClassifierParams(
-        type="mlp", img_size=(3, 28, 28), n_classes=10, nf=64, device=DeviceType.cpu
-    )
+    params = ClassifierParams(type="mlp", img_size=(3, 28, 28), n_classes=10, nf=64, device=DeviceType.cpu)
     model = Classifier(params)
 
     x = torch.randn(1, 3, 28, 28)
@@ -151,15 +144,9 @@ def test_mlp_device_compatibility():
 
 def test_mlp_initialization_properties():
     """Test if MLP initializes with correct properties."""
-    params = ClassifierParams(
-        type="mlp", img_size=(1, 28, 28), n_classes=2, nf=64, device=DeviceType.cpu
-    )
+    params = ClassifierParams(type="mlp", img_size=(1, 28, 28), n_classes=2, nf=64, device=DeviceType.cpu)
     model = Classifier(params)
 
     assert len(model.blocks) == 2, "There should be two blocks in the model"
-    assert isinstance(
-        model.blocks[0][1], nn.Linear
-    ), "First block should have a Linear layer"
-    assert isinstance(
-        model.blocks[1][0], nn.Linear
-    ), "Second block should have the final Linear layer"
+    assert isinstance(model.blocks[0][1], nn.Linear), "First block should have a Linear layer"
+    assert isinstance(model.blocks[1][0], nn.Linear), "Second block should have the final Linear layer"

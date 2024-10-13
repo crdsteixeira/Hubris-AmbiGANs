@@ -1,9 +1,10 @@
+# pylint: skip-file
+
 import itertools
 import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 from dotenv import load_dotenv
-
 from utils import begin_classifier, begin_ensemble
 
 load_dotenv()
@@ -26,17 +27,10 @@ parser.add_argument(
     default="mnist",
     help="Dataset (mnist or fashion-mnist or cifar10)",
 )
-parser.add_argument(
-    "--n-classes", dest="n_classes", default=10, help="Number of classes in dataset"
-)
-parser.add_argument(
-    "--device", type=str, default="cpu", help="Device to use. Like cuda, cuda:0 or cpu"
-)
-parser.add_argument(
-    "--batch-size", dest="batch_size", type=int, default=64, help="Batch size"
-)
-parser.add_argument("--lr", type=float, default=1e-3,
-                    help="ADAM opt learning rate")
+parser.add_argument("--n-classes", dest="n_classes", default=10, help="Number of classes in dataset")
+parser.add_argument("--device", type=str, default="cpu", help="Device to use. Like cuda, cuda:0 or cpu")
+parser.add_argument("--batch-size", dest="batch_size", type=int, default=64, help="Batch size")
+parser.add_argument("--lr", type=float, default=1e-3, help="ADAM opt learning rate")
 
 parser.add_argument(
     "--pos",
@@ -53,9 +47,7 @@ parser.add_argument(
     help="Negative class for binary classification",
 )
 
-parser.add_argument(
-    "--epochs", type=str, default="3", help="List of number of epochs to train for"
-)
+parser.add_argument("--epochs", type=str, default="3", help="List of number of epochs to train for")
 parser.add_argument(
     "--classifier-type",
     dest="clf_type",
@@ -63,12 +55,8 @@ parser.add_argument(
     help='list with elements "cnn", "mlp", "ensemble:pretrained" or "ensemble:cnn"',
     default="cnn",
 )
-parser.add_argument(
-    "--nf", type=str, default="2,4,8,16", help="List of possible num features"
-)
-parser.add_argument(
-    "--seed", type=int, help="random seed to use in generation", default=None
-)
+parser.add_argument("--nf", type=str, default="2,4,8,16", help="List of possible num features")
+parser.add_argument("--seed", type=int, help="random seed to use in generation", default=None)
 parser.add_argument(
     "--early-acc",
     dest="early_acc",
@@ -84,8 +72,8 @@ def main():
 
     n_classes = args.n_classes
 
-    l_epochs = list(set([e for e in args.epochs.split(",") if e.isdigit()]))
-    l_clf_type = list(set([ct for ct in args.clf_type.split(",")]))
+    l_epochs = list({e for e in args.epochs.split(",") if e.isdigit()})
+    l_clf_type = list({ct for ct in args.clf_type.split(",")})
     l_epochs.sort()
     l_clf_type.sort()
 

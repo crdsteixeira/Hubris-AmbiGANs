@@ -1,23 +1,42 @@
+"""Module to train GAN."""
+
+import logging
 import math
+from collections.abc import Callable
+from typing import Any
 
 import matplotlib.pyplot as plt
 import torch
 from tqdm import tqdm
 
-from src.utils import MetricsLogger, group_images, seed_worker
+from src.gan.loss import DiscriminatorLoss
+from src.gan.update_g import UpdateGenerator
 from src.utils.checkpoint import checkpoint_gan, checkpoint_image
+from src.utils.metrics_logger import MetricsLogger
+from src.utils.utility_functions import group_images, seed_worker
+
+logger = logging.getLogger(__name__)
 
 
-def loss_terms_to_str(loss_items):
+def loss_terms_to_str(loss_items: dict[str, float]) -> str:
+    """Convert loss terms dictionary to a formatted string."""
     result = ""
     for key, value in loss_items.items():
-        result += "%s: %.4f " % (key, value)
+        result += f"{key}: {value:.4f} "
 
     return result
 
 
-def evaluate(G, fid_metrics, stats_logger, batch_size, test_noise, device, c_out_hist):
-    # Compute evaluation metrics on fixed noise (Z) set
+def evaluate(
+    G: torch.nn.Module,
+    fid_metrics: dict[str, Any],
+    stats_logger: MetricsLogger,
+    batch_size: int,
+    test_noise: torch.Tensor,
+    device: torch.device,
+    c_out_hist: Any,
+) -> None:
+    """Evaluate generator performance with metrics and generate plots."""
     training = G.training
     G.eval()
 
@@ -27,7 +46,7 @@ def evaluate(G, fid_metrics, stats_logger, batch_size, test_noise, device, c_out
     for _ in tqdm(range(num_batches), desc="Evaluating"):
         real_size = min(batch_size, test_noise.size(0) - start_idx)
 
-        batch_z = test_noise[start_idx: start_idx + real_size]
+        batch_z = test_noise[start_idx : start_idx + real_size]
 
         with torch.no_grad():
             batch_gen = G(batch_z.to(device))
@@ -47,7 +66,6 @@ def evaluate(G, fid_metrics, stats_logger, batch_size, test_noise, device, c_out
 
     if c_out_hist is not None:
         c_out_hist.plot()
-        # stats_logger.log_plot('histogram') # why do we have this error??
         c_out_hist.reset()
         plt.clf()
 
@@ -55,7 +73,17 @@ def evaluate(G, fid_metrics, stats_logger, batch_size, test_noise, device, c_out
         G.train()
 
 
-def train_disc(G, D, d_opt, d_crit, real_data, batch_size, train_metrics, device):
+def train_disc(
+    G: torch.nn.Module,
+    D: torch.nn.Module,
+    d_opt: torch.optim.Optimizer,
+    d_crit: DiscriminatorLoss,
+    real_data: torch.Tensor,
+    batch_size: int,
+    train_metrics: MetricsLogger,
+    device: torch.device,
+) -> tuple[torch.Tensor, dict[str, float]]:
+    """Train the discriminator with real and generated data."""
     D.zero_grad()
 
     # Real data batch
@@ -70,9 +98,7 @@ def train_disc(G, D, d_opt, d_crit, real_data, batch_size, train_metrics, device
     d_output_fake = D(fake_data.detach())
 
     # Compute loss, gradients and update net
-    d_loss, d_loss_terms = d_crit(
-        real_data, fake_data, d_output_real, d_output_fake, device
-    )
+    d_loss, d_loss_terms = d_crit(real_data, fake_data, d_output_real, d_output_fake, device)
     d_loss.backward()
     d_opt.step()
 
@@ -84,7 +110,16 @@ def train_disc(G, D, d_opt, d_crit, real_data, batch_size, train_metrics, device
     return d_loss, d_loss_terms
 
 
-def train_gen(update_fn, G, D, g_opt, batch_size, train_metrics, device):
+def train_gen(
+    update_fn: Callable,
+    G: torch.nn.Module,
+    D: torch.nn.Module,
+    g_opt: torch.optim.Optimizer,
+    batch_size: int,
+    train_metrics: MetricsLogger,
+    device: torch.device,
+) -> tuple[torch.Tensor, dict[str, float]]:
+    """Train the generator to improve its output quality."""
     noise = torch.randn(batch_size, G.z_dim, device=device)
 
     g_loss, g_loss_terms = update_fn(G, D, g_opt, noise, device)
@@ -98,32 +133,30 @@ def train_gen(update_fn, G, D, g_opt, batch_size, train_metrics, device):
 
 
 def train(
-    config,
-    dataset,
-    device,
-    n_epochs,
-    batch_size,
-    G,
-    g_opt,
-    g_updater,
-    D,
-    d_opt,
-    d_crit,
-    test_noise,
-    fid_metrics,
-    n_disc_iters,
-    early_stop=None,  # Tuple of (key, crit)
-    start_early_stop_when=None,  # Tuple of (key, crit):
-    checkpoint_dir=None,
-    checkpoint_every=10,
-    fixed_noise=None,
-    c_out_hist=None,
-    classifier=None,
-):
-    fixed_noise = (
-        torch.randn(
-            64, G.z_dim, device=device) if fixed_noise is None else fixed_noise
-    )
+    config: dict[str, Any],
+    dataset: torch.utils.data.Dataset,
+    device: torch.device,
+    n_epochs: int,
+    batch_size: int,
+    G: torch.nn.Module,
+    g_opt: torch.optim.Optimizer,
+    g_updater: UpdateGenerator,
+    D: torch.nn.Module,
+    d_opt: torch.optim.Optimizer,
+    d_crit: DiscriminatorLoss,
+    test_noise: torch.Tensor,
+    fid_metrics: dict[str, Any],
+    n_disc_iters: int,
+    early_stop: tuple[str, int] | None = None,
+    start_early_stop_when: tuple[str, int] | None = None,
+    checkpoint_dir: str | None = None,
+    checkpoint_every: int = 10,
+    fixed_noise: torch.Tensor | None = None,
+    c_out_hist: Any = None,
+    classifier: Callable | None = None,
+) -> tuple[dict[str, Any], Any, MetricsLogger, MetricsLogger]:
+    """Run main loop for GAN training."""
+    fixed_noise = torch.randn(64, G.z_dim, device=device) if fixed_noise is None else fixed_noise
 
     dataloader = torch.utils.data.DataLoader(
         dataset,
@@ -145,7 +178,7 @@ def train(
     }
 
     early_stop_state = 2
-    if early_stop[1] is not None:
+    if early_stop and early_stop[1] is not None:
         early_stop_key, early_stop_crit = early_stop
         early_stop_state = 1
         if start_early_stop_when is not None:
@@ -174,9 +207,7 @@ def train(
         fake = G(fixed_noise).detach().cpu()
         G.train()
 
-    latest_cp = checkpoint_gan(
-        G, D, g_opt, d_opt, {}, {}, config, epoch=0, output_dir=checkpoint_dir
-    )
+    latest_cp = checkpoint_gan(G, D, g_opt, d_opt, {}, {}, config, epoch=0, output_dir=checkpoint_dir)
     best_cp = latest_cp
 
     img = group_images(fake, classifier=classifier, device=device)
@@ -190,7 +221,7 @@ def train(
 
     log_every_g_iter = 50
 
-    print("Training...")
+    logger.info("Training...")
     for epoch in range(1, n_epochs + 1):
         data_iter = iter(dataloader)
         curr_g_iter = 0
@@ -202,9 +233,7 @@ def train(
             ###
             # Update Discriminator
             ###
-            d_loss, d_loss_terms = train_disc(
-                G, D, d_opt, d_crit, real_data, batch_size, train_metrics, device
-            )
+            d_loss, d_loss_terms = train_disc(G, D, d_opt, d_crit, real_data, batch_size, train_metrics, device)
 
             ###
             # Update Generator
@@ -213,29 +242,22 @@ def train(
             if i % n_disc_iters == 0:
                 curr_g_iter += 1
 
-                g_loss, g_loss_terms = train_gen(
-                    g_updater, G, D, g_opt, batch_size, train_metrics, device
-                )
+                g_loss, g_loss_terms = train_gen(g_updater, G, D, g_opt, batch_size, train_metrics, device)
 
                 ###
                 # Log stats
                 ###
-                if (
-                    curr_g_iter % log_every_g_iter == 0
-                    or curr_g_iter == g_iters_per_epoch
-                ):
-                    print(
-                        "[%d/%d][%d/%d]\tG loss: %.4f %s; D loss: %.4f %s"
-                        % (
-                            epoch,
-                            n_epochs,
-                            curr_g_iter,
-                            g_iters_per_epoch,
-                            g_loss.item(),
-                            loss_terms_to_str(g_loss_terms),
-                            d_loss.item(),
-                            loss_terms_to_str(d_loss_terms),
-                        )
+                if curr_g_iter % log_every_g_iter == 0 or curr_g_iter == g_iters_per_epoch:
+                    logger.info(
+                        "[%d/%d][%d/%d]\tG loss: %.4f %s; D loss: %.4f %s",
+                        epoch,
+                        n_epochs,
+                        curr_g_iter,
+                        g_iters_per_epoch,
+                        g_loss.item(),
+                        loss_terms_to_str(g_loss_terms),
+                        d_loss.item(),
+                        loss_terms_to_str(d_loss_terms),
                     )
 
         ###
@@ -257,9 +279,7 @@ def train(
 
         train_metrics.finalize_epoch()
 
-        evaluate(
-            G, fid_metrics, eval_metrics, batch_size, test_noise, device, c_out_hist
-        )
+        evaluate(G, fid_metrics, eval_metrics, batch_size, test_noise, device, c_out_hist)
 
         if c_out_hist is not None:
             img = c_out_hist.plot_clfs()
@@ -292,44 +312,26 @@ def train(
             best_cp = latest_cp
         elif early_stop_state == 0:
             # Pre early stop phase
-            if (
-                eval_metrics.stats[pre_early_stop_key][-1]
-                < train_state["pre_early_stop_metric"]
-            ):
+            if eval_metrics.stats[pre_early_stop_key][-1] < train_state["pre_early_stop_metric"]:
                 train_state["pre_early_stop_tracker"] = 0
-                train_state["pre_early_stop_metric"] = eval_metrics.stats[
-                    pre_early_stop_key
-                ][-1]
+                train_state["pre_early_stop_metric"] = eval_metrics.stats[pre_early_stop_key][-1]
             else:
                 train_state["pre_early_stop_tracker"] += 1
-                print(
-                    " > Pre-early stop tracker {}/{}".format(
-                        train_state["pre_early_stop_tracker"], pre_early_stop_crit
-                    )
-                )
+                logger.info(f" > Pre-early stop tracker {train_state['pre_early_stop_tracker']}/{pre_early_stop_crit}")
                 if train_state["pre_early_stop_tracker"] == pre_early_stop_crit:
                     early_stop_state = 1
 
             best_cp = latest_cp
         else:
             # Early stop phase
-            if (
-                eval_metrics.stats[early_stop_key][-1]
-                < train_state["best_epoch_metric"]
-            ):
+            if eval_metrics.stats[early_stop_key][-1] < train_state["best_epoch_metric"]:
                 train_state["early_stop_tracker"] = 0
                 train_state["best_epoch"] = epoch + 1
-                train_state["best_epoch_metric"] = eval_metrics.stats[early_stop_key][
-                    -1
-                ]
+                train_state["best_epoch_metric"] = eval_metrics.stats[early_stop_key][-1]
                 best_cp = latest_cp
             else:
                 train_state["early_stop_tracker"] += 1
-                print(
-                    " > Early stop tracker {}/{}".format(
-                        train_state["early_stop_tracker"], early_stop_crit
-                    )
-                )
+                logger.info(f" > Early stop tracker {train_state['early_stop_tracker']}/{early_stop_crit}")
                 if train_state["early_stop_tracker"] == early_stop_crit:
                     break
 
