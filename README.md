@@ -1,6 +1,8 @@
 # AmbiGANs
 
-![License](https://img.shields.io/static/v1?label=license&message=CC-BY-NC-ND-4.0&color=green)
+![License](https://img.shields.io/static/v1?label=license&message=CC-BY-NC-ND-4.0&color=green)  [![Pydantic v2](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pydantic/pydantic/main/docs/badge/v2.json)](https://pydantic.dev)
+
+
 
 Variation of GANs that, generates realistic data that is classiﬁed with low conﬁdence by an set of classifiers. Results show that the approach is able to generate images that are closer to the frontier when compared to the original ones, but still realistic. Manual inspection conﬁrms that some of those images are confusing even for humans.
 
