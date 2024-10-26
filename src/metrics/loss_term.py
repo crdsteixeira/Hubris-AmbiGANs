@@ -1,10 +1,10 @@
-# pylint: skip-file
+"""Module for Confusion Distance metric."""
 
 import torch
 from torch import Tensor
 
-from src.metrics.metric import Metric
 from src.classifier.classifier_cache import ClassifierCache
+from src.metrics.metric import Metric
 
 
 class LossSecondTerm(Metric):
@@ -32,8 +32,10 @@ class LossSecondTerm(Metric):
 
     def finalize(self) -> float:
         """Finalize the metric computation and return the result."""
-        self.result = self.acc / self.count
-
+        if self.count == 0:
+            self.result = float("inf")  # Avoid division by zero by returning 'inf' if count is zero
+        else:
+            self.result = self.acc / self.count
         return self.result
 
     def reset(self) -> None:
