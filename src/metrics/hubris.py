@@ -3,8 +3,8 @@
 import torch
 from torch import Tensor
 
-from src.metrics.metric import Metric
 from src.classifier.classifier_cache import ClassifierCache
+from src.metrics.metric import Metric
 
 
 class Hubris(Metric):
@@ -39,7 +39,7 @@ class Hubris(Metric):
         for i in range(self.output_clfs):
             self.clf_preds[i, start_idx : start_idx + batch_size] = c_all_output[0][i]
 
-    def compute(self, preds: Tensor, ref_preds: Tensor | None =None) -> float:
+    def compute(self, preds: Tensor, ref_preds: Tensor | None = None) -> float:
         """Compute the hubris score based on the given predictions and reference predictions."""
         worst_preds = torch.linspace(0.0, 1.0, steps=preds.size(0))
         binary_preds = torch.hstack((preds, 1.0 - preds))
