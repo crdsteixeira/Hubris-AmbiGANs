@@ -18,14 +18,13 @@ from tqdm import tqdm
 
 from src.classifier.construct_classifier import construct_classifier
 from src.datasets.load import load_dataset
+from src.enums import DeviceType, TrainingStage
 from src.metrics.accuracy import binary_accuracy, multiclass_accuracy
 from src.models import TrainClassifierArgs  # Use the new TrainClassifierArgs model
 from src.models import (
     CLTrainArgs,
-    DeviceType,
     EvaluateParams,
     LoadDatasetParams,
-    TrainingStage,
     TrainingStats,
 )
 from src.utils.utility_functions import setup_reprod

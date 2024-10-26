@@ -4,6 +4,7 @@ import logging
 
 from torch import nn
 
+from src.enums import ArchitectureType, LossType
 from src.gan.architectures.dcgan import Discriminator, Generator
 from src.gan.architectures.deprecated.dcgan_deprecated import (
     Discriminator as DiscriminatorDeprecated,
@@ -26,14 +27,12 @@ from src.gan.loss import (
     WGP_DiscriminatorLoss,
 )
 from src.models import (
-    ArchitectureType,
     ConfigGAN,
     ConfigLoss,
     ConfigLossWG,
     DisParams,
     GenParams,
     ImageParams,
-    LossType,
 )
 
 logger = logging.getLogger(__name__)

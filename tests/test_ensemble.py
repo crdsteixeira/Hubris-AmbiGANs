@@ -6,7 +6,8 @@ import torch
 import torch.nn as nn
 
 from src.classifier.ensemble import Ensemble
-from src.models import ClassifierParams, DeviceType, EnsembleType, OutputMethod
+from src.enums import DeviceType, EnsembleType, OutputMethod
+from src.models import ClassifierParams
 
 
 # Mock classifiers for testing purposes

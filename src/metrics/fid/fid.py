@@ -1,11 +1,16 @@
 """Module for calculating FID."""
 
+import logging
+
 import numpy as np
 import torch
-from typing import Callable, Tuple, Union
+from torch import nn
+from torcheval.metrics import FrechetInceptionDistance
 
+from src.enums import DeviceType
 from src.metrics.metric import Metric
-from src.metrics.fid.fid_score import calculate_frechet_distance
+
+logger = logging.getLogger(__name__)
 
 
 class FID(Metric):
@@ -13,48 +18,39 @@ class FID(Metric):
 
     def __init__(
         self,
-        feature_map_fn: Callable[[torch.Tensor, int, int], torch.Tensor],
+        fid_stats_file: str,
         dims: int,
         n_images: int,
-        mu_real: np.ndarray,
-        sigma_real: np.ndarray,
-        device: str = "cpu",
-        eps: float = 1e-6,
+        device: DeviceType = DeviceType.cpu,
+        feature_map_fn: nn.Module | None = None,
     ) -> None:
         """Initialize the FID metric with necessary parameters for calculation."""
         super().__init__()
-        self.feature_map_fn = feature_map_fn
+        try:
+            self.data = np.load(fid_stats_file)
+        except FileNotFoundError as e:
+            logger.error(f"Failed to load FID stats from {fid_stats_file} with {e}")
+            raise FileNotFoundError(e) from e
         self.dims: int = dims
-        self.eps: float = eps
         self.n_images: int = n_images
         self.pred_arr: np.ndarray = np.empty((n_images, dims))
         self.cur_idx: int = 0
-        self.mu_real: np.ndarray = mu_real
-        self.sigma_real: np.ndarray = sigma_real
-        self.device: str = device
+        self.device: DeviceType = device
+        self.fid = FrechetInceptionDistance(model=feature_map_fn, feature_dim=self.dims, device=self.device)
+        self.fid.real_sum = torch.tensor(self.data["real_sum"]).to(self.device).float()
+        self.fid.real_cov_sum = torch.tensor(self.data["real_cov_sum"]).to(self.device).float()
+        self.fid.num_real_images = torch.tensor(self.data["num_real_images"]).to(self.device).int()
 
-    def update(self, images: torch.Tensor, batch: Tuple[int, int]) -> None:
+    def update(self, images: torch.Tensor, _: tuple[int, int]) -> None:
         """Update the FID metric with a new batch of generated images."""
-        start_idx, batch_size = batch
-
-        with torch.no_grad():
-            pred = self.feature_map_fn(images, start_idx, batch_size)
-
-        pred_np = pred.cpu().numpy()
-        self.pred_arr[self.cur_idx : self.cur_idx + pred_np.shape[0]] = pred_np
-        self.cur_idx += pred_np.shape[0]
+        self.fid.update(images=images, is_real=False)
 
     def finalize(self) -> float:
         """Finalize the FID calculation and return the computed FID value."""
-        act = self.pred_arr
-        mu = np.mean(act, axis=0)
-        sigma = np.cov(act, rowvar=False)
-
-        self.result = calculate_frechet_distance(mu, sigma, self.mu_real, self.sigma_real, eps=self.eps)
-        return self.result
+        return self.fid.compute().item()
 
     def reset(self) -> None:
         """Reset the FID metric to its initial state."""
-        self.pred_arr = np.empty((self.n_images, self.dims))
-        self.cur_idx = 0
-        self.result = float("inf")
+        self.fid.num_fake_images = torch.tensor(0).to(self.device).int()
+        self.fid.fake_sum = torch.zeros(self.dims).to(self.device)
+        self.fid.fake_cov_sum = torch.zeros((self.dims, self.dims)).to(self.device)

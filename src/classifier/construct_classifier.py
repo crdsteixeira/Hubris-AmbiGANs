@@ -5,7 +5,8 @@ from torch import nn
 from src.classifier.ensemble import Ensemble
 from src.classifier.my_mlp import Classifier as MyMLP
 from src.classifier.simple_cnn import Classifier as SimpleCNN
-from src.models import ClassifierType, EnsembleType, TrainClassifierArgs
+from src.enums import ClassifierType, EnsembleType
+from src.models import TrainClassifierArgs
 
 
 def construct_classifier(params: TrainClassifierArgs) -> nn.Module:

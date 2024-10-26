@@ -1,14 +1,19 @@
+"""Module to test classifier cache."""
+
 from unittest.mock import MagicMock
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from src.classifier.classifier_cache import ClassifierCache
 
 
 # Mock classifier for testing purposes
 class MockClassifier(nn.Module):
-    def forward(self, x, output_feature_maps=False):
+    """Mock Classifier class."""
+
+    def forward(self, _: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
+        """Mock forward function."""
         if output_feature_maps:
             return [
                 torch.randn(1, 3, 64, 64),
@@ -17,7 +22,7 @@ class MockClassifier(nn.Module):
         return [torch.randn(1, 10)]  # Only final output
 
 
-def test_cache_basic_usage():
+def test_cache_basic_usage() -> None:
     """Test if cached output is reused on repeated calls with same batch_idx and batch_size."""
     mock_classifier = MockClassifier()
     mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)])
@@ -32,7 +37,7 @@ def test_cache_basic_usage():
     assert output_1 == output_2, "Cached result should be the same when the same batch is used"
 
 
-def test_cache_invalidation():
+def test_cache_invalidation() -> None:
     """Test if cache refreshes when a new batch_idx or batch_size is passed."""
     mock_classifier = MockClassifier()
     mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)])
@@ -48,7 +53,7 @@ def test_cache_invalidation():
     assert mock_classifier.forward.call_count == 2, "Classifier should be called again for different batch"
 
 
-def test_feature_maps_returned():
+def test_feature_maps_returned() -> None:
     """Test if feature maps and final output are returned correctly when requested."""
     mock_classifier = MockClassifier()
     mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)])
@@ -63,7 +68,7 @@ def test_feature_maps_returned():
     assert len(feature_maps.size()) == 4, "Feature maps should be a 4D tensor"
 
 
-def test_no_feature_maps_returned():
+def test_no_feature_maps_returned() -> None:
     """Test if only the final output is returned when feature maps are not requested."""
     mock_classifier = MockClassifier()
     mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 10)])

@@ -4,7 +4,8 @@ import torch.nn as nn
 from pydantic import ValidationError
 
 from src.classifier.my_mlp import Classifier
-from src.models import ClassifierParams, DeviceType
+from src.enums import DeviceType
+from src.models import ClassifierParams
 
 
 def test_valid_mlp_params():

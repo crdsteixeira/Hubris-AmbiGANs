@@ -2,7 +2,8 @@
 
 import pytest
 from torch import nn
-from src.models import TrainClassifierArgs, ClassifierType, DeviceType, EnsembleType
+from src.enums import ClassifierType, DeviceType, EnsembleType
+from src.models import TrainClassifierArgs
 from src.classifier.simple_cnn import Classifier as SimpleCNN
 from src.classifier.my_mlp import Classifier as MyMLP
 from src.classifier.construct_classifier import construct_classifier

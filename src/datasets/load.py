@@ -14,7 +14,8 @@ from src.datasets.datasets import (
     get_mnist,
 )
 from src.datasets.utils import BinaryDataset
-from src.models import DatasetNames, DatasetParams, LoadDatasetParams, ImageParams
+from src.enums import DatasetNames
+from src.models import DatasetParams, LoadDatasetParams, ImageParams
 
 logger = logging.getLogger(__name__)
 

@@ -6,10 +6,10 @@ import pytest
 from pydantic import ValidationError
 from torch import nn
 
+from src.enums import ArchitectureType, DeviceType, LossType
 from src.gan.construct_gan import construct_gan, construct_loss
 from src.gan.loss import DiscriminatorLoss, GeneratorLoss
 from src.models import (
-    ArchitectureType,
     ConfigArchitecture,
     ConfigBinary,
     ConfigCD,
@@ -22,9 +22,7 @@ from src.models import (
     ConfigStep2,
     ConfigTrain,
     ConfigWeights,
-    DeviceType,
     ImageParams,
-    LossType,
 )
 
 

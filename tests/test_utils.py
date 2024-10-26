@@ -3,7 +3,8 @@ import torch
 from torch.utils.data import Dataset
 from unittest.mock import MagicMock
 from src.datasets.utils import BinaryDataset
-from src.models import LoadDatasetParams, DatasetNames
+from src.enums import DatasetNames
+from src.models import LoadDatasetParams
 
 class MockOriginalDataset(Dataset):
     """Mock dataset for testing purposes."""

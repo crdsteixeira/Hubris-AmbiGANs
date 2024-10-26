@@ -8,8 +8,9 @@ import torchvision.utils as vutils
 from torch import nn, optim
 
 from src.classifier.construct_classifier import construct_classifier
+from src.enums import DeviceType
 from src.gan.construct_gan import construct_gan
-from src.models import CLTrainArgs, DeviceType, TrainClassifierArgs, TrainingStats, ConfigGAN, CheckpointGAN
+from src.models import CLTrainArgs, TrainClassifierArgs, TrainingStats, ConfigGAN, CheckpointGAN
 
 def checkpoint(
     model: nn.Module,

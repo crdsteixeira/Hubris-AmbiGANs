@@ -2,39 +2,23 @@
 
 import logging
 
-def configure_logging():
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(levelname)s - %(asctime)s - %(name)s - %(message)s',
-        handlers=[
-            logging.FileHandler("app.log"),
-            logging.StreamHandler()  # Prints logs to the console
-        ]
-    )
+def configure_logging(level: str = "INFO") -> None:
+    """Configure logging with a specified level.
 
-def configure_logging():
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(levelname)s - %(asctime)s - %(name)s - %(message)s',
-        handlers=[
-            logging.FileHandler("app.log"),
-            logging.StreamHandler()  # Prints logs to the console
-        ]
-    )
+    Args:
+        level (str): The logging level, e.g., 'DEBUG', 'INFO', 'WARNING', 'ERROR'.
+    """
+    level_dict = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR
+    }
 
-def configure_logging():
-    logging.basicConfig(
-        level=logging.WARNING,
-        format='%(levelname)s - %(asctime)s - %(name)s - %(message)s',
-        handlers=[
-            logging.FileHandler("app.log"),
-            logging.StreamHandler()  # Prints logs to the console
-        ]
-    )
+    logging_level = level_dict.get(level.upper(), logging.INFO)
 
-def configure_logging():
     logging.basicConfig(
-        level=logging.ERROR,
+        level=logging_level,
         format='%(levelname)s - %(asctime)s - %(name)s - %(message)s',
         handlers=[
             logging.FileHandler("app.log"),

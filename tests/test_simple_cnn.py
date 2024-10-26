@@ -5,7 +5,8 @@ import torch
 from torch import Tensor
 
 from src.classifier.simple_cnn import Classifier, pool_out
-from src.models import ClassifierParams, ClassifierType, DeviceType, PoolParams
+from src.enums import ClassifierType, DeviceType
+from src.models import ClassifierParams, PoolParams
 
 
 # Mock input data for the tests

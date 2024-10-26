@@ -1,7 +1,6 @@
 """Pydantic moels validation and settings management."""
 
 import os
-from enum import Enum
 from typing import Any
 
 from dotenv import load_dotenv
@@ -9,124 +8,26 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from torch import Tensor, nn, optim
 from torch.utils.data import Dataset
 
+from src.enums import (
+    ArchitectureType,
+    ChestXrayClasses,
+    Cifar10Classes,
+    ClassifierType,
+    DatasetNames,
+    DeviceType,
+    EnsembleType,
+    LossType,
+    MnistClasses,
+    OutputMethod,
+    TrainingStage,
+)
 from src.gan.loss import DiscriminatorLoss
 from src.gan.update_g import UpdateGenerator
 from src.metrics.fid.fid import FID
 from src.metrics.hubris import Hubris
 from src.metrics.loss_term import LossSecondTerm
 
-
 load_dotenv()
-
-
-class ClassifierType(str, Enum):
-    """Enumerate different types of classifiers."""
-
-    cnn = "cnn"
-    mlp = "mlp"
-    ensemble = "ensemble"
-
-
-class EnsembleType(str, Enum):
-    """Enumerate different types of ensembles of classifiers."""
-
-    pretrained = "pretrained"
-    cnn = "cnn"
-
-
-class OutputMethod(str, Enum):
-    """Enumerate different types of output methods from classifiers."""
-
-    meta_learner = "meta-learner"
-    mean = "mean"
-    linear = "linear"
-    identity = "identity"
-
-
-class DeviceType(str, Enum):
-    """Enumerate different types of devices."""
-
-    cpu = "cpu"
-    cuda = "cuda"
-
-
-class TrainingStage(str, Enum):
-    """Enumerate different types of training stages."""
-
-    train = "train"
-    optimize = "optimize"
-    test = "test"
-    validation = "validation"
-
-
-class DatasetNames(str, Enum):
-    """Enumeration of supported datasets."""
-
-    mnist = "mnist"
-    fashion_mnist = "fashion-mnist"
-    cifar10 = "cifar10"
-    chest_xray = "chest-xray"
-
-    @classmethod
-    def valid_dataset(cls, name: str) -> bool:
-        """Validate if the dataset name is supported and return True if valid, else raise ValueError."""
-        if name not in cls._value2member_map_:
-            raise ValueError(
-                f"Dataset '{name}' is not supported. Available datasets are: {list(cls._value2member_map_.keys())}"
-            )
-        return True
-
-
-class MnistClasses(Enum):
-    """Valid classes for MNIST and Fashion-MNIST datasets."""
-
-    ZERO = 0
-    ONE = 1
-    TWO = 2
-    THREE = 3
-    FOUR = 4
-    FIVE = 5
-    SIX = 6
-    SEVEN = 7
-    EIGHT = 8
-    NINE = 9
-
-
-class Cifar10Classes(Enum):
-    """Valid classes for CIFAR-10 dataset."""
-
-    AIRPLANE = 0
-    AUTOMOBILE = 1
-    BIRD = 2
-    CAT = 3
-    DEER = 4
-    DOG = 5
-    FROG = 6
-    HORSE = 7
-    SHIP = 8
-    TRUCK = 9
-
-
-class ChestXrayClasses(Enum):
-    """Valid classes for Chest-Xray dataset."""
-
-    PNEUMONIA = 0
-    NORMAL = 1
-
-
-class ArchitectureType(Enum):
-    """Valid names for Architecture types."""
-
-    dcgan = "dcgan"
-    resnet_deprecated = "resnet_deprecated"
-    dcgan_deprecated = "dcgan_deprecated"
-
-
-class LossType(Enum):
-    """Valid names for Loss types."""
-
-    ns = "ns"
-    wgan = "wgan-gp"
 
 
 class ClassifierParams(BaseModel):
@@ -708,7 +609,7 @@ class GANTrainArgs(TrainArgsBase):
     fixed_noise: Tensor | None = None
     c_out_hist: Any | None = None
     classifier: nn.Module | None = None
-    dataset: Dataset 
+    dataset: Dataset
 
 
 class TrainingState(BaseModel):
@@ -728,3 +629,23 @@ class CheckpointGAN(BaseModel):
     config: ConfigGAN
     gen_params: GenParams
     dis_params: DisParams
+
+
+class FIDArgs(DatasetClasses):
+    """Pydantic model for validating FID CLI arguments."""
+
+    model_config = ConfigDict(protected_namespaces=())
+    dataroot: str = Field(default=f"{os.environ['FILESDIR']}/data", description="Directory with dataset")
+    batch_size: int = Field(default=64, description="Batch size to use")
+    model_path: str | None = Field(default=None, description="Path to classifier. If None, uses InceptionV3")
+    num_workers: int = Field(default=6, description="Number of worker processes for data loading")
+    device: DeviceType = Field(default=DeviceType.cpu, description="Device to use (cuda, cuda:0, or cpu)")
+    name: str | None = Field(default=None, description="Name of generated .npz file")
+
+    @field_validator("model_path")
+    @classmethod
+    def validate_model_path(cls, value: str | None) -> str | None:
+        """Ensure model path exists if provided."""
+        if value is not None and not os.path.exists(value):
+            raise ValueError(f"Model path '{value}' does not exist.")
+        return value

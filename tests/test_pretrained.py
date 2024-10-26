@@ -2,7 +2,8 @@ import pytest
 import torch
 
 from src.classifier.pretrained import ClassifierMLP, ClassifierResnet, ClassifierVIT
-from src.models import ClassifierParams, DeviceType, EnsembleType, OutputMethod
+from src.enums import DeviceType, EnsembleType, OutputMethod
+from src.models import ClassifierParams
 
 
 # Mock input data for testing

@@ -4,7 +4,8 @@ from torch.utils.data import Dataset
 from unittest.mock import patch, MagicMock
 
 from src.datasets.load import load_dataset, get_function
-from src.models import LoadDatasetParams, DatasetNames, DatasetParams, ImageParams
+from src.enums import DatasetNames
+from src.models import LoadDatasetParams, DatasetParams, ImageParams
 from src.datasets.utils import BinaryDataset
 
 class MockDataset:

@@ -15,15 +15,13 @@ from src.classifier.train_classifier import (
     save_predictions,
     train,
 )
+from src.enums import ClassifierType, DeviceType, TrainingStage
 from src.metrics.accuracy import binary_accuracy
 from src.models import (
     ClassifierParams,
-    ClassifierType,
     CLTrainArgs,
-    DeviceType,
     EvaluateParams,
     TrainClassifierArgs,
-    TrainingStage,
 )
 
 

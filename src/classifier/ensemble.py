@@ -5,11 +5,9 @@ from torch import nn
 
 from src.classifier.pretrained import ClassifierMLP, ClassifierResnet
 from src.classifier.simple_cnn import Classifier
+from src.enums import ClassifierType, EnsembleType, OutputMethod
 from src.models import (
     ClassifierParams,
-    ClassifierType,
-    EnsembleType,
-    OutputMethod,
     TrainClassifierArgs,
 )
 

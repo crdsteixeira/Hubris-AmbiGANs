@@ -11,7 +11,7 @@ from src.gan.update_g import (
     UpdateGeneratorAmbiGanKLDiv,
     UpdateGeneratorAmbiGanGaussianIdentity,
 )
-from src.models import DeviceType
+from src.enums import DeviceType
 
 @pytest.fixture
 def mock_models():
