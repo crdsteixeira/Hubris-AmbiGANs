@@ -148,4 +148,8 @@ wandb/
 # poetry
 poetry.lock
 
+# pre-commit hooks
 .isort.cfg
+
+# test checkpoints
+checkpoints/
