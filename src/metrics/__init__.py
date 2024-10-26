@@ -1,1 +1,1 @@
-# pylint: skip-file
+"""Module for project metrics."""
