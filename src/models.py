@@ -5,7 +5,16 @@ from enum import Enum
 from typing import Any
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from torch import Tensor, nn, optim
+from torch.utils.data import Dataset
+
+from src.gan.loss import DiscriminatorLoss
+from src.gan.update_g import UpdateGenerator
+from src.metrics.fid.fid import FID
+from src.metrics.hubris import Hubris
+from src.metrics.loss_term import LossSecondTerm
+
 
 load_dotenv()
 
@@ -307,16 +316,22 @@ class EvaluateParams(BaseModel):
     header: str | None = Field(None, description="Optional header for logging.")
 
 
-class TrainArgs(BaseModel):
-    """Pydantic model for training arguments."""
+class TrainArgsBase(BaseModel):
+    """Pydantic base model for training arguments."""
 
     epochs: int = Field(..., description="Number of training epochs")
-    early_stop: int | None = Field(None, description="Early stopping criterion")
     early_acc: float = Field(1.0, description="Early accuracy threshold")
     out_dir: str = Field(..., description="Output directory for saving checkpoints")
     batch_size: int = Field(64, description="Batch size for training")
     lr: float = Field(default=5e-4, description="Learning rate for the optimizer")
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
+    device: DeviceType = Field(..., description="Device for computation ('cpu', 'cuda').")
+
+
+class TrainArgs(TrainArgsBase):
+    """Pydantic model for training arguments."""
+
+    early_stop: int | None = Field(None, description="Early stopping criterion")
 
 
 class TrainingStats(BaseModel):
@@ -402,7 +417,7 @@ class CLTrainArgs(DatasetClasses):
     early_stop: int | None = Field(default=None, description="Early stopping criteria (optional)")
     early_acc: float = Field(default=1.0, description="Early accuracy threshold for backpropagation")
     lr: float = Field(default=5e-4, description="Learning rate for the optimizer")
-    nf: int = Field(default=2, description="Number of filters or features in the model")
+    nf: int | list[int] = Field(default=2, description="Number of filters or features in the model")
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
     device: DeviceType = Field(DeviceType.cuda, description="Device for computation ('cpu' or 'cuda')")
 
@@ -518,10 +533,11 @@ class ConfigLoss(BaseModel):
 
     name: LossType = Field(..., description="Loss function name, e.g., wgan-gp or ns.")
 
+
 class ConfigLossWG(ConfigLoss):
     """Configuration for WGAN-GP loss."""
-    args: float = Field(..., description="Arguments for the loss function for WGAN-GP.")
 
+    args: float = Field(..., description="Arguments for the loss function for WGAN-GP.")
 
 
 class ConfigModel(BaseModel):
@@ -644,22 +660,71 @@ class ConfigGAN(BaseModel):
             raise ValueError("Number of seeds must match the number of runs for step_2_seeds.")
         return self
 
+
 class CLAmbigan(BaseModel):
+    """Command-line arguments for AmbiGAN."""
+
     config_path: str = Field(..., description="Config file")
 
-class FIDMetricsParams(BaseModel):
-    fid: list[float] | None = Field(None, description="List of FID values during training stage")
-    focd: list[float] | None = Field(None, description="List of FOCD values during training stage")
-    conf_dist: list[float] | None = Field(None, description="List of CD values during training stage")
-    hubris: list[float] | None = Field(None, description="List of Hubris values during training stage")
 
+class FIDMetricsParams(BaseModel):
+    """Metrics for calculating FID."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    fid: FID | None = Field(None, description="List of FID values during training stage")
+    focd: FID | None = Field(None, description="List of FOCD values during training stage")
+    conf_dist: LossSecondTerm | None = Field(None, description="List of CD values during training stage")
+    hubris: Hubris | None = Field(None, description="List of Hubris values during training stage")
 
 
 class MetricsParams(BaseModel):
     """Pydantic model for MetricsLogger initialization parameters."""
+
     prefix: TrainingStage | None = Field(None, description="Prefix indicating training stage in metric")
     log_epoch: bool = Field(True, description="Flag indicating if epoc should be logged")
     g_loss: list[float] | None = Field(None, description="List of generator losses")
     d_loss: list[float] | None = Field(None, description="List of discriminator losses")
     fid: list[FIDMetricsParams] | None = Field(None, description="List of FID metrics")
 
+
+class GANTrainArgs(TrainArgsBase):
+    """Arguments for GAN training, extending base training arguments."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    G: nn.Module
+    g_opt: optim.Optimizer
+    g_updater: UpdateGenerator
+    D: nn.Module
+    d_opt: optim.Optimizer
+    d_crit: DiscriminatorLoss
+    test_noise: Tensor
+    fid_metrics: FIDMetricsParams
+    n_disc_iters: int
+    early_stop: tuple[str, int] | None = None
+    start_early_stop_when: tuple[str, int] | None = None
+    checkpoint_dir: str | None = None
+    checkpoint_every: int = 10
+    fixed_noise: Tensor | None = None
+    c_out_hist: Any | None = None
+    classifier: nn.Module | None = None
+    dataset: Dataset 
+
+
+class TrainingState(BaseModel):
+    """Training state model to track training progress."""
+
+    epoch: int = 0
+    early_stop_tracker: int = 0
+    best_epoch: int = 0
+    best_epoch_metric: float = float("inf")
+    pre_early_stop_tracker: int | None = None
+    pre_early_stop_metric: float | None = None
+
+
+class CheckpointGAN(BaseModel):
+    """Constructing GAN from checkpoint params."""
+
+    config: ConfigGAN
+    gen_params: GenParams
+    dis_params: DisParams
