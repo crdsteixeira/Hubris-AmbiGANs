@@ -14,7 +14,7 @@ class Metric:
         """Update the metric calculation with a new batch of images."""
         raise NotImplementedError
 
-    def finalize(self) -> float:
+    def finalize(self) -> float | None:
         """Finalize and return the computed metric value."""
         raise NotImplementedError
 
