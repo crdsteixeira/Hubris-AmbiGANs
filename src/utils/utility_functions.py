@@ -3,6 +3,7 @@
 import os
 import json
 from datetime import datetime
+from typing import Iterable
 
 import numpy as np
 import torchvision.utils as vutils
@@ -13,6 +14,7 @@ import itertools
 import subprocess
 from torch import nn
 
+from src.models import CLTrainArgs
 
 def create_checkpoint_path(config: dict, run_id: str) -> str:
     """Create a path for storing checkpoints."""
@@ -66,7 +68,7 @@ def seed_worker(worker_id: int) -> None:
     random.seed(worker_seed)
 
 
-def create_and_store_z(out_dir: str, n: int, dim: int, name: str = None, config: dict = None) -> tuple[torch.Tensor, str]:
+def create_and_store_z(out_dir: str, n: int, dim: int, name: str| None = None, config: dict | None = None) -> tuple[torch.Tensor, str]:
     """Create a random noise tensor and store it to disk."""
     if name is None:
         name = f"z_{n}_{dim}"
@@ -96,10 +98,10 @@ def load_z(path: str) -> tuple[torch.Tensor, dict]:
     return torch.Tensor(z), conf
 
 
-def make_grid(images: torch.Tensor, nrow: int = None, total_images: int = None) -> torch.Tensor:
+def make_grid(images: torch.Tensor, nrow: int | None = None, total_images: int | None = None) -> torch.Tensor:
     """Create a grid from a batch of images."""
     if nrow is None:
-        nrow = math.sqrt(images.size(0))
+        nrow = int(math.sqrt(images.size(0)))
         if nrow % 1 != 0:
             nrow = 8
     else:
@@ -165,9 +167,16 @@ def group_images(images: torch.Tensor, classifier: nn.Module = None, device: tor
     return img
 
 
-def begin_classifier(iterator: iter, clf_type: str, l_epochs: list[str], args: object) -> None:
+def begin_classifier(iterator: Iterable, clf_type: str, l_epochs: list[str], args: CLTrainArgs) -> None:
     """Run a training process for classifiers using subprocess."""
-    l_nf = list({nf for nf in args.nf.split(",") if nf.isdigit()})
+    # Ensure nf is a list, even if a single int is provided
+    if isinstance(args.nf, int):
+        l_nf = [args.nf]
+    elif isinstance(args.nf, list):
+        l_nf = args.nf
+    else:
+        raise ValueError("Invalid type for nf: expected int or list of ints")
+
     for neg_class, pos_class in iterator:
         print(f"\nGenerating classifiers for {pos_class}v{neg_class} ...")
         for nf, epochs in itertools.product(l_nf, l_epochs):
@@ -180,7 +189,7 @@ def begin_classifier(iterator: iter, clf_type: str, l_epochs: list[str], args: o
                     "--device",
                     args.device,
                     "--data-dir",
-                    args.dataroot,
+                    args.data_dir,
                     "--out-dir",
                     args.out_dir,
                     "--dataset",
@@ -192,7 +201,7 @@ def begin_classifier(iterator: iter, clf_type: str, l_epochs: list[str], args: o
                     "--classifier-type",
                     clf_type,
                     "--nf",
-                    nf,
+                    str(nf),
                     "--epochs",
                     epochs,
                     "--batch-size",
@@ -208,7 +217,7 @@ def begin_classifier(iterator: iter, clf_type: str, l_epochs: list[str], args: o
                 print(line.decode())
 
 
-def begin_ensemble(iterator: iter, clf_type: str, l_epochs: list[str], args: object) -> None:
+def begin_ensemble(iterator: Iterable, clf_type: str, l_epochs: list[str], args: CLTrainArgs) -> None:
     """Run an ensemble training process for classifiers using subprocess."""
     # Set seed, if necessary
     if args.seed is not None:
@@ -218,22 +227,22 @@ def begin_ensemble(iterator: iter, clf_type: str, l_epochs: list[str], args: obj
 
     # First get number of CNN's
     cnn_nfs = []
-    if "," in args.nf:
-        l_nf = list({nf for nf in args.nf.split(",")})
-        for n in l_nf:
-            if "-" in n:
-                cnn = [int(c) for c in n.split("-")]
-            else:
-                cnn = [np.random.randint(1, high=n) for _ in range(np.random.randint(1, high=4 + 1))]
-
-            cnn_nfs.append(cnn)
-    else:
-        cnns_count = int(args.nf)
+    if isinstance(args.nf, int):
+        cnns_count = args.nf
         cnn = [
             [np.random.randint(1, high=5 + 1) for _ in range(np.random.randint(2, high=4 + 1))]
             for _ in range(cnns_count)
         ]
         cnn_nfs.extend(cnn)
+    elif isinstance(args.nf, list):
+        for n in args.nf:
+            if isinstance(n, int):
+                cnn = [np.random.randint(1, high=n) for _ in range(np.random.randint(1, high=4 + 1))]
+            elif isinstance(n, list):
+                cnn = [int(c) for c in n]
+            cnn_nfs.append(cnn)
+    else:
+        raise ValueError("Invalid type for nf: expected int or list of ints")
 
     print(f"\nFinal CNN list: {cnn_nfs}")
 
@@ -249,7 +258,7 @@ def begin_ensemble(iterator: iter, clf_type: str, l_epochs: list[str], args: obj
                     "--device",
                     args.device,
                     "--data-dir",
-                    args.dataroot,
+                    args.data_dir,
                     "--out-dir",
                     args.out_dir,
                     "--dataset",

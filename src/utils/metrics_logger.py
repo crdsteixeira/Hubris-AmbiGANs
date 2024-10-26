@@ -1,6 +1,7 @@
 """Module for logging Metrics to wandb"""
 
 import matplotlib.pyplot as plt
+import numpy as np
 import wandb
 from typing import Optional
 
@@ -10,21 +11,21 @@ class MetricsLogger:
 
     def __init__(self, prefix: Optional[str] = None, log_epoch: bool = True) -> None:
         """Initialize the MetricsLogger with a prefix and log epoch flag."""
-        self.prefix = prefix
-        self.iteration_metrics = []
-        self.running_stats = {}
-        self.it_counter = {}
-        self.stats = {}
-        self.log_epoch = log_epoch
-        self.log_dict = {}
-        self.epoch = 1
+        self.prefix: str | None = prefix
+        self.iteration_metrics: list = []
+        self.running_stats: dict = {}
+        self.it_counter: dict = {}
+        self.stats: dict = {}
+        self.log_epoch: int = log_epoch
+        self.log_dict: dict = {}
+        self.epoch: int = 1
 
     def add_media_metric(self, name: str) -> None:
         """Define a media metric for WandB logging."""
         wandb.define_metric(name, step_metric=self.apply_prefix("epoch"))
         self.log_dict[self.apply_prefix(name)] = None
 
-    def log_image(self, name: str, image, caption: Optional[str] = None) -> None:
+    def log_image(self, name: str, image: np.array, caption: Optional[str] = None) -> None:
         """Log an image to WandB with an optional caption."""
         self.log_dict[self.apply_prefix(name)] = wandb.Image(image, caption=caption)
 

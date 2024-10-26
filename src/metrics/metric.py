@@ -10,7 +10,7 @@ class Metric:
         """Initialize the Metric with an initial result value of infinity."""
         self.result: float = float("inf")
 
-    def update(self, images: Any) -> None:
+    def update(self, images: Any, batch: tuple[int, int]) -> None:
         """Update the metric calculation with a new batch of images."""
         raise NotImplementedError
 

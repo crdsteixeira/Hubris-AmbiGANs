@@ -9,7 +9,7 @@ from torch import nn, optim
 
 from src.classifier.construct_classifier import construct_classifier
 from src.gan.construct_gan import construct_gan
-from src.models import CLTrainArgs, DeviceType, TrainClassifierArgs, TrainingStats
+from src.models import CLTrainArgs, DeviceType, TrainClassifierArgs, TrainingStats, ConfigGAN, CheckpointGAN
 
 def checkpoint(
     model: nn.Module,
@@ -88,7 +88,7 @@ def construct_classifier_from_checkpoint(
         opt.load_state_dict(cp["optimizer"].state_dict())
         return model, model_params, cp["stats"], cp["args"], opt
     else:
-        return model, model_params, cp["stats"], cp["args"]
+        return model, model_params, cp["stats"], cp["args"], None
 
 def construct_gan_from_checkpoint(
     path: str, device: torch.device | None = None
@@ -96,25 +96,24 @@ def construct_gan_from_checkpoint(
     """Construct a GAN model from a saved checkpoint."""
     print(f"Loading GAN from {path} ...")
     with open(os.path.join(path, "config.json")) as config_file:
-        config = json.load(config_file)
-
-    model_params = config["model"]
-    optim_params = config["optimizer"]
+        checkpoint = json.load(config_file)
+    
+    checkpoint = CheckpointGAN(**checkpoint)
 
     gen_cp = torch.load(os.path.join(path, "generator.pth"), map_location=device)
     dis_cp = torch.load(os.path.join(path, "discriminator.pth"), map_location=device)
 
-    G, D = construct_gan(model_params, tuple(config["model"]["image-size"]))
+    G, D = construct_gan(checkpoint.config, checkpoint.gen_params.image_size)
 
     g_optim = optim.Adam(
         G.parameters(),
-        lr=optim_params["lr"],
-        betas=(optim_params["beta1"], optim_params["beta2"]),
+        lr=checkpoint.config.optimizer.lr,
+        betas=(checkpoint.config.optimizer.beta1, checkpoint.config.optimizer.beta2),
     )
     d_optim = optim.Adam(
         D.parameters(),
-        lr=optim_params["lr"],
-        betas=(optim_params["beta1"], optim_params["beta2"]),
+        lr=checkpoint.config.optimizer.lr,
+        betas=(checkpoint.config.optimizer.beta1, checkpoint.config.optimizer.beta2),
     )
 
     G.load_state_dict(gen_cp["state"])
@@ -152,7 +151,7 @@ def checkpoint_gan(
     d_opt: optim.Optimizer,
     state: dict,
     stats: dict,
-    config: dict,
+    config: CheckpointGAN,
     output_dir: str | None = None,
     epoch: int | None = None
 ) -> str:
@@ -175,7 +174,7 @@ def checkpoint_gan(
 
     json.dump(state, open(os.path.join(rootdir, "train_state.json"), "w"), indent=2)
     json.dump(stats, open(os.path.join(rootdir, "stats.json"), "w"), indent=2)
-    json.dump(config, open(os.path.join(path, "config.json"), "w"), indent=2)
+    json.dump(config.__dict__, open(os.path.join(path, "config.json"), "w"), indent=2)
 
     print(f"> Saved checkpoint checkpoint to {path}")
 
