@@ -1,7 +1,8 @@
 """Module for reading config from YAML."""
 
-import yaml
 import os
+
+import yaml
 
 from src.models import ConfigGAN
 
