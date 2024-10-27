@@ -13,7 +13,7 @@ from torcheval.metrics import FrechetInceptionDistance
 from tqdm import tqdm
 
 from src.datasets.load import load_dataset
-from src.models import FIDArgs, LoadDatasetParams
+from src.models import CLFIDArgs, LoadDatasetParams
 from src.utils.checkpoint import construct_classifier_from_checkpoint
 from src.utils.logging import configure_logging
 
@@ -38,7 +38,7 @@ parser.add_argument("--device", type=str, default="cpu", help="Device to use (cu
 parser.add_argument("--name", dest="name", default=None, help="Name of generated .npz file")
 
 
-def get_feature_map_function(config: FIDArgs) -> nn.Module | None:
+def get_feature_map_function(config: CLFIDArgs) -> nn.Module | None:
     """Get the feature map function based on model path."""
     if config.model_path is not None:
 
@@ -60,7 +60,7 @@ def main() -> None:
     args_dict = vars(args)
 
     try:
-        config = FIDArgs(**args_dict)
+        config = CLFIDArgs(**args_dict)
     except ValidationError as e:
         logger.error(f"Argument validation error: {e}")
         raise ValidationError(e) from e

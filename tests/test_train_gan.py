@@ -15,7 +15,7 @@ from src.gan.train import (
     evaluate_and_checkpoint,
     train
 )
-from src.models import GANTrainArgs, TrainingState, ConfigGAN, CheckpointGAN, FIDMetricsParams, GenParams, DisParams
+from src.models import GANTrainArgs, TrainingState, ConfigGAN, CheckpointGAN, FIDMetricsParams, GenParams, DisParams, MetricsParams
 from src.enums import DeviceType
 from src.utils.metrics_logger import MetricsLogger
 from src.gan.loss import DiscriminatorLoss
@@ -265,8 +265,8 @@ def config_gan():
 @patch("wandb.init")  # Mock wandb.init globally for this fixture
 @patch("wandb.define_metric")  # Mock define_metric globally for this fixture
 def metrics_gan(mock_wandb_init, mock_define_metric, gan_train_args):
-    eval_metrics = MetricsLogger(prefix="eval")
-    train_metrics = MetricsLogger(prefix="train")
+    eval_metrics = MetricsLogger(MetricsParams(prefix="validation", log_epoch=True))
+    train_metrics = MetricsLogger(MetricsParams(prefix="train", log_epoch=True))
     log_generator_discriminator_metrics(train_metrics, eval_metrics, gan_train_args)
     train_metrics.add("term_1", iteration_metric=True)
     train_metrics.add("term_2", iteration_metric=True)

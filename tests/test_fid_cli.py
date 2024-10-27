@@ -1,13 +1,9 @@
 import pytest
 import torch
-import io
 import tempfile
-import numpy as np
-import logging
-from unittest.mock import patch, MagicMock, mock_open, ANY
+from unittest.mock import patch, MagicMock, ANY
 from argparse import Namespace
-from src.models import FIDArgs
-from src.utils.logging import configure_logging
+from src.models import CLFIDArgs
 from src.metrics.fid.fid_cli import main, get_feature_map_function
 from pydantic import ValidationError
 
@@ -41,7 +37,7 @@ def test_get_feature_map_function(mock_construct_classifier, mock_fid, mock_load
     mock_construct_classifier.return_value = [mock_model]
 
     # Use the actual dictionary from mock_args fixture
-    config = FIDArgs(**mock_args)
+    config = CLFIDArgs(**mock_args)
 
     # Scenario where model_path is provided
     config.model_path = "mock_path"
@@ -78,7 +74,7 @@ def test_main(
 
         # Mock arguments namespace
         with patch("argparse.ArgumentParser.parse_args", return_value=Namespace(**mock_args)):
-            with patch("src.models.FIDArgs", wraps=FIDArgs) as mock_fid_args:
+            with patch("src.models.CLFIDArgs", wraps=CLFIDArgs) as mock_fid_args:
                 # Simulate passing arguments through parser and running the main function
                 main()
 
@@ -96,7 +92,7 @@ def test_main(
 
 
 def test_argument_validation():
-    """Test FIDArgs pydantic model validation for different scenarios."""
+    """Test CLFIDArgs pydantic model validation for different scenarios."""
     # Valid arguments
     valid_args = {
         "dataroot": "./mock_data",
@@ -110,7 +106,7 @@ def test_argument_validation():
         "name": None,
     }
     try:
-        FIDArgs(**valid_args)
+        CLFIDArgs(**valid_args)
     except ValidationError:
         pytest.fail("Validation failed for valid arguments")
 
@@ -118,13 +114,13 @@ def test_argument_validation():
     invalid_args = valid_args.copy()
     invalid_args["dataset_name"] = "invalid-dataset"
     with pytest.raises(ValidationError):
-        FIDArgs(**invalid_args)
+        CLFIDArgs(**invalid_args)
 
     # Invalid pos_class
     invalid_args = valid_args.copy()
     invalid_args["pos_class"] = "invalid"
     with pytest.raises(ValidationError):
-        FIDArgs(**invalid_args)
+        CLFIDArgs(**invalid_args)
 
 
 @patch("numpy.savez")

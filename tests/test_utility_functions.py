@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import torch
 
-from src.models import CLTrainArgs
+from src.models import CLTrainArgs, CLTestNoiseArgs
 from src.utils.utility_functions import (
     begin_classifier,
     begin_ensemble,
@@ -102,7 +102,7 @@ def test_seed_worker() -> None:
         patch("random.seed") as mock_random_seed,
         patch("numpy.random.seed") as mock_np_seed,
     ):
-        seed_worker()
+        seed_worker(42)
         worker_seed = 42 % 2**32
         mock_np_seed.assert_called_once_with(worker_seed)
         mock_random_seed.assert_called_once_with(worker_seed)
@@ -115,7 +115,11 @@ def test_create_and_store_z(mock_savez, mock_makedirs):
     out_dir = "mock_out"
     n, dim = 5, 100
     with patch("builtins.open", mock_open()) as mock_file:
-        z, path = create_and_store_z(out_dir, n, dim)
+        z, path = create_and_store_z(CLTestNoiseArgs(
+            out_dir=out_dir,
+            nz=n,
+            z_dim=dim
+        ))
 
         assert isinstance(z, torch.Tensor)
         assert z.shape == (n, dim)

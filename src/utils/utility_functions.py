@@ -14,7 +14,7 @@ import torch
 import torchvision.utils as vutils
 from torch import nn
 
-from src.models import CLTrainArgs
+from src.models import CLTestNoiseArgs, CLTrainArgs
 
 
 def create_checkpoint_path(config: dict, run_id: str) -> str:
@@ -62,7 +62,7 @@ def setup_reprod(seed: int) -> None:
     set_seed(seed)
 
 
-def seed_worker() -> None:
+def seed_worker(_: int) -> None:
     """Seed worker process for reproducibility."""
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
@@ -70,14 +70,15 @@ def seed_worker() -> None:
 
 
 def create_and_store_z(
-    out_dir: str, n: int, dim: int, name: str | None = None, config: dict | None = None
+    config: CLTestNoiseArgs,
+    name: str | None = None,
 ) -> tuple[torch.Tensor, str]:
     """Create a random noise tensor and store it to disk."""
     if name is None:
-        name = f"z_{n}_{dim}"
+        name = f"z_{config.nz}_{config.z_dim}"
 
-    noise = torch.randn(n, dim).numpy()
-    out_path = os.path.join(out_dir, name)
+    noise = torch.randn(config.nz, config.z_dim).numpy()
+    out_path = os.path.join(config.out_dir, name)
     os.makedirs(out_path, exist_ok=True)
 
     with open(os.path.join(out_path, "z.npy"), "wb", encoding="utf-8") as f:
@@ -85,7 +86,7 @@ def create_and_store_z(
 
     if config is not None:
         with open(os.path.join(out_path, "z.json"), "w", encoding="utf-8") as out_json:
-            json.dump(config, out_json)
+            json.dump(config.__dict__, out_json)
 
     return torch.Tensor(noise), out_path
 
@@ -114,12 +115,12 @@ def make_grid(images: torch.Tensor, nrow: int | None = None, total_images: int |
         # Ensure total_images is greater than or equal to images.size(0)
         if total_images > images.size(0):
             blank_images = -torch.ones(
-            (
-                total_images - images.size(0),
-                images.size(1),
-                images.size(2),
-                images.size(3),
-            )
+                (
+                    total_images - images.size(0),
+                    images.size(1),
+                    images.size(2),
+                    images.size(3),
+                )
             )
             images = torch.concat((images, blank_images), 0)
 

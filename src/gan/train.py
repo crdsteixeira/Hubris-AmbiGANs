@@ -8,7 +8,7 @@ import torch
 from torch import Tensor
 from tqdm import tqdm
 
-from src.models import CheckpointGAN, ConfigGAN, GANTrainArgs, TrainingState
+from src.models import CheckpointGAN, ConfigGAN, GANTrainArgs, TrainingState, MetricsParams
 from src.utils.checkpoint import checkpoint_gan, checkpoint_image
 from src.utils.metrics_logger import MetricsLogger
 from src.utils.utility_functions import group_images, seed_worker
@@ -201,8 +201,8 @@ def train(params: GANTrainArgs, config: ConfigGAN) -> tuple[TrainingState, str |
         num_workers=config.num_workers,
         worker_init_fn=seed_worker,
     )
-    train_metrics: MetricsLogger = MetricsLogger(prefix="train")
-    eval_metrics: MetricsLogger = MetricsLogger(prefix="eval")
+    train_metrics: MetricsLogger = MetricsLogger(MetricsParams(prefix="train", log_epoch=True))
+    eval_metrics: MetricsLogger = MetricsLogger(MetricsParams(prefix="validation", log_epoch=True))
     train_state: TrainingState = initialize_training_state(params=params)
 
     log_generator_discriminator_metrics(train_metrics=train_metrics, eval_metrics=eval_metrics, params=params)
