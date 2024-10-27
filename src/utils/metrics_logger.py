@@ -1,22 +1,22 @@
-"""Module for logging Metrics to wandb"""
+"""Module for logging Metrics to wandb."""
 
 import matplotlib.pyplot as plt
 import numpy as np
 import wandb
-from typing import Optional
+
+from src.models import MetricsParams
 
 
 class MetricsLogger:
     """Class for logging training metrics, including iteration and epoch metrics."""
 
-    def __init__(self, prefix: Optional[str] = None, log_epoch: bool = True) -> None:
+    def __init__(self, params: MetricsParams) -> None:
         """Initialize the MetricsLogger with a prefix and log epoch flag."""
-        self.prefix: str | None = prefix
+        self.params = params
         self.iteration_metrics: list = []
         self.running_stats: dict = {}
         self.it_counter: dict = {}
         self.stats: dict = {}
-        self.log_epoch: int = log_epoch
         self.log_dict: dict = {}
         self.epoch: int = 1
 
@@ -25,7 +25,7 @@ class MetricsLogger:
         wandb.define_metric(name, step_metric=self.apply_prefix("epoch"))
         self.log_dict[self.apply_prefix(name)] = None
 
-    def log_image(self, name: str, image: np.array, caption: Optional[str] = None) -> None:
+    def log_image(self, name: str, image: np.array, caption: str | None = None) -> None:
         """Log an image to WandB with an optional caption."""
         self.log_dict[self.apply_prefix(name)] = wandb.Image(image, caption=caption)
 
@@ -35,7 +35,7 @@ class MetricsLogger:
 
     def apply_prefix(self, name: str) -> str:
         """Apply a prefix to a metric name, if a prefix is defined."""
-        return f"{self.prefix}/{name}" if self.prefix is not None else name
+        return f"{self.params.prefix}/{name}" if self.params.prefix is not None else name
 
     def add(self, name: str, iteration_metric: bool = False) -> None:
         """Add a metric to the logger, optionally marking it as an iteration metric."""
@@ -76,7 +76,7 @@ class MetricsLogger:
             self.stats[name].append(epoch_value)
             self.log_dict[self.apply_prefix(name)] = epoch_value
 
-            if self.log_epoch:
+            if self.params.log_epoch:
                 print(name, " = ", epoch_value)
 
         self.log_dict[self.apply_prefix("epoch")] = self.epoch
