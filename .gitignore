@@ -151,5 +151,6 @@ poetry.lock
 # pre-commit hooks
 .isort.cfg
 
-# test checkpoints
+# test data
 checkpoints/
+mock_data/
