@@ -1,20 +1,21 @@
-"""Module with project utility functions"""
+"""Module with project utility functions."""
 
-import os
+import itertools
 import json
+import math
+import os
+import random
+import subprocess
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Iterable
 
 import numpy as np
-import torchvision.utils as vutils
 import torch
-import random
-import math
-import itertools
-import subprocess
+import torchvision.utils as vutils
 from torch import nn
 
 from src.models import CLTrainArgs
+
 
 def create_checkpoint_path(config: dict, run_id: str) -> str:
     """Create a path for storing checkpoints."""
@@ -54,21 +55,23 @@ def set_seed(seed: int) -> None:
 
 
 def setup_reprod(seed: int) -> None:
-    """Setup deterministic and reproducible behavior for torch."""
+    """Set deterministic and reproducible behavior for torch."""
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
     set_seed(seed)
 
 
-def seed_worker(worker_id: int) -> None:
+def seed_worker() -> None:
     """Seed worker process for reproducibility."""
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
 
-def create_and_store_z(out_dir: str, n: int, dim: int, name: str| None = None, config: dict | None = None) -> tuple[torch.Tensor, str]:
+def create_and_store_z(
+    out_dir: str, n: int, dim: int, name: str | None = None, config: dict | None = None
+) -> tuple[torch.Tensor, str]:
     """Create a random noise tensor and store it to disk."""
     if name is None:
         name = f"z_{n}_{dim}"
@@ -77,11 +80,11 @@ def create_and_store_z(out_dir: str, n: int, dim: int, name: str| None = None, c
     out_path = os.path.join(out_dir, name)
     os.makedirs(out_path, exist_ok=True)
 
-    with open(os.path.join(out_path, "z.npy"), "wb") as f:
+    with open(os.path.join(out_path, "z.npy"), "wb", encoding="utf-8") as f:
         np.savez(f, z=noise)
 
     if config is not None:
-        with open(os.path.join(out_path, "z.json"), "w") as out_json:
+        with open(os.path.join(out_path, "z.json"), "w", encoding="utf-8") as out_json:
             json.dump(config, out_json)
 
     return torch.Tensor(noise), out_path
@@ -89,10 +92,10 @@ def create_and_store_z(out_dir: str, n: int, dim: int, name: str| None = None, c
 
 def load_z(path: str) -> tuple[torch.Tensor, dict]:
     """Load a noise tensor and associated configuration from disk."""
-    with np.load(os.path.join(path, "z.npy")) as f:
-        z = f["z"][:]
+    z_path = os.path.join(path, "z.npy")
+    z = np.load(z_path, encoding="utf-8")["z"]
 
-    with open(os.path.join(path, "z.json")) as f:
+    with open(os.path.join(path, "z.json"), encoding="utf-8") as f:
         conf = json.load(f)
 
     return torch.Tensor(z), conf
@@ -104,19 +107,21 @@ def make_grid(images: torch.Tensor, nrow: int | None = None, total_images: int |
         nrow = int(math.sqrt(images.size(0)))
         if nrow % 1 != 0:
             nrow = 8
-    else:
-        if total_images is not None:
-            total_images = math.ceil(total_images / nrow) * nrow
 
-        blank_images = -torch.ones(
+    if total_images is not None:
+        total_images = math.ceil(total_images / nrow) * nrow
+
+        # Ensure total_images is greater than or equal to images.size(0)
+        if total_images > images.size(0):
+            blank_images = -torch.ones(
             (
                 total_images - images.size(0),
                 images.size(1),
                 images.size(2),
                 images.size(3),
             )
-        )
-        images = torch.concat((images, blank_images), 0)
+            )
+            images = torch.concat((images, blank_images), 0)
 
     img = vutils.make_grid(images, padding=2, normalize=True, nrow=int(nrow), value_range=(-1, 1))
 
@@ -211,6 +216,7 @@ def begin_classifier(iterator: Iterable, clf_type: str, l_epochs: list[str], arg
                     "--seed",
                     str(args.seed),
                 ],
+                check=False,
                 capture_output=True,
             )
             for line in proc.stdout.split(b"\n")[-4:-1]:
@@ -219,74 +225,102 @@ def begin_classifier(iterator: Iterable, clf_type: str, l_epochs: list[str], arg
 
 def begin_ensemble(iterator: Iterable, clf_type: str, l_epochs: list[str], args: CLTrainArgs) -> None:
     """Run an ensemble training process for classifiers using subprocess."""
-    # Set seed, if necessary
+    # Set the seed if not provided
+    initialize_seed(args)
+
+    # Generate CNN configurations
+    cnn_nfs = generate_cnn_configs(args.nf)
+    print(f"\nFinal CNN list: {cnn_nfs}")
+
+    # Iterate through class pairs and start training subprocess
+    for neg_class, pos_class in iterator:
+        print(f"\nGenerating classifiers for {pos_class}v{neg_class} ...")
+        for epochs in l_epochs:
+            print("\n", clf_type, len(cnn_nfs), epochs)
+            run_training_subprocess(clf_type, epochs, args, cnn_nfs, pos_class, neg_class)
+
+
+def initialize_seed(args: CLTrainArgs) -> None:
+    """Set random seed if not provided."""
     if args.seed is not None:
         np.random.seed(args.seed)
     else:
         args.seed = np.random.randint(100000)
 
-    # First get number of CNN's
+
+def generate_cnn_configs(nf: int | list[int] | list[list[int]] | None) -> list[list[int]]:
+    """Generate CNN configurations based on nf parameter."""
     cnn_nfs = []
-    if isinstance(args.nf, int):
-        cnns_count = args.nf
-        cnn = [
-            [np.random.randint(1, high=5 + 1) for _ in range(np.random.randint(2, high=4 + 1))]
-            for _ in range(cnns_count)
+
+    if isinstance(nf, int):
+        cnns_count = nf
+        cnn_nfs = [
+            [np.random.randint(1, high=6) for _ in range(np.random.randint(2, high=5))] for _ in range(cnns_count)
         ]
-        cnn_nfs.extend(cnn)
-    elif isinstance(args.nf, list):
-        for n in args.nf:
+    elif isinstance(nf, list):
+        for n in nf:
             if isinstance(n, int):
-                cnn = [np.random.randint(1, high=n) for _ in range(np.random.randint(1, high=4 + 1))]
+                cnn = [np.random.randint(1, high=n) for _ in range(np.random.randint(1, high=5))]
             elif isinstance(n, list):
                 cnn = [int(c) for c in n]
+            else:
+                raise ValueError("Invalid type for list element in nf: expected int or list of ints")
             cnn_nfs.append(cnn)
     else:
         raise ValueError("Invalid type for nf: expected int or list of ints")
 
-    print(f"\nFinal CNN list: {cnn_nfs}")
+    return cnn_nfs
 
-    for neg_class, pos_class in iterator:
-        print(f"\nGenerating classifiers for {pos_class}v{neg_class} ...")
-        for (epochs,) in itertools.product(l_epochs):
-            print("\n", clf_type, len(cnn_nfs), epochs)
-            proc = subprocess.run(
-                [
-                    "python",
-                    "-m",
-                    "src.classifier.train",
-                    "--device",
-                    args.device,
-                    "--data-dir",
-                    args.data_dir,
-                    "--out-dir",
-                    args.out_dir,
-                    "--dataset",
-                    args.dataset,
-                    "--pos",
-                    pos_class,
-                    "--neg",
-                    neg_class,
-                    "--classifier-type",
-                    clf_type,
-                    "--nf",
-                    str(cnn_nfs),
-                    "--name",
-                    str("{}_{}_{}".format(clf_type.replace(":", "_"), args.seed, epochs)),
-                    "--epochs",
-                    epochs,
-                    "--batch-size",
-                    str(args.batch_size),
-                    "--lr",
-                    str(args.lr),
-                    "--seed",
-                    str(args.seed),
-                    "--early-acc",
-                    str(args.early_acc),
-                ],
-                capture_output=True,
-            )
-            for line in proc.stdout.split(b"\n"):
-                print(line.decode())
-            for line in proc.stderr.split(b"\n"):
-                print(line.decode())
+
+def run_training_subprocess(
+    clf_type: str, epochs: str, args: CLTrainArgs, cnn_nfs: list[list[int]], pos_class: str, neg_class: str
+) -> None:
+    """Run a subprocess to train the classifier."""
+    proc = subprocess.run(
+        [
+            "python",
+            "-m",
+            "src.classifier.train",
+            "--device",
+            args.device,
+            "--data-dir",
+            args.data_dir,
+            "--out-dir",
+            args.out_dir,
+            "--dataset",
+            args.dataset_name,
+            "--pos",
+            pos_class,
+            "--neg",
+            neg_class,
+            "--classifier-type",
+            clf_type,
+            "--nf",
+            str(cnn_nfs),
+            "--name",
+            f"{clf_type.replace(':', '_')}_{args.seed}_{epochs}",
+            "--epochs",
+            epochs,
+            "--batch-size",
+            str(args.batch_size),
+            "--lr",
+            str(args.lr),
+            "--seed",
+            str(args.seed),
+            "--early-acc",
+            str(args.early_acc),
+        ],
+        check=False,
+        capture_output=True,
+    )
+    handle_subprocess_output(proc)
+
+
+def handle_subprocess_output(proc: subprocess.CompletedProcess) -> None:
+    """Handle output from the subprocess."""
+    if proc.stdout:
+        for line in proc.stdout.split(b"\n"):
+            print(line.decode())
+    if proc.stderr:
+        for line in proc.stderr.split(b"\n"):
+            print(line.decode())
