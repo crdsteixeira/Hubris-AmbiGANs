@@ -43,7 +43,19 @@ class FID(Metric):
 
     def update(self, images: torch.Tensor, _: tuple[int, int]) -> None:
         """Update the FID metric with a new batch of generated images."""
-        self.fid.update(images=images, is_real=False)
+        # Check if the images have at least 2 dimensions (batch_size, channels, height, width)
+        if images.ndim < 2:
+            raise ValueError(
+                f"Images must have at least two dimensions (batch size and channel), got {images.ndim}D tensor."
+            )
+
+        # Check if the images need to be converted to RGB
+        if images.shape[1] != 3:
+            # Convert to RGB by repeating across the channel dimension
+            images = images.repeat(1, 3, 1, 1)
+
+        # Update the FID metric, necessary to normalize pixels between 0 and 1
+        self.fid.update(images=(images + 1.0) / 2.0, is_real=False)
 
     def finalize(self) -> float:
         """Finalize the FID calculation and return the computed FID value."""

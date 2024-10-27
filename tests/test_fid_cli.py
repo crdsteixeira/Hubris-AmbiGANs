@@ -133,7 +133,7 @@ def test_fid_statistics_calculation(
     """Test if FID statistics are being calculated and saved properly."""
     # Mock dataset loading and DataLoader
     mock_load_dataset.return_value = ("mocked_data", None, None)
-    mock_dataloader.return_value = [["mocked_data"]] * 5
+    mock_dataloader.return_value = [torch.tensor([[[[0.0]]]])] * 5
 
     # Properly mock FID instance attributes as Tensors
     mock_fid_instance = mock_fid.return_value

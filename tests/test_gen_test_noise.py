@@ -1,39 +1,35 @@
 """Module to test test noise generation."""
 
 import os
-import json
+import random
+from unittest.mock import MagicMock, call, mock_open, patch
+
+import numpy as np
 import pytest
 import torch
-import numpy as np
-import random
 from pydantic import ValidationError
-from unittest.mock import patch, mock_open, call, MagicMock
-from argparse import ArgumentParser
+
 from src.models import CLTestNoiseArgs
 from src.utils.utility_functions import create_and_store_z, gen_seed, set_seed
 
 
 @pytest.fixture
-def mock_args():
+def mock_args() -> None:
     """Fixture to provide mock command line arguments."""
-    return CLTestNoiseArgs(
-        seed=42,
-        nz=5,
-        z_dim=100,
-        out_dir="mock_out"
-    )
+    return CLTestNoiseArgs(seed=42, nz=5, z_dim=100, out_dir="mock_out")
+
 
 @patch("os.makedirs")
 @patch("numpy.savez")
 @patch("builtins.open", new_callable=mock_open)
-def test_create_and_store_z(mock_file, mock_savez, mock_makedirs, mock_args):
+def test_create_and_store_z(mock_file, mock_savez, mock_makedirs, mock_args) -> None:
     """Test that noise tensor z is created and stored correctly."""
     z, path = create_and_store_z(config=mock_args)
 
     # Construct the expected directory path that would be created
     expected_out_path = os.path.join(mock_args.out_dir, f"z_{mock_args.nz}_{mock_args.z_dim}")
 
-     # Check if directories are created (with the correct path)
+    # Check if directories are created (with the correct path)
     mock_makedirs.assert_called_once_with(expected_out_path, exist_ok=True)
 
     # Check if the file was opened correctly to store the noise
@@ -41,10 +37,13 @@ def test_create_and_store_z(mock_file, mock_savez, mock_makedirs, mock_args):
     expected_json_path = os.path.join(expected_out_path, "z.json")
 
     # Since `open` is called twice, we need to check both calls
-    mock_file.assert_has_calls([
-        call(expected_z_path, "wb", encoding="utf-8"),
-        call(expected_json_path, "w", encoding="utf-8"),
-    ], any_order=True)
+    mock_file.assert_has_calls(
+        [
+            call(expected_z_path, "wb", encoding="utf-8"),
+            call(expected_json_path, "w", encoding="utf-8"),
+        ],
+        any_order=True,
+    )
 
     # Check that numpy.savez() was called to save the noise
     mock_savez.assert_called_once()
@@ -55,16 +54,16 @@ def test_create_and_store_z(mock_file, mock_savez, mock_makedirs, mock_args):
     # Ensure the path is correct
     assert path == expected_out_path
 
-def test_gen_seed():
+
+def test_gen_seed() -> None:
     """Test generating a random seed."""
     seed = gen_seed()
     assert isinstance(seed, int)
     assert 0 <= seed < 10000
 
 
-def test_set_seed():
+def test_set_seed() -> None:
     """Test setting the random seed."""
-
     seed = 42
     # Set the seed using the utility function
     set_seed(seed)
@@ -92,17 +91,12 @@ def test_set_seed():
 @patch("src.utils.utility_functions.create_and_store_z")
 @patch("src.utils.logging.configure_logging")
 @patch("dotenv.load_dotenv")
-def test_main(mock_load_dotenv, mock_configure_logging, mock_create_and_store_z, mock_parse_args):
+def test_main(mock_load_dotenv, mock_configure_logging, mock_create_and_store_z, mock_parse_args) -> None:
     """Test the main function end-to-end."""
-    mock_args = MagicMock(
-        seed=42,
-        nz=5,
-        z_dim=100,
-        out_dir="mock_out"
-    )
+    mock_args = MagicMock(seed=42, nz=5, z_dim=100, out_dir="mock_out")
     mock_parse_args.return_value = mock_args
-    mock_create_and_store_z.return_value = (0, 'test')
-    
+    mock_create_and_store_z.return_value = (0, "test")
+
     # Import the main function after mocking dependencies
     from src.gen_test_noise import main
 

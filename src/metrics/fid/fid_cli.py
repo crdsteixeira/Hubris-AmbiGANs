@@ -22,11 +22,13 @@ load_dotenv()
 
 configure_logging()
 logger = logging.getLogger(__name__)
-logger.info("FID calculation is starting...")
+
 
 parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument("--data", dest="dataroot", default=f"{os.environ['FILESDIR']}/data", help="Directory with dataset")
-parser.add_argument("--dataset", dest="dataset", default="fashion-mnist", help="Dataset (mnist, fashion-mnist, etc.)")
+parser.add_argument(
+    "--dataset", dest="dataset_name", default="fashion-mnist", help="Dataset (mnist, fashion-mnist, etc.)"
+)
 parser.add_argument("--pos", dest="pos_class", default=3, type=int, help="Positive class for binary classification")
 parser.add_argument("--neg", dest="neg_class", default=0, type=int, help="Negative class for binary classification")
 parser.add_argument("--batch-size", type=int, default=64, help="Batch size to use")
@@ -53,6 +55,9 @@ def get_feature_map_function(config: CLFIDArgs) -> nn.Module | None:
 
 def main() -> None:
     """Calculate and save FID statistics based on the provided CLI arguments."""
+
+    logger.info("FID calculation is starting...")
+    
     args = parser.parse_args()
     logger.debug(args)
 
@@ -63,7 +68,7 @@ def main() -> None:
         config = CLFIDArgs(**args_dict)
     except ValidationError as e:
         logger.error(f"Argument validation error: {e}")
-        raise ValidationError(e) from e
+        raise
 
     # Logging the arguments
     logger.info(config)
@@ -92,7 +97,17 @@ def main() -> None:
 
     # Calculate mu and sigma
     for batch in tqdm(dataloader):
-        fid.update(batch[0], is_real=True)
+        images = batch[0]
+        if images.ndim < 2:
+            raise ValueError(
+                f"Images must have at least two dimensions (batch size and channel), got {images.ndim}D tensor."
+            )
+        if images.shape[1] != 3:
+            # Convert to RGB by repeating across the channel dimension
+            images = images.repeat(1, 3, 1, 1)
+
+        # Necessary to normalize pixels between 0 and 1
+        fid.update((images + 1.0) / 2.0, is_real=True)
     m = (fid.real_sum / fid.num_real_images).unsqueeze(0)
     s = fid.real_cov_sum - fid.num_real_images * torch.matmul(m.T, m)
 
