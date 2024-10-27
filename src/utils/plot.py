@@ -1,13 +1,15 @@
-# pylint: skip-file
+"""Module with utility functions for plotting."""
 
 import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import seaborn as sns
 
 
-def plot_train_summary(data, out_path):
+def plot_train_summary(data: dict, out_path: str) -> None:
+    """Plot training summary including losses and metrics."""
     os.makedirs(out_path, exist_ok=True)
 
     plt.plot(data["G_losses_epoch"], label="G loss")
@@ -73,7 +75,8 @@ def plot_train_summary(data, out_path):
         plt.clf()
 
 
-def plot_metrics(data, path, C_name):
+def plot_metrics(data: pd.DataFrame, path: str, C_name: str) -> None:
+    """Plot metrics and save to CSV and SVG files."""
     fid = data["fid"].to_numpy()
     cd = data["conf_dist"].to_numpy()
 
@@ -99,5 +102,4 @@ def plot_metrics(data, path, C_name):
         size=size,
     )
     plt.savefig(os.path.join(path, f"metrics_{C_name}.svg"))
-
     plt.close()
