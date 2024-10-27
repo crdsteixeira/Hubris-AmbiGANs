@@ -655,3 +655,29 @@ class CLTestNoiseArgs(BaseModel):
     nz: int = Field(..., description="Number of sample to be generated")
     z_dim: int = Field(..., description="Latent space dimension")
     out_dir: str = Field(f"{os.environ['FILESDIR']}/data/z", description="Directory to store thes test noise")
+
+
+class CLFIDStatsArgs(BaseModel):
+    dataroot: str = Field(default=f"{os.environ.get('FILESDIR', '')}/data", description="Directory with dataset",)
+    dataset: DatasetNames = Field(default=DatasetNames.mnist, description="Dataset to use (mnist, fashion-mnist, cifar10 or chest x-ray)")
+    device: DeviceType = Field(default=DeviceType.cpu, description="Device to use, cuda or cpu")
+    n_classes: int = Field(None, description="Number of classes in the dataset")
+
+    @model_validator(mode="after")
+    def set_n_classes_based_on_dataset(self) -> "CLFIDStatsArgs":
+        """Set the number of classes based on the dataset."""
+        dataset_class_mapping = {
+            DatasetNames.mnist: len(MnistClasses),
+            DatasetNames.fashion_mnist: len(MnistClasses),
+            DatasetNames.cifar10: len(Cifar10Classes),
+            DatasetNames.chest_xray: len(ChestXrayClasses)
+        }
+
+        # Set the number of classes based on the dataset provided
+        if self.dataset in dataset_class_mapping:
+            self.n_classes = dataset_class_mapping[self.dataset]
+        else:
+            raise ValueError(f"Dataset '{self.dataset}' is not supported.")
+        
+        return self
+

@@ -1,61 +1,81 @@
-# pylint: skip-file
+"""Module to generate FID statistics from dataset."""
 
 import itertools
+import logging
 import os
 import subprocess
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 from dotenv import load_dotenv
+from pydantic import ValidationError
+
+from src.models import CLFIDStatsArgs
+from src.utils.logging import configure_logging
 
 load_dotenv()
+
+configure_logging()
+logger = logging.getLogger(__name__)
+
 parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument(
-    "--data",
+    "--dataroot",
+    type=str,
     dest="dataroot",
     default=f"{os.environ['FILESDIR']}/data",
-    help="Dir with dataset",
+    help="Directory with dataset",
 )
 parser.add_argument(
     "--dataset",
+    type=str,
     dest="dataset",
     default="mnist",
-    help="Dataset (mnist or fashion-mnist or cifar10)",
+    help="Dataset to use (mnist, fashion-mnist, cifar10 or chest x-ray)",
 )
-parser.add_argument("--n-classes", dest="n_classes", default=10, help="Number of classes in dataset")
 parser.add_argument(
     "--device",
     type=str,
-    default="cuda:0",
-    help="Device to use. Like cuda, cuda:0 or cpu",
+    default="cpu",
+    help="Device to use, cuda or cpu",
 )
 
 
-def main():
+def main() -> None:
+    """Run process to generate FID statistics from given dataset."""
+    logger.info("Calculating FID statistics...")
     args = parser.parse_args()
-    print(args)
+    logger.debug(args)
+    args_dict = vars(args)
 
-    n_classes = int(args.n_classes)
+    try:
+        config = CLFIDStatsArgs(**args_dict)
+    except ValidationError as e:
+        logger.error(f"Argument validation error: {e}")
+        raise
 
-    for neg_class, pos_class in itertools.combinations(range(n_classes), 2):
-        print(f"{neg_class}vs{pos_class}")
+    logger.info(config)
+
+    for neg_class, pos_class in itertools.combinations(range(config.n_classes), 2):
+        logger.info(f"{neg_class}vs{pos_class}")
         subprocess.run(
             [
                 "poetry",
                 "run",
                 "python",
                 "-m",
-                "src.metrics.fid",
+                "src.metrics.fid.fid_cli",
                 "--data",
-                args.dataroot,
+                config.dataroot,
                 "--dataset",
-                args.dataset,
+                config.dataset,
                 "--device",
-                args.device,
+                config.device,
                 "--pos",
                 str(pos_class),
                 "--neg",
                 str(neg_class),
-            ]
+            ],
+            check=False,
         )
 
 
