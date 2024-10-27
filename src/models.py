@@ -226,7 +226,7 @@ class TrainArgsBase(BaseModel):
     batch_size: int = Field(64, description="Batch size for training")
     lr: float = Field(default=5e-4, description="Learning rate for the optimizer")
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
-    device: DeviceType = Field(..., description="Device for computation ('cpu', 'cuda').")
+    device: DeviceType = Field(..., description="Device for computation ('cpu', 'cuda')")
 
 
 class TrainArgs(TrainArgsBase):
@@ -631,7 +631,7 @@ class CheckpointGAN(BaseModel):
     dis_params: DisParams
 
 
-class FIDArgs(DatasetClasses):
+class CLFIDArgs(DatasetClasses):
     """Pydantic model for validating FID CLI arguments."""
 
     model_config = ConfigDict(protected_namespaces=())
@@ -649,3 +649,9 @@ class FIDArgs(DatasetClasses):
         if value is not None and not os.path.exists(value):
             raise ValueError(f"Model path '{value}' does not exist.")
         return value
+
+class CLTestNoiseArgs(BaseModel):
+    seed: int | None =  Field(None, description="Random seed for reproducibility")
+    nz: int = Field(..., description="Number of sample to be generated")
+    z_dim: int = Field(..., description="Latent space dimension")
+    out_dir: str = Field(f"{os.environ['FILESDIR']}/data/z", description="Directory to store thes test noise")
