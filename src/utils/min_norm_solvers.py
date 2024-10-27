@@ -1,22 +1,25 @@
-# pylint: skip-file
+"""Module with utility functions for MGDA. Not used, to be deprecated."""
+
+from typing import Any
 
 import numpy as np
 import torch
-from typing import Any
 
 
 class MinNormSolver:
+    """Class for MinNormSolver."""
+
     MAX_ITER = 250
     STOP_CRIT = 1e-5
 
     @staticmethod
     def _min_norm_element_from2(v1v1: float, v1v2: float, v2v2: float) -> tuple[float, float]:
         """
-        Analytical solution for min_{c} |cx_1 + (1-c)x_2|_2^2
+        Analytical solution for min_{c}. |cx_1 + (1-c)x_2|_2^2.
         d is the distance (objective) optimzed
         v1v1 = <x1,x1>
         v1v2 = <x1,x2>
-        v2v2 = <x2,x2>
+        v2v2 = <x2,x2>.
         """
         if v1v2 >= v1v1:
             # Case: Fig 1, third column
@@ -38,12 +41,12 @@ class MinNormSolver:
         vecs: list[list[torch.Tensor]], dps: dict[tuple[int, int], float]
     ) -> tuple[list[Any], dict[tuple[int, int], float]]:
         r"""
-        Find the minimum norm solution as combination of two points
+        Find the minimum norm solution as combination of two points.
         This is correct only in 2D
-        ie. min_c |\sum c_i x_i|_2^2 st. \sum c_i = 1 , 1 >= c_1 >= 0 for all i, c_i + c_j = 1.0 for some i, j
+        ie. min_c |\sum c_i x_i|_2^2 st. \sum c_i = 1 , 1 >= c_1 >= 0 for all i, c_i + c_j = 1.0 for some i, j.
         """
         dmin = 1e8
-        for i in range(len(vecs)):
+        for i, _ in enumerate(vecs):
             for j in range(i + 1, len(vecs)):
                 if (i, j) not in dps:
                     dps[(i, j)] = 0.0
@@ -66,7 +69,7 @@ class MinNormSolver:
 
     @staticmethod
     def _projection2simplex(y: np.ndarray) -> np.ndarray:
-        r"""Given y, it solves argmin_z |y-z|_2 st \sum z = 1 , 1 >= z_i >= 0 for all i"""
+        r"""Given y, it solves argmin_z |y-z|_2 st \sum z = 1 , 1 >= z_i >= 0 for all i."""
         m = len(y)
         sorted_y = np.flip(np.sort(y), axis=0)
         tmpsum = 0.0
@@ -85,7 +88,6 @@ class MinNormSolver:
         tm1 = -1.0 * cur_val[proj_grad < 0] / proj_grad[proj_grad < 0]
         tm2 = (1.0 - cur_val[proj_grad > 0]) / (proj_grad[proj_grad > 0])
 
-        np.sum(tm1 < 1e-7) + np.sum(tm2 < 1e-7)
         t = 1
         if len(tm1[tm1 > 1e-7]) > 0:
             t = np.min(tm1[tm1 > 1e-7])
@@ -98,8 +100,8 @@ class MinNormSolver:
 
     @staticmethod
     def find_min_norm_element(vecs: list[list[torch.Tensor]]) -> tuple[np.ndarray, float] | tuple[None, None]:
-        """
-        Given a list of vectors (vecs), this method finds the minimum norm element in the convex hull
+        r"""
+        Given a list of vectors (vecs), this method finds the minimum norm element in the convex hull.
         as min |u|_2 st. u = \sum c_i vecs[i] and \sum c_i = 1.
         It is quite geometric, and the main idea is the fact that if d_{ij} = min |u|_2 st u = c x_i + (1-c) x_j; the solution lies in (0, d_{i,j})
         Hence, we find the best 2-task solution, and then run the projected gradient descent until convergence.
@@ -147,10 +149,10 @@ class MinNormSolver:
     @staticmethod
     def find_min_norm_element_FW(vecs: list[list[torch.Tensor]]) -> tuple[np.ndarray, float] | tuple[None, None]:
         r"""
-        Given a list of vectors (vecs), this method finds the minimum norm element in the convex hull
+        Given a list of vectors (vecs), this method finds the minimum norm element in the convex hull.
         as min |u|_2 st. u = \sum c_i vecs[i] and \sum c_i = 1.
         It is quite geometric, and the main idea is the fact that if d_{ij} = min |u|_2 st u = c x_i + (1-c) x_j; the solution lies in (0, d_{i,j})
-        Hence, we find the best 2-task solution, and then run the Frank Wolfe until convergence
+        Hence, we find the best 2-task solution, and then run the Frank Wolfe until convergence.
         """
         # Solution lying at the combination of two points
         dps: dict = {}
