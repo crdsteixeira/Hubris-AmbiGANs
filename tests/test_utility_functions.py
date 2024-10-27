@@ -12,8 +12,6 @@ import torch
 
 from src.models import CLTrainArgs, CLTestNoiseArgs
 from src.utils.utility_functions import (
-    begin_classifier,
-    begin_ensemble,
     create_and_store_z,
     create_checkpoint_path,
     create_exp_path,
@@ -21,7 +19,6 @@ from src.utils.utility_functions import (
     generate_cnn_configs,
     group_images,
     handle_subprocess_output,
-    initialize_seed,
     load_z,
     make_grid,
     run_training_subprocess,
@@ -170,12 +167,6 @@ def test_group_images() -> None:
     classifier.assert_called()
 
 
-def test_initialize_seed(mock_args) -> None:
-    """Test initializing seed value."""
-    with patch("numpy.random.seed") as mock_np_seed:
-        initialize_seed(mock_args)
-        mock_np_seed.assert_called_once_with(mock_args.seed)
-
 
 def test_generate_cnn_configs() -> None:
     """Test generating CNN configurations."""
@@ -188,17 +179,20 @@ def test_generate_cnn_configs() -> None:
 def test_run_training_subprocess(mock_run, mock_args) -> None:
     """Test running a classifier training subprocess."""
     run_training_subprocess(
-        clf_type="cnn",
-        epochs="10",
-        args=mock_args,
-        cnn_nfs=[[2, 3], [3, 4]],
-        pos_class="pos_class",
-        neg_class="neg_class",
+        CLTrainArgs(
+            dataset_name="mnist",
+            pos_class=0,
+            neg_class=1,
+            c_type="cnn",
+            epochs="10",
+            args=mock_args,
+        ), cnn_nfs=[[2, 3], [3, 4]],
     )
     mock_run.assert_called_once()
 
 
-def test_handle_subprocess_output() -> None:
+@patch("src.utils.utility_functions.logger")
+def test_handle_subprocess_output(mock_logger) -> None:
     """Test handling output from subprocess."""
     # Mock subprocess result with stdout and stderr
     proc_mock = MagicMock()
@@ -216,6 +210,6 @@ def test_handle_subprocess_output() -> None:
     sys.stdout = sys.__stdout__
 
     # Assertions for checking stdout and stderr are printed correctly
-    assert "mock_stdout" in captured_output.getvalue()
-    assert "line2" in captured_output.getvalue()
-    assert "mock_stderr" in captured_output.getvalue()
+    mock_logger.info.assert_any_call("mock_stdout")
+    mock_logger.info.assert_any_call("line2")
+    mock_logger.info.assert_any_call("mock_stderr")

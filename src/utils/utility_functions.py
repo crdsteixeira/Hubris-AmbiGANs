@@ -1,10 +1,13 @@
 """Module with project utility functions."""
 
+import argparse
+import ast
 import itertools
 import json
 import math
 import os
 import random
+import logging
 import subprocess
 from collections.abc import Iterable
 from datetime import datetime
@@ -14,8 +17,10 @@ import torch
 import torchvision.utils as vutils
 from torch import nn
 
+
 from src.models import CLTestNoiseArgs, CLTrainArgs
 
+logger = logging.getLogger(__name__)
 
 def create_checkpoint_path(config: dict, run_id: str) -> str:
     """Create a path for storing checkpoints."""
@@ -173,82 +178,6 @@ def group_images(images: torch.Tensor, classifier: nn.Module = None, device: tor
     return img
 
 
-def begin_classifier(iterator: Iterable, clf_type: str, l_epochs: list[str], args: CLTrainArgs) -> None:
-    """Run a training process for classifiers using subprocess."""
-    # Ensure nf is a list, even if a single int is provided
-    if isinstance(args.nf, int):
-        l_nf = [args.nf]
-    elif isinstance(args.nf, list):
-        l_nf = args.nf
-    else:
-        raise ValueError("Invalid type for nf: expected int or list of ints")
-
-    for neg_class, pos_class in iterator:
-        print(f"\nGenerating classifiers for {pos_class}v{neg_class} ...")
-        for nf, epochs in itertools.product(l_nf, l_epochs):
-            print("\n", clf_type, nf, epochs)
-            proc = subprocess.run(
-                [
-                    "python",
-                    "-m",
-                    "src.classifier.train",
-                    "--device",
-                    args.device,
-                    "--data-dir",
-                    args.data_dir,
-                    "--out-dir",
-                    args.out_dir,
-                    "--dataset",
-                    args.dataset,
-                    "--pos",
-                    pos_class,
-                    "--neg",
-                    neg_class,
-                    "--classifier-type",
-                    clf_type,
-                    "--nf",
-                    str(nf),
-                    "--epochs",
-                    epochs,
-                    "--batch-size",
-                    str(args.batch_size),
-                    "--lr",
-                    str(args.lr),
-                    "--seed",
-                    str(args.seed),
-                ],
-                check=False,
-                capture_output=True,
-            )
-            for line in proc.stdout.split(b"\n")[-4:-1]:
-                print(line.decode())
-
-
-def begin_ensemble(iterator: Iterable, clf_type: str, l_epochs: list[str], args: CLTrainArgs) -> None:
-    """Run an ensemble training process for classifiers using subprocess."""
-    # Set the seed if not provided
-    initialize_seed(args)
-
-    # Generate CNN configurations
-    cnn_nfs = generate_cnn_configs(args.nf)
-    print(f"\nFinal CNN list: {cnn_nfs}")
-
-    # Iterate through class pairs and start training subprocess
-    for neg_class, pos_class in iterator:
-        print(f"\nGenerating classifiers for {pos_class}v{neg_class} ...")
-        for epochs in l_epochs:
-            print("\n", clf_type, len(cnn_nfs), epochs)
-            run_training_subprocess(clf_type, epochs, args, cnn_nfs, pos_class, neg_class)
-
-
-def initialize_seed(args: CLTrainArgs) -> None:
-    """Set random seed if not provided."""
-    if args.seed is not None:
-        np.random.seed(args.seed)
-    else:
-        args.seed = np.random.randint(100000)
-
-
 def generate_cnn_configs(nf: int | list[int] | list[list[int]] | None) -> list[list[int]]:
     """Generate CNN configurations based on nf parameter."""
     cnn_nfs = []
@@ -273,35 +202,35 @@ def generate_cnn_configs(nf: int | list[int] | list[list[int]] | None) -> list[l
     return cnn_nfs
 
 
-def run_training_subprocess(
-    clf_type: str, epochs: str, args: CLTrainArgs, cnn_nfs: list[list[int]], pos_class: str, neg_class: str
-) -> None:
+def run_training_subprocess(args: CLTrainArgs, cnn_nfs: list[list[int]]) -> None:
     """Run a subprocess to train the classifier."""
     proc = subprocess.run(
         [
+            "poetry",
+            "run",
             "python",
             "-m",
             "src.classifier.train",
             "--device",
-            args.device,
+            str(args.device),
             "--data-dir",
-            args.data_dir,
+            str(args.data_dir),
             "--out-dir",
-            args.out_dir,
+            str(args.out_dir),
             "--dataset",
-            args.dataset_name,
+            str(args.dataset_name),
             "--pos",
-            pos_class,
+            str(args.pos_class),
             "--neg",
-            neg_class,
+            str(args.neg_class),
             "--classifier-type",
-            clf_type,
+            str(args.c_type),
             "--nf",
             str(cnn_nfs),
             "--name",
-            f"{clf_type.replace(':', '_')}_{args.seed}_{epochs}",
+            f"{args.c_type}_{args.seed}_{args.epochs}",
             "--epochs",
-            epochs,
+            str(args.epochs),
             "--batch-size",
             str(args.batch_size),
             "--lr",
@@ -321,7 +250,21 @@ def handle_subprocess_output(proc: subprocess.CompletedProcess) -> None:
     """Handle output from the subprocess."""
     if proc.stdout:
         for line in proc.stdout.split(b"\n"):
-            print(line.decode())
+            logger.info(line.decode())
     if proc.stderr:
         for line in proc.stderr.split(b"\n"):
-            print(line.decode())
+            logger.info(line.decode())
+
+
+def parse_nf(value: str) -> list[int] | int:
+    """Parse the value for --nf, which can be either an int or a list of ints."""
+    try:
+        # Try parsing the value as a list using ast.literal_eval
+        parsed_value = ast.literal_eval(value)
+        if isinstance(parsed_value, int):
+            return [parsed_value]
+        if isinstance(parsed_value, list) and all(isinstance(i, int) for i in parsed_value):
+            return parsed_value
+        raise ValueError
+    except (ValueError, SyntaxError) as e:
+        raise argparse.ArgumentTypeError(f"Invalid value for --nf: '{value}', must be an int or list of ints.") from e

@@ -264,7 +264,7 @@ class DatasetClasses(BaseModel):
     neg_class: int = Field(..., description="Negative class for binary classification.")
 
     @model_validator(mode="after")
-    def validate_classes_for_binary_datasets(self) -> "CLTrainArgs":
+    def validate_classes_for_binary_datasets(self) -> "DatasetClasses":
         """Validate that pos_class and neg_class are provided and valid for the dataset."""
         # If positive or negative class is specified, ensure both are given
         if self.pos_class is None or self.neg_class is None:
@@ -311,7 +311,7 @@ class CLTrainArgs(DatasetClasses):
     name: str | None = Field(default=None, description="Name of the classifier for output files")
     batch_size: int = Field(default=64, description="Batch size for training")
     c_type: ClassifierType = Field(
-        default=ClassifierType.mlp,
+        default=ClassifierType.cnn,
         description="Classifier type ('cnn', 'mlp', or 'ensemble')",
     )
     epochs: int = Field(default=2, description="Number of epochs to train for")
@@ -320,7 +320,29 @@ class CLTrainArgs(DatasetClasses):
     lr: float = Field(default=5e-4, description="Learning rate for the optimizer")
     nf: int | list[int] = Field(default=2, description="Number of filters or features in the model")
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
-    device: DeviceType = Field(DeviceType.cuda, description="Device for computation ('cpu' or 'cuda')")
+    device: DeviceType = Field(DeviceType.cpu, description="Device for computation ('cpu' or 'cuda')")
+    n_classes: int = Field(None, description="Number of classes in the dataset")
+    ensemble_type: EnsembleType | None = Field(None, description="Type of ensemble when applicable")
+    ensemble_output_method: OutputMethod | None = Field(None, description="Output method for ensemble when applicable")
+
+    @model_validator(mode="after")
+    def set_n_classes_based_on_dataset(self) -> "CLTrainArgs":
+        """Set the number of classes based on the dataset."""
+        dataset_class_mapping = {
+            DatasetNames.mnist: len(MnistClasses),
+            DatasetNames.fashion_mnist: len(MnistClasses),
+            DatasetNames.cifar10: len(Cifar10Classes),
+            DatasetNames.chest_xray: len(ChestXrayClasses)
+        }
+
+        # Set the number of classes based on the dataset provided
+        if self.dataset_name in dataset_class_mapping:
+            self.n_classes = dataset_class_mapping[self.dataset_name]
+        else:
+            raise ValueError(f"Dataset '{self.dataset_name}' is not supported.")
+        
+        return self
+
 
 
 # Mix-in model that combines both training and classifier arguments
