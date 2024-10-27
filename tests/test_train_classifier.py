@@ -110,6 +110,17 @@ def test_default_train_fn(mock_dataloader: DataLoader, mock_classifier: MockClas
 # Test for the `train` function
 def test_train(mock_dataloader: DataLoader, mock_classifier: MockClassifier, tmp_path: str) -> None:
     """Test train function to ensure the model trains correctly."""
+
+    def mock_parse_args() -> CLTrainArgs:
+        return CLTrainArgs(
+            data_dir=str(tmp_path),
+            out_dir=str(tmp_path),
+            dataset_name="mnist",
+            device=DeviceType.cpu,
+            pos_class=7,
+            neg_class=1
+        )
+    
     criterion: nn.Module = nn.BCELoss()
     acc_fun = binary_accuracy
     args_train_classifier = TrainClassifierArgs(
@@ -130,6 +141,7 @@ def test_train(mock_dataloader: DataLoader, mock_classifier: MockClassifier, tmp
         mock_dataloader,
         acc_fun,
         train_classifier_args=args_train_classifier,
+        cl_args=mock_parse_args()
     )
 
     assert isinstance(stats.train_acc, list), "Train accuracy should be a list"

@@ -38,7 +38,7 @@ from src.models import (
 logger = logging.getLogger(__name__)
 
 
-def construct_gan(config: ConfigGAN, img_size: ImageParams) -> tuple[nn.Module, nn.Module]:
+def construct_gan(config: ConfigGAN, img_size: ImageParams | tuple[int, int, int]) -> tuple[nn.Module, nn.Module]:
     """Construct generator and discriminator models based on the given configuration."""
     if config.model.loss.name != LossType.wgan:
         use_batch_norm = True

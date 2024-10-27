@@ -1,5 +1,6 @@
 import pytest
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset
@@ -15,6 +16,7 @@ from src.gan.train import (
     train
 )
 from src.models import GANTrainArgs, TrainingState, ConfigGAN, CheckpointGAN, FIDMetricsParams, GenParams, DisParams
+from src.enums import DeviceType
 from src.utils.metrics_logger import MetricsLogger
 from src.gan.loss import DiscriminatorLoss
 from src.gan.update_g import UpdateGenerator
@@ -23,11 +25,25 @@ from src.metrics.hubris import Hubris
 from src.metrics.loss_term import LossSecondTerm
 
 
+@pytest.fixture
+def fid_stats_file(tmp_path):
+    """Fixture to create a temporary FID stats file."""
+    stats_file = tmp_path / "fid_stats.npz"
+    np.savez(
+        stats_file,
+        real_sum=np.random.rand(2048),
+        real_cov_sum=np.random.rand(2048, 2048),
+        num_real_images=np.array(1000)
+    )
+    return str(stats_file)
+
+
 # Custom mock classes for metrics
 class MockFID(FID):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.finalize = MagicMock()
+        self.update = MagicMock()
 
 class MockHubris(Hubris):
     def __init__(self, *args, **kwargs):
@@ -70,7 +86,7 @@ def mock_dataset():
 
 
 @pytest.fixture
-def gan_train_args(mock_dataset):
+def gan_train_args(mock_dataset, fid_stats_file):
     """Fixture to create GANTrainArgs for testing."""
     # Create mocks for G and D
     G = create_autospec(nn.Module, instance=True)
@@ -129,9 +145,8 @@ def gan_train_args(mock_dataset):
         feature_map_fn=feature_map_fn,
         dims=2048,
         n_images=64,
-        mu_real=torch.randn(2048).numpy(),
-        sigma_real=torch.eye(2048).numpy(),
-        device="cpu"
+        device=DeviceType.cpu,
+        fid_stats_file=fid_stats_file
     )
     hubris_metric = MockHubris(C=C_mock, dataset_size=64)
     loss_second_term_metric = MockLossSecondTerm(C=MagicMock())

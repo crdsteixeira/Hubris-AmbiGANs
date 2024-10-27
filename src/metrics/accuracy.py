@@ -4,7 +4,7 @@ import torch
 
 
 def binary_accuracy(
-    y_pred: torch.Tensor, y_true: torch.Tensor, avg: bool = True, threshold: float = 0.5
+    y_pred: torch.Tensor, y_true: torch.Tensor, avg: bool = True, threshold: float | None = 0.5
 ) -> torch.Tensor:
     """Calculate binary classification accuracy."""
     correct = (y_pred > threshold) == y_true
@@ -12,7 +12,12 @@ def binary_accuracy(
     return correct.sum() if avg is False else correct.type(torch.float32).mean()
 
 
-def multiclass_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, avg: bool = True, _: None = None) -> torch.Tensor:
+def multiclass_accuracy(
+    y_pred: torch.Tensor,
+    y_true: torch.Tensor,
+    *,
+    avg: bool = True,
+) -> torch.Tensor:
     """Calculate multiclass classification accuracy."""
     pred = y_pred.max(1, keepdim=True)[1]
 

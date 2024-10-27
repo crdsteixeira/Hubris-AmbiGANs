@@ -169,10 +169,7 @@ def evaluate_and_checkpoint(
 
     if train_state.epoch == params.epochs or train_state.epoch % params.checkpoint_every == 0:
         return checkpoint_gan(
-            params.G,
-            params.D,
-            params.g_opt,
-            params.d_opt,
+            params,
             train_state,
             {"eval": eval_metrics.stats, "train": train_metrics.stats},
             config,
@@ -216,10 +213,7 @@ def train(params: GANTrainArgs, config: ConfigGAN) -> tuple[TrainingState, str |
         fake = params.G(fixed_noise).detach().cpu()
         params.G.train()
     latest_cp: str | None = checkpoint_gan(
-        G=params.G,
-        D=params.D,
-        g_opt=params.g_opt,
-        d_opt=params.d_opt,
+        params=params,
         state={},
         stats={},
         config=checkpoint_data,

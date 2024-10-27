@@ -21,14 +21,9 @@ from src.datasets.load import load_dataset
 from src.enums import DeviceType, TrainingStage
 from src.metrics.accuracy import binary_accuracy, multiclass_accuracy
 from src.models import TrainClassifierArgs  # Use the new TrainClassifierArgs model
-from src.models import (
-    CLTrainArgs,
-    EvaluateParams,
-    LoadDatasetParams,
-    TrainingStats,
-)
-from src.utils.utility_functions import setup_reprod
+from src.models import CLTrainArgs, EvaluateParams, LoadDatasetParams, TrainingStats
 from src.utils.checkpoint import checkpoint, construct_classifier_from_checkpoint
+from src.utils.utility_functions import setup_reprod
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +121,7 @@ def train(
     val_loader: DataLoader,
     acc_fun: Any,
     train_classifier_args: TrainClassifierArgs,
+    cl_args: CLTrainArgs,
 ) -> tuple[TrainingStats, str]:
     """Training loop with validation and checkpointing."""
     stats = TrainingStats()
@@ -145,6 +141,7 @@ def train(
         ),
         train_classifier_args,
         stats,
+        args=cl_args,
         output_dir=train_classifier_args.out_dir,
     )
     for stage in [TrainingStage.train, TrainingStage.optimize]:
@@ -174,7 +171,14 @@ def train(
             logger.info(f"{stage.value.capitalize()}: Accuracy: {val_acc}")
             # Early stopping and checkpointing logic
             cp_path = handle_checkpointing(
-                C, val_loss, stats, epoch, train_classifier_args, train_classifier_args.out_dir, cp_path
+                C,
+                val_loss,
+                stats,
+                epoch,
+                train_classifier_args,
+                train_classifier_args.out_dir,
+                cp_path,
+                cl_args=cl_args,
             )
             if stats.early_stop_tracker == train_classifier_args.early_stop:
                 break
@@ -245,6 +249,7 @@ def handle_checkpointing(
     args: TrainClassifierArgs,
     out_dir: str,
     cp_path: str,
+    cl_args: CLTrainArgs,
 ) -> str:
     """Handle checkpointing and early stopping."""
     if val_loss < stats.best_loss:
@@ -252,7 +257,9 @@ def handle_checkpointing(
         stats.best_epoch = epoch
         stats.early_stop_tracker = 0
 
-        cp_path = checkpoint(C, f"{args.type}-{args.nf}-{args.epochs}.{args.seed}", args, stats, output_dir=out_dir)
+        cp_path = checkpoint(
+            C, f"{args.type}-{args.nf}-{args.epochs}.{args.seed}", args, stats, args=cl_args, output_dir=out_dir
+        )
         logger.info(f" > Saved checkpoint to {cp_path}")
     else:
         if args.early_stop is not None:
@@ -437,6 +444,7 @@ def main() -> None:
         val_loader,
         acc_fun,
         train_classifier_args=args_train_classifier,  # Use unified TrainClassifierArgs
+        cl_args=args,
     )
 
     # Load the best model checkpoint
@@ -474,6 +482,7 @@ def main() -> None:
         ),
         args_train_classifier,
         stats,
+        args=args,
         output_dir=args_train_classifier.out_dir,
     )
 
