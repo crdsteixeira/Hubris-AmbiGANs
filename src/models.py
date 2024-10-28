@@ -21,7 +21,7 @@ from src.enums import (
     OutputMethod,
     TrainingStage,
 )
-from src.gan.loss import DiscriminatorLoss
+from src.gan.loss import DiscriminatorLoss, GeneratorLoss
 from src.gan.update_g import UpdateGenerator
 from src.metrics.fid.fid import FID
 from src.metrics.hubris import Hubris
@@ -486,6 +486,7 @@ class ConfigStep1(BaseModel):
     checkpoint_every: int | None = Field(None, description="Frequency of checkpointing during training.")
     batch_size: int | None = Field(None, description="Batch size for training.")
     disc_iters: int | None = Field(None, description="Number of discriminator iterations per generator iteration.")
+    early_stop: tuple[str, int] | None = Field(None, description="Early stop criteria for GAN training")
 
 
 class ConfigKLDiv(BaseModel):
@@ -532,6 +533,7 @@ class ConfigStep2(BaseModel):
     disc_iters: int | None = Field(None, description="Number of discriminator iterations per generator iteration.")
     classifier: list[str] = Field(..., description="Paths to classifier checkpoints.")
     weight: list[ConfigWeights] = Field(..., description="Weights for step-2 training.")
+    step_1_epochs: list[int] | None = Field(None, description="GAN's to use")
 
     @field_validator("classifier", mode="before")
     @classmethod
@@ -617,6 +619,7 @@ class GANTrainArgs(TrainArgsBase):
 
     G: nn.Module
     g_opt: optim.Optimizer
+    g_crit: GeneratorLoss | None = None
     g_updater: UpdateGenerator
     D: nn.Module
     d_opt: optim.Optimizer
@@ -632,6 +635,27 @@ class GANTrainArgs(TrainArgsBase):
     c_out_hist: Any | None = None
     classifier: nn.Module | None = None
     dataset: Dataset
+
+
+class Step1TrainingArgs(GANTrainArgs):
+    """Extra arguments for step1 of GAN Training."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    img_size: ImageParams
+    run_id: int
+    test_noise_conf: dict
+
+class Step2TrainingArgs(GANTrainArgs):
+    """Extra arguments for step2 of GAN Training."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    s1_epoch: str
+    c_name: str
+    gan_path: str
+    weight: tuple[str, UpdateGenerator]
+    run_id: int
+
 
 
 class TrainingState(BaseModel):

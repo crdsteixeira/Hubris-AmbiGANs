@@ -18,7 +18,7 @@ class FID(Metric):
 
     def __init__(
         self,
-        fid_stats_file: str,
+        fid_stats_file: str | None,
         dims: int,
         n_images: int,
         device: DeviceType = DeviceType.cpu,
@@ -26,20 +26,21 @@ class FID(Metric):
     ) -> None:
         """Initialize the FID metric with necessary parameters for calculation."""
         super().__init__()
-        try:
-            self.data = np.load(fid_stats_file)
-        except FileNotFoundError as e:
-            logger.error(f"Failed to load FID stats from {fid_stats_file} with {e}")
-            raise FileNotFoundError(e) from e
         self.dims: int = dims
         self.n_images: int = n_images
         self.pred_arr: np.ndarray = np.empty((n_images, dims))
         self.cur_idx: int = 0
         self.device: DeviceType = device
         self.fid = FrechetInceptionDistance(model=feature_map_fn, feature_dim=self.dims, device=self.device)
-        self.fid.real_sum = torch.tensor(self.data["real_sum"]).to(self.device).float()
-        self.fid.real_cov_sum = torch.tensor(self.data["real_cov_sum"]).to(self.device).float()
-        self.fid.num_real_images = torch.tensor(self.data["num_real_images"]).to(self.device).int()
+        if fid_stats_file is not None:
+            try:
+                self.data = np.load(fid_stats_file)
+            except FileNotFoundError as e:
+                logger.error(f"Failed to load FID stats from {fid_stats_file} with {e}")
+                raise FileNotFoundError(e) from e
+            self.fid.real_sum = torch.tensor(self.data["real_sum"]).to(self.device).float()
+            self.fid.real_cov_sum = torch.tensor(self.data["real_cov_sum"]).to(self.device).float()
+            self.fid.num_real_images = torch.tensor(self.data["num_real_images"]).to(self.device).int()
 
     def update(self, images: torch.Tensor, _: tuple[int, int]) -> None:
         """Update the FID metric with a new batch of generated images."""

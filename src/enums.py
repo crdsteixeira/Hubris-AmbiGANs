@@ -61,7 +61,7 @@ class DatasetNames(str, Enum):
         return True
 
 
-class MnistClasses(Enum):
+class MnistClasses(int, Enum):
     """Valid classes for MNIST and Fashion-MNIST datasets."""
 
     ZERO = 0
@@ -76,7 +76,7 @@ class MnistClasses(Enum):
     NINE = 9
 
 
-class Cifar10Classes(Enum):
+class Cifar10Classes(int, Enum):
     """Valid classes for CIFAR-10 dataset."""
 
     AIRPLANE = 0
@@ -91,14 +91,14 @@ class Cifar10Classes(Enum):
     TRUCK = 9
 
 
-class ChestXrayClasses(Enum):
+class ChestXrayClasses(int, Enum):
     """Valid classes for Chest-Xray dataset."""
 
     PNEUMONIA = 0
     NORMAL = 1
 
 
-class ArchitectureType(Enum):
+class ArchitectureType(str, Enum):
     """Valid names for Architecture types."""
 
     dcgan = "dcgan"
@@ -106,8 +106,17 @@ class ArchitectureType(Enum):
     dcgan_deprecated = "dcgan_deprecated"
 
 
-class LossType(Enum):
+class LossType(str, Enum):
     """Valid names for Loss types."""
 
     ns = "ns"
     wgan = "wgan-gp"
+
+class WeightType(str, Enum):
+    """Valid weight names"""
+
+    kldiv = "kldiv"
+    gaussian = "gaussian"
+    gaussian_v2 = "gaussian_v2"
+    cd = "cd"
+    mgda = "mgda"

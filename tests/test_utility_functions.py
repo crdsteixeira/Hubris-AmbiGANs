@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+from argparse import ArgumentTypeError
 from io import StringIO
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -10,8 +11,19 @@ import numpy as np
 import pytest
 import torch
 
-from src.models import CLTrainArgs, CLTestNoiseArgs
+from src.gan.update_g import UpdateGenerator
+from src.models import (
+    CLTestNoiseArgs,
+    CLTrainArgs,
+    ConfigCD,
+    ConfigGaussian,
+    ConfigKLDiv,
+    ConfigOptimizer,
+    ConfigWeights,
+)
 from src.utils.utility_functions import (
+    construct_optimizers,
+    construct_weights,
     create_and_store_z,
     create_checkpoint_path,
     create_exp_path,
@@ -21,6 +33,7 @@ from src.utils.utility_functions import (
     handle_subprocess_output,
     load_z,
     make_grid,
+    parse_nf,
     run_training_subprocess,
     seed_worker,
     set_seed,
@@ -112,11 +125,7 @@ def test_create_and_store_z(mock_savez, mock_makedirs):
     out_dir = "mock_out"
     n, dim = 5, 100
     with patch("builtins.open", mock_open()) as mock_file:
-        z, path = create_and_store_z(CLTestNoiseArgs(
-            out_dir=out_dir,
-            nz=n,
-            z_dim=dim
-        ))
+        z, path = create_and_store_z(CLTestNoiseArgs(out_dir=out_dir, nz=n, z_dim=dim))
 
         assert isinstance(z, torch.Tensor)
         assert z.shape == (n, dim)
@@ -167,7 +176,6 @@ def test_group_images() -> None:
     classifier.assert_called()
 
 
-
 def test_generate_cnn_configs() -> None:
     """Test generating CNN configurations."""
     configs = generate_cnn_configs(3)
@@ -186,7 +194,8 @@ def test_run_training_subprocess(mock_run, mock_args) -> None:
             c_type="cnn",
             epochs="10",
             args=mock_args,
-        ), cnn_nfs=[[2, 3], [3, 4]],
+        ),
+        cnn_nfs=[[2, 3], [3, 4]],
     )
     mock_run.assert_called_once()
 
@@ -213,3 +222,51 @@ def test_handle_subprocess_output(mock_logger) -> None:
     mock_logger.info.assert_any_call("mock_stdout")
     mock_logger.info.assert_any_call("line2")
     mock_logger.info.assert_any_call("mock_stderr")
+
+
+def test_parse_nf() -> None:
+    """Test parsing the --nf argument as int or list of ints."""
+    parsed_value = parse_nf("[2, 4, 8]")
+    assert parsed_value == [2, 4, 8]
+    parsed_value = parse_nf("5")
+    assert parsed_value == [5]
+    with pytest.raises(ArgumentTypeError):
+        parse_nf("invalid")
+
+
+def test_construct_weights() -> None:
+    """Test constructing weights based on configuration."""
+    mock_classifier = MagicMock()
+    mock_g_crit = MagicMock()
+
+    # Use actual model instances instead of MagicMock
+    weight = [
+        ConfigWeights(
+            kldiv=ConfigKLDiv(alpha=[0.1, 0.5]),
+            gaussian=[ConfigGaussian(alpha=0.2, var=0.5)],
+            cd=ConfigCD(alpha=[0.3]),
+        )
+    ]
+
+    weights = construct_weights(mock_classifier, weight, mock_g_crit)
+
+    assert len(weights) > 0
+    assert all(isinstance(w, tuple) for w in weights)
+    assert all(isinstance(w[1], UpdateGenerator) for w in weights)
+
+
+def test_construct_optimizers() -> None:
+    """Test constructing optimizers for G and D."""
+    # Create a mock model with parameters
+    G = MagicMock()
+    D = MagicMock()
+
+    # Mock the return value of the parameters method to return a list of tensors
+    G.parameters.return_value = [torch.nn.Parameter(torch.randn(2, 2))]
+    D.parameters.return_value = [torch.nn.Parameter(torch.randn(2, 2))]
+
+    config = ConfigOptimizer(lr=0.001, beta1=0.5, beta2=0.999)
+    g_optim, d_optim = construct_optimizers(config, G, D)
+
+    assert isinstance(g_optim, torch.optim.Adam)
+    assert isinstance(d_optim, torch.optim.Adam)

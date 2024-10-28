@@ -2,14 +2,12 @@
 
 import argparse
 import ast
-import itertools
 import json
+import logging
 import math
 import os
 import random
-import logging
 import subprocess
-from collections.abc import Iterable
 from datetime import datetime
 
 import numpy as np
@@ -17,10 +15,20 @@ import torch
 import torchvision.utils as vutils
 from torch import nn
 
-
-from src.models import CLTestNoiseArgs, CLTrainArgs
+from src.enums import WeightType
+from src.gan.loss import GeneratorLoss
+from src.gan.update_g import (
+    UpdateGenerator,
+    UpdateGeneratorAmbiGanGaussian,
+    UpdateGeneratorAmbiGanGaussianIdentity,
+    UpdateGeneratorAmbiGanKLDiv,
+    UpdateGeneratorGASTEN,
+    UpdateGeneratorGastenMgda,
+)
+from src.models import CLTestNoiseArgs, CLTrainArgs, ConfigOptimizer, ConfigWeights
 
 logger = logging.getLogger(__name__)
+
 
 def create_checkpoint_path(config: dict, run_id: str) -> str:
     """Create a path for storing checkpoints."""
@@ -268,3 +276,66 @@ def parse_nf(value: str) -> list[int] | int:
         raise ValueError
     except (ValueError, SyntaxError) as e:
         raise argparse.ArgumentTypeError(f"Invalid value for --nf: '{value}', must be an int or list of ints.") from e
+
+
+def construct_weights(
+    classifier: nn.Module, weight_list: list[ConfigWeights], g_crit: GeneratorLoss
+) -> list[tuple[str, UpdateGenerator]]:
+    """Construct list of weights from config."""
+    weights: list[tuple[str, UpdateGenerator]] = []
+    for weight in weight_list:
+        if weight is None:
+            continue
+        for key, value in weight.__dict__.items():
+            if value is None:
+                continue
+            key_enum = WeightType[key]  # Convert the key from the dictionary to a WeightType enum
+            match key_enum:
+                case WeightType.kldiv:
+                    weights.extend(
+                        (f"{key}_{alpha}", UpdateGeneratorAmbiGanKLDiv(g_crit, classifier, alpha))
+                        for alpha in value.alpha
+                    )
+                case WeightType.gaussian:
+                    weights.extend(
+                        (f"{key}_{w.alpha}_{w.var}", UpdateGeneratorAmbiGanGaussian(g_crit, classifier, w.alpha, w.var))
+                        for w in value
+                    )
+                case WeightType.gaussian_v2:
+                    weights.extend(
+                        (
+                            f"{key}_{w.alpha}_{w.var}",
+                            UpdateGeneratorAmbiGanGaussianIdentity(g_crit, classifier, w.alpha, w.var),
+                        )
+                        for w in value
+                    )
+                case WeightType.cd:
+                    weights.extend((f"{key}_{w}", UpdateGeneratorGASTEN(g_crit, classifier, w)) for w in value)
+                case WeightType.mgda:
+                    weights.extend(
+                        (f"{key}_{w}", UpdateGeneratorGastenMgda(g_crit, classifier, normalize=w)) for w in value
+                    )
+                case _:
+                    logger.error(f"Invalid weight specified {key}")
+                    raise NotImplementedError
+
+    return weights
+
+
+def construct_optimizers(
+    config: ConfigOptimizer, G: nn.Module, D: nn.Module
+) -> tuple[torch.optim.Adam, torch.optim.Adam]:
+    """Cunstruct optimizers for GAN."""
+    g_optim = torch.optim.Adam(G.parameters(), lr=config.lr, betas=(config.beta1, config.beta2))
+    d_optim = torch.optim.Adam(D.parameters(), lr=config.lr, betas=(config.beta1, config.beta2))
+    return g_optim, d_optim
+
+
+def get_epoch_from_state(s1_epoch: int | str, step_1_train_state: dict) -> int | str:
+    """Returns the appropriate epoch based on the input value."""
+    if s1_epoch == "best":
+        return step_1_train_state["best_epoch"]
+    elif s1_epoch == "last":
+        return step_1_train_state["epoch"]
+    else:
+        return s1_epoch

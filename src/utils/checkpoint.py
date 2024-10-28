@@ -17,6 +17,7 @@ from src.models import (
     GANTrainArgs,
     TrainClassifierArgs,
     TrainingStats,
+    TrainingState
 )
 
 logger = logging.getLogger(__name__)
@@ -137,7 +138,7 @@ def construct_gan_from_checkpoint(
     return G, D, g_optim, d_optim
 
 
-def get_gan_path_at_epoch(output_dir: str, epoch: int | None = None) -> str:
+def get_gan_path_at_epoch(output_dir: str, epoch: int | str | None = None) -> str:
     """Get the file path for GAN checkpoints at a given epoch."""
     path = output_dir
     if epoch is not None:
@@ -145,12 +146,13 @@ def get_gan_path_at_epoch(output_dir: str, epoch: int | None = None) -> str:
     return path
 
 
-def load_gan_train_state(gan_path: str) -> dict:
+def load_gan_train_state(gan_path: str) -> TrainingState:
     """Load GAN training state from a saved file."""
     path = os.path.join(gan_path, "train_state.json")
 
     with open(path, encoding="utf-8") as in_f:
         train_state = json.load(in_f)
+        train_state = TrainingState(**train_state)
 
     return train_state
 
@@ -184,7 +186,7 @@ def checkpoint_gan(
     with open(os.path.join(path, "stats.json"), "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2)
     with open(os.path.join(path, "config.json"), "w", encoding="utf-8") as f:
-        json.dump(config.__dict__, f, indent=2)
+        json.dump(config.model_dump(), f, indent=2)
 
     logger.info(f"> Saved checkpoint checkpoint to {path}")
 
