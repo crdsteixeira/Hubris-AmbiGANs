@@ -154,3 +154,4 @@ poetry.lock
 # test data
 checkpoints/
 mock_data/
+mock_dir/
