@@ -8,6 +8,7 @@ on:
 
 env:
   FILESDIR: ${{ vars.FILESDIR }}
+  ENTITY: ${{ vars.ENTITY }}
 
 jobs:
   pre-commit:
