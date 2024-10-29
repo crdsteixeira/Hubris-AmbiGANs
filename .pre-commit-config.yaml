@@ -2,7 +2,7 @@ default_language_version:
   python: python3.10
 
 
-exclude: 'src/gan/architectures/deprecated/.*|.*_deprecated.*\.py$'
+exclude: 'src/gan/architectures/deprecated/.*|.*_deprecated.*\.py|tests/.*$'
 
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
@@ -21,7 +21,7 @@ repos:
         -   'main'
 
 -   repo: https://gitlab.com/vojko.pribudic.foss/pre-commit-update
-    rev: v0.6.0
+    rev: v0.6.0post1
     hooks:
     -   id: pre-commit-update
 
@@ -93,4 +93,4 @@ repos:
         args: [--disallow-untyped-defs, --disallow-incomplete-defs, --disallow-untyped-calls,
           --follow-imports, 'normal']
         additional_dependencies: [types-python-dateutil, types-requests, types-toml,
-          types-pytz, types-PyYAML]
+          types-pytz, types-PyYAML, wandb]
