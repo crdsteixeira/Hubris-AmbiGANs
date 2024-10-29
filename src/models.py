@@ -303,14 +303,9 @@ class DatasetClasses(BaseModel):
         return self
 
 
-class CLTrainArgs(DatasetClasses):
-    """Pydantic model for parsing and validating command-line training arguments."""
+class ClassifierClasses(BaseModel):
+    """Pydantic model for classifer definition."""
 
-    data_dir: str = Field(default=f"{os.environ['FILESDIR']}/data", description="Path to dataset")
-    out_dir: str = Field(
-        default=f"{os.environ['FILESDIR']}/models",
-        description="Path to generated files",
-    )
     name: str | None = Field(default=None, description="Name of the classifier for output files")
     batch_size: int = Field(default=64, description="Batch size for training")
     c_type: ClassifierType = Field(
@@ -323,10 +318,20 @@ class CLTrainArgs(DatasetClasses):
     lr: float = Field(default=5e-4, description="Learning rate for the optimizer")
     nf: int | list[int] = Field(default=2, description="Number of filters or features in the model")
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
-    device: DeviceType = Field(DeviceType.cpu, description="Device for computation ('cpu' or 'cuda')")
-    n_classes: int = Field(None, description="Number of classes in the dataset")
     ensemble_type: EnsembleType | None = Field(None, description="Type of ensemble when applicable")
     ensemble_output_method: OutputMethod | None = Field(None, description="Output method for ensemble when applicable")
+
+
+class CLTrainArgs(DatasetClasses, ClassifierClasses):
+    """Pydantic model for parsing and validating command-line training arguments."""
+
+    data_dir: str = Field(default=f"{os.environ['FILESDIR']}/data", description="Path to dataset")
+    out_dir: str = Field(
+        default=f"{os.environ['FILESDIR']}/models",
+        description="Path to generated files",
+    )
+    device: DeviceType = Field(DeviceType.cpu, description="Device for computation ('cpu' or 'cuda')")
+    n_classes: int = Field(None, description="Number of classes in the dataset")
 
     @model_validator(mode="after")
     def set_n_classes_based_on_dataset(self) -> "CLTrainArgs":
@@ -535,7 +540,7 @@ class ConfigStep2(BaseModel):
     disc_iters: int | None = Field(None, description="Number of discriminator iterations per generator iteration.")
     classifier: list[str] = Field(..., description="Paths to classifier checkpoints.")
     weight: list[ConfigWeights] = Field(..., description="Weights for step-2 training.")
-    step_1_epochs: list[int] | None = Field(None, description="GAN's to use")
+    step_1_epochs: list[int | str] | None = Field(None, description="GAN's to use")
 
     @field_validator("classifier", mode="before")
     @classmethod
@@ -563,9 +568,9 @@ class ConfigGAN(BaseModel):
     name: str = Field(..., description="Run name.")
     out_dir: str = Field(..., description="Path to output directory.")
     data_dir: str = Field(..., description="Path to data directory.")
-    fid_stats_path: str = Field(..., description="Path to FID statistics file.")
+    fid_stats_path: str | None = Field(None, description="Path to FID statistics file.")
     fixed_noise: str | int = Field(..., description="Path to fixed noise or number of fixed samples.")
-    test_noise: str = Field(..., description="Path to test noise file.")
+    test_noise: str | None = Field(None, description="Path to test noise file.")
     compute_fid: bool | None = Field(None, description="Flag to compute FID score.")
     device: DeviceType = Field(DeviceType.cuda, description="Device to use, e.g., cpu or cuda.")
     num_workers: int = Field(0, description="Number of workers for data loading.")
@@ -639,25 +644,41 @@ class GANTrainArgs(TrainArgsBase):
     dataset: Dataset
 
 
-class Step1TrainingArgs(GANTrainArgs):
+class Step1TrainingArgs(BaseModel):
     """Extra arguments for step1 of GAN Training."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
     img_size: ImageParams
-    run_id: int
+    run_id: str
     test_noise_conf: dict
+    seed: int
+    fid_metrics: FIDMetricsParams
+    checkpoint_dir: str | None = None
+    dataset: Dataset
+    fixed_noise: Tensor | None = None
+    test_noise: Tensor
 
 
-class Step2TrainingArgs(GANTrainArgs):
+class Step2TrainingArgs(BaseModel):
     """Extra arguments for step2 of GAN Training."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    s1_epoch: str
-    c_name: str
-    gan_path: str
-    weight: tuple[str, UpdateGenerator]
-    run_id: int
+    s1_epoch: str | None = None
+    c_name: str | None = None
+    gan_path: str | None = None
+    weight: tuple[str, UpdateGenerator] | None = None
+    run_id: str
+    seed: int
+    dataset: Dataset
+    checkpoint_dir: str | None = None
+    fixed_noise: Tensor | None = None
+    test_noise: Tensor
+    fid_metrics: FIDMetricsParams | None = None
+    early_stop: tuple[str, int] | None = None
+    classifier: nn.Module | None = None
+    g_crit: GeneratorLoss | None = None
 
 
 class TrainingState(BaseModel):
@@ -748,4 +769,4 @@ class ConfigMain(ConfigGAN):
     gen_test_noise: bool = Field(..., description="Generate test noise files.")
     gen_classifiers: bool = Field(..., description="Generate classifiers models.")
     gen_gan: bool = Field(..., description="Generate and train AmbiGAN model.")
-    classifiers: list[CLTrainArgs] | None = Field(None, description="List of classifiers to generate.")
+    classifiers: list[ClassifierClasses] | None = Field(None, description="List of classifiers to generate.")

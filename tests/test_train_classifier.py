@@ -40,7 +40,7 @@ class MockClassifier(nn.Module):
         x = x.view(x.size(0), -1)
         output: torch.Tensor = torch.sigmoid(self.linear(x)).view(-1, 1)
         if output_feature_maps:
-            return [output, output]
+            return output, [output]
         return output
 
     @property
@@ -92,7 +92,7 @@ def test_default_train_fn(mock_dataloader: DataLoader, mock_classifier: MockClas
     )
 
     for X, Y in mock_dataloader:
-        loss, acc = default_train_fn(mock_classifier, X, Y, criterion, acc_fun, args_train_classifier)
+        loss, acc = default_train_fn(mock_classifier, X, Y, criterion, acc_fun, 1.0, args_train_classifier)
         assert loss.requires_grad, "Loss should require gradients"
         assert isinstance(acc, torch.Tensor), "Accuracy should be a Tensor (torch.float)"
 

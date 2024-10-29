@@ -112,7 +112,11 @@ def main() -> None:
 
     # Save FID statistics
     os.makedirs(os.path.join(config.dataroot, "fid-stats"), exist_ok=True)
-    stats_filename = os.path.join(config.dataroot, "fid-stats", f'{config.name or f"stats.{config.dataset_name}"}')
+    stats_filename = os.path.join(
+        config.dataroot,
+        "fid-stats",
+        f'{config.name or f"stats.{config.dataset_name}.{config.pos_class}v{config.neg_class}"}',
+    )
     with open(f"{stats_filename}.npz", "wb") as f:
         np.savez(
             f,

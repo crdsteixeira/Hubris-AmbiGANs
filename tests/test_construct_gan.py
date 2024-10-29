@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from torch import nn
 
 from src.enums import ArchitectureType, DeviceType, LossType
-from src.gan.construct_gan import construct_gan, construct_loss
+from src.gan.construct_gan import construct_gan, construct_generator_loss, construct_discriminator_loss
 from src.gan.loss import DiscriminatorLoss, GeneratorLoss
 from src.models import (
     ConfigArchitecture,
@@ -84,7 +84,7 @@ def image_params() -> ImageParams:
 
 def test_construct_gan_dcgan(gan_config_dcgan: ConfigGAN, image_params: ImageParams) -> None:
     """Test constructing DCGAN Generator and Discriminator."""
-    G, D = construct_gan(gan_config_dcgan, image_params.image_size)
+    G, D = construct_gan(gan_config_dcgan, image_params)
     assert isinstance(G, nn.Module), "Generator is not an instance of nn.Module"
     assert isinstance(D, nn.Module), "Discriminator is not an instance of nn.Module"
 
@@ -92,7 +92,7 @@ def test_construct_gan_dcgan(gan_config_dcgan: ConfigGAN, image_params: ImagePar
 def test_construct_gan_deprecated_architecture(gan_config_dcgan: ConfigGAN, image_params: ImageParams) -> None:
     """Test constructing deprecated DCGAN architecture."""
     gan_config_dcgan.model.architecture.name = ArchitectureType.dcgan_deprecated
-    G, D = construct_gan(gan_config_dcgan, image_params.image_size)
+    G, D = construct_gan(gan_config_dcgan, image_params)
     assert isinstance(G, nn.Module), "Generator is not an instance of nn.Module for deprecated DCGAN"
     assert isinstance(D, nn.Module), "Discriminator is not an instance of nn.Module for deprecated DCGAN"
 
@@ -100,7 +100,7 @@ def test_construct_gan_deprecated_architecture(gan_config_dcgan: ConfigGAN, imag
 def test_construct_gan_resnet_deprecated(gan_config_dcgan: ConfigGAN, image_params: ImageParams) -> None:
     """Test constructing deprecated ResNet architecture."""
     gan_config_dcgan.model.architecture.name = ArchitectureType.resnet_deprecated
-    G, D = construct_gan(gan_config_dcgan, image_params.image_size)
+    G, D = construct_gan(gan_config_dcgan, image_params)
     assert isinstance(G, nn.Module), "Generator is not an instance of nn.Module for ResNet"
     assert isinstance(D, nn.Module), "Discriminator is not an instance of nn.Module for ResNet"
 
@@ -120,7 +120,8 @@ def wgan_loss_config() -> ConfigLossWG:
 def test_construct_loss_ns(ns_loss_config: ConfigLoss) -> None:
     """Test constructing non-saturating loss functions."""
     D = MagicMock(spec=nn.Module)
-    g_loss, d_loss = construct_loss(ns_loss_config, D)
+    d_loss = construct_discriminator_loss(ns_loss_config, D)
+    g_loss = construct_generator_loss(ns_loss_config)
     assert isinstance(g_loss, GeneratorLoss), "Generator loss is not an instance of GeneratorLoss for NS loss"
     assert isinstance(
         d_loss, DiscriminatorLoss
@@ -130,7 +131,8 @@ def test_construct_loss_ns(ns_loss_config: ConfigLoss) -> None:
 def test_construct_loss_wgan(wgan_loss_config: ConfigLossWG) -> None:
     """Test constructing WGAN loss functions."""
     D = MagicMock(spec=nn.Module)
-    g_loss, d_loss = construct_loss(wgan_loss_config, D)
+    d_loss = construct_discriminator_loss(wgan_loss_config, D)
+    g_loss = construct_generator_loss(wgan_loss_config)
     assert isinstance(g_loss, GeneratorLoss), "Generator loss is not an instance of GeneratorLoss for WGAN loss"
     assert isinstance(
         d_loss, DiscriminatorLoss
@@ -141,7 +143,8 @@ def test_construct_loss_invalid() -> None:
     """Test constructing loss with an invalid loss type."""
     D = MagicMock(spec=nn.Module)
     with pytest.raises(ValidationError, match=r".*validation error for ConfigLoss.*"):
-        construct_loss(ConfigLoss(name="invalid_loss"), D)
+        construct_discriminator_loss(ConfigLoss(name="invalid_loss"), D)
+        construct_generator_loss(ConfigLoss(name="invalid_loss"))
 
 
 def test_construct_gan_invalid_architecture(gan_config_dcgan: ConfigGAN, image_params: ImageParams) -> None:

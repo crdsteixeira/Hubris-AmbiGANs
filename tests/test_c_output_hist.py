@@ -63,7 +63,7 @@ def test_update(mock_hubris_update: MagicMock, outputs_histogram: OutputsHistogr
 
     # Mock behavior for C.get()
     mock_y_hat = torch.randn(10).float()
-    mock_y_preds = [[torch.randn(10).float(), torch.randn(10).float()], mock_y_hat]
+    mock_y_preds = [torch.randn(10, 2).float()]
     outputs_histogram.C.get = MagicMock(return_value=(mock_y_hat, mock_y_preds))
 
     # Call the update function
@@ -81,7 +81,7 @@ def test_update(mock_hubris_update: MagicMock, outputs_histogram: OutputsHistogr
     # Check the updated y_preds values with close approximation
     for i in range(outputs_histogram.output_clfs):
         assert torch.allclose(
-            outputs_histogram.y_preds[i, 0:10].float(), mock_y_preds[0][i], atol=1e-5
+            outputs_histogram.y_preds[i, 0:10].float(), mock_y_preds[-1][:, i], atol=1e-5
         ), f"y_preds values for classifier {i} do not match."
 
 

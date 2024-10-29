@@ -44,7 +44,7 @@ from src.utils.utility_functions import (
 @pytest.fixture
 def mock_config() -> dict:
     """Fixture to provide a mock configuration dictionary."""
-    return {"out-dir": "mock_out", "project": "test_project", "name": "test_run"}
+    return {"out_dir": "mock_out", "project": "test_project", "name": "test_run"}
 
 
 @pytest.fixture
@@ -130,7 +130,7 @@ def test_create_and_store_z(mock_savez: MagicMock, mock_makedirs: MagicMock) -> 
         assert isinstance(z, torch.Tensor)
         assert z.shape == (n, dim)
         mock_makedirs.assert_called_once_with(path, exist_ok=True)
-        mock_file.assert_any_call(os.path.join(path, "z.npy"), "wb", encoding="utf-8")
+        mock_file.assert_any_call(os.path.join(path, "z.npy"), "wb")
         mock_savez.assert_called_once()
 
 
@@ -156,7 +156,7 @@ def test_load_z() -> None:
 
         # Ensure files were opened correctly
         mock_file.assert_called_once_with(os.path.join("mock_path", "z.json"), encoding="utf-8")
-        mock_np_load.assert_called_once_with(os.path.join("mock_path", "z.npy"), encoding="utf-8")
+        mock_np_load.assert_called_once_with(os.path.join("mock_path", "z.npy"), encoding="bytes")
 
 
 def test_make_grid() -> None:

@@ -57,8 +57,8 @@ def evaluate(
                     accuracies.append(acc_fun(y_hat, y, avg=True).cpu())
             else:
                 y_total = C(X, output_feature_maps=True)
-                y_hat = y_total[-1]
-                y_c_hat = y_total[0]
+                y_hat = y_total[0]
+                y_c_hat = y_total[-1][-1]  # Get features before last layer
 
                 loss = criterion(y_hat, y)
 
@@ -87,6 +87,7 @@ def default_train_fn(
     Y: Tensor,
     crit: Callable,
     acc_fun: Callable,
+    _: float,
     params: TrainClassifierArgs,
 ) -> tuple[Tensor, Tensor]:
     """Train a single batch with the default method."""
@@ -125,15 +126,19 @@ def train(
     opt = optim.Adam(C.parameters(), lr=train_classifier_args.lr)
     C.train()
     cp_path = checkpoint(
-        C,
-        (
-            f"{train_classifier_args.type}-"
-            f"{train_classifier_args.nf}-"
-            f"{train_classifier_args.epochs}."
-            f"{train_classifier_args.seed}"
+        model=C,
+        model_name=(
+            (
+                f"{train_classifier_args.type}-"
+                f"{train_classifier_args.nf}-"
+                f"{train_classifier_args.epochs}."
+                f"{train_classifier_args.seed}"
+            )
+            if cl_args.name is None
+            else cl_args.name
         ),
-        train_classifier_args,
-        stats,
+        model_params=train_classifier_args,
+        train_stats=stats,
         args=cl_args,
         output_dir=train_classifier_args.out_dir,
     )
@@ -164,13 +169,13 @@ def train(
             logger.info(f"{stage.value.capitalize()}: Accuracy: {val_acc}")
             # Early stopping and checkpointing logic
             cp_path = handle_checkpointing(
-                C,
-                val_loss,
-                stats,
-                epoch,
-                train_classifier_args,
-                train_classifier_args.out_dir,
-                cp_path,
+                C=C,
+                val_loss=val_loss,
+                stats=stats,
+                epoch=epoch,
+                args=train_classifier_args,
+                out_dir=train_classifier_args.out_dir,
+                cp_path=cp_path,
                 cl_args=cl_args,
             )
             if stats.early_stop_tracker == train_classifier_args.early_stop:
@@ -209,11 +214,11 @@ def execute_epoch(
         y = y.to(params.device.value)
 
         opt.zero_grad()
-        loss, acc = C_fn(C, X, y, crit, acc_fun, params)
+        loss, acc = C_fn(C, X, y, crit, acc_fun, params.early_acc, params)
         opt.step()
 
-        running_accuracy += acc
-        running_loss += loss.item() * X.shape[0]
+        running_accuracy += acc.cpu()
+        running_loss += loss.cpu() * X.shape[0]
 
     train_loss = running_loss / len(loader.dataset)
     train_acc = running_accuracy / len(loader.dataset)
@@ -251,7 +256,12 @@ def handle_checkpointing(
         stats.early_stop_tracker = 0
 
         cp_path = checkpoint(
-            C, f"{args.type}-{args.nf}-{args.epochs}.{args.seed}", args, stats, args=cl_args, output_dir=out_dir
+            model=C,
+            model_name=f"{args.type}-{args.nf}-{args.epochs}.{args.seed}" if cl_args.name is None else cl_args.name,
+            model_params=args,
+            train_stats=stats,
+            args=cl_args,
+            output_dir=out_dir,
         )
         logger.info(f" > Saved checkpoint to {cp_path}")
     else:

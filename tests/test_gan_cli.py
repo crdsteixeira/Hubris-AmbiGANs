@@ -9,7 +9,7 @@ from torchvision.datasets import FakeData
 from torchvision.transforms import ToTensor
 
 from src.gan.gan_cli import parse_args, train_step1_gan, train_step2_gan
-from src.gan.loss import DiscriminatorLoss
+from src.gan.loss import GeneratorLoss
 from src.gan.update_g import UpdateGenerator, UpdateGeneratorGAN
 from src.metrics.fid.fid import FID
 from src.metrics.focd import FOCD
@@ -33,6 +33,7 @@ from src.models import (
     Step1TrainingArgs,
     Step2TrainingArgs,
     TrainingStage,
+    TrainingState,
 )
 from src.utils.metrics_logger import MetricsLogger
 
@@ -88,37 +89,16 @@ def mock_step1_args(mock_config: ConfigGAN) -> Step1TrainingArgs:
     """Fixture to provide mock Step1TrainingArgs."""
     image_params = ImageParams(image_size=(1, 6, 6))
     dataset = FakeData(size=100, image_size=(1, 6, 6), num_classes=10, transform=ToTensor())
-
-    # Mocked Generator (G)
-    G = MagicMock(spec=nn.Module)
-    G.params = GenParams(image_size=(1, 6, 6), z_dim=1, n_blocks=2, filter_dim=10)
-
-    # Mocked Discriminator (D)
-    D = MagicMock(spec=nn.Module)
-    D.params = DisParams(image_size=(1, 6, 6), filter_dim=10, n_blocks=2)
-
-    g_updater = UpdateGeneratorGAN(crit=MagicMock())  # You can use a mock loss here.
-
     return Step1TrainingArgs(
         img_size=image_params,
-        run_id=1,
+        run_id="112",
         test_noise_conf={"mock": "conf"},
         fid_metrics=FIDMetricsParams(fid=MagicMock(spec=FID)),  # Mock fid metrics to keep it simple
         seed=42,
         checkpoint_dir="mock_dir",
-        device=mock_config.device,
         dataset=dataset,
         fixed_noise=torch.randn(10, 100, 1, 1),  # Random noise tensor to match ConvTranspose2d input
         test_noise=torch.randn(10, 100, 1, 1),  # Random noise tensor
-        G=G,
-        g_opt=MagicMock(spec=optim.Optimizer),  # Mock optimizer
-        g_updater=g_updater,
-        D=D,
-        d_opt=MagicMock(spec=optim.Optimizer),  # Mock optimizer
-        d_crit=MagicMock(spec=DiscriminatorLoss),  # Mock the Discriminator criterion
-        n_disc_iters=1,  # Number of discriminator iterations per generator iteration
-        epochs=10,
-        out_dir="mock_out_dir",
     )
 
 
@@ -126,27 +106,14 @@ def mock_step1_args(mock_config: ConfigGAN) -> Step1TrainingArgs:
 def mock_step2_args(mock_step1_args: MagicMock) -> Step2TrainingArgs:
     """Fixture to provide mock Step2TrainingArgs."""
     return Step2TrainingArgs(
-        run_id=1234,
+        run_id="1234",
         seed=43,
         checkpoint_dir="mock_dir",
         dataset=mock_step1_args.dataset,
         fixed_noise=mock_step1_args.fixed_noise,
         test_noise=mock_step1_args.test_noise,
-        s1_epoch="1",  # Should be a string for Pydantic
         gan_path="gan_path",
-        c_name="classifier_name",
-        weight=("weight_name", mock_step1_args.g_updater),
-        G=mock_step1_args.G,
-        g_opt=mock_step1_args.g_opt,
-        g_updater=mock_step1_args.g_updater,
-        D=mock_step1_args.D,
-        d_opt=mock_step1_args.d_opt,
-        d_crit=mock_step1_args.d_crit,
-        fid_metrics=mock_step1_args.fid_metrics,
-        n_disc_iters=1,
-        epochs=10,
-        out_dir="out_dir",
-        device="cpu",
+        g_crit=MagicMock(spec=GeneratorLoss),
     )
 
 
@@ -174,11 +141,22 @@ def test_train_step1_gan(
     mock_step1_args: Step1TrainingArgs,
 ) -> None:
     """Test training GAN step 1 initialization."""
+        # Mocked Generator (G)
+    G = MagicMock(spec=nn.Module)
+    G.params = GenParams(image_size=(1, 6, 6), z_dim=1, n_blocks=2, filter_dim=10)
+
+    # Mocked Discriminator (D)
+    D = MagicMock(spec=nn.Module)
+    D.params = DisParams(image_size=(1, 6, 6), filter_dim=10, n_blocks=2)
+
+    g_opt = MagicMock(spec=optim.Optimizer)
+    d_opt = MagicMock(spec=optim.Optimizer)
+
     # Mock the construct_gan return value with mocked G and D
-    mock_construct_gan.return_value = (mock_step1_args.G, mock_step1_args.D)
+    mock_construct_gan.return_value = (G, D)
 
     # Mock the construct_optimizers return value with mock optimizers
-    mock_construct_optimizers.return_value = (mock_step1_args.g_opt, mock_step1_args.d_opt)
+    mock_construct_optimizers.return_value = (g_opt, d_opt)
     mock_train.return_value = ({}, None, None, None)
 
     step_1_train_state, checkpoint_dir = train_step1_gan(mock_step1_args, mock_config)
@@ -219,14 +197,17 @@ def test_train_step2_gan(
     mock_construct_weights.return_value = [("test", MagicMock(spec=UpdateGenerator))]
     mock_construct_gan_from_checkpoint.return_value = (MagicMock(spec=nn.Module), MagicMock(spec=nn.Module), None, None)
 
+    g_opt = MagicMock(spec=optim.Optimizer)
+    d_opt = MagicMock(spec=optim.Optimizer)
+
     # Mock the construct_optimizers return value with mock optimizers
-    mock_construct_optimizers.return_value = (mock_step2_args.g_opt, mock_step2_args.d_opt)
+    mock_construct_optimizers.return_value = (g_opt, d_opt)
     mock_train.return_value = ({}, None, None, mock_stats)
     mock_focd.return_value = MagicMock(spec=FOCD)
 
     original_fid = MagicMock(spec=FID)
-    mock_step2_args.g_crit = MagicMock(spec=UpdateGeneratorGAN)
-    step_1_train_state = {"best_epoch": 1}
+    mock_step2_args.g_crit = MagicMock(spec=GeneratorLoss)
+    step_1_train_state = TrainingState(best_epoch=1)
 
     train_step2_gan(mock_step2_args, mock_config, original_fid, step_1_train_state)
 

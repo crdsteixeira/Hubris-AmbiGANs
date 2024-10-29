@@ -75,21 +75,13 @@ def evaluate(
 
 
 def train_disc(
-    params: GANTrainArgs, train_metrics: MetricsLogger, real_data: Tensor
+    params: GANTrainArgs, train_metrics: MetricsLogger, real_data: Tensor, fake_data: torch.tensor
 ) -> tuple[torch.Tensor, dict[str, float]]:
     """Train the discriminator with real and generated data."""
     params.D.zero_grad()
 
-    # Real data batch
-
     d_output_real = params.D(real_data)
-
-    # Fake data batch
-    noise = torch.randn(params.batch_size, params.G.params.z_dim, device=params.device)
-    with torch.no_grad():
-        fake_data = params.G(noise)
-
-    d_output_fake = params.D(fake_data.detach())
+    d_output_fake = params.D(fake_data)
 
     # Compute loss, gradients and update net
     d_loss, d_loss_terms = params.d_crit(real_data, fake_data, d_output_real, d_output_fake, params.device)
@@ -105,12 +97,9 @@ def train_disc(
 
 
 def train_gen(
-    params: GANTrainArgs,
-    train_metrics: MetricsLogger,
+    params: GANTrainArgs, train_metrics: MetricsLogger, noise: torch.tensor
 ) -> tuple[torch.Tensor, dict[str, float]]:
     """Train the generator to improve its output quality."""
-    noise = torch.randn(params.batch_size, params.G.params.z_dim, device=params.device)
-
     g_loss, g_loss_terms = params.g_updater(params.G, params.D, params.g_opt, noise, params.device)
 
     # Log metrics
@@ -173,10 +162,16 @@ def evaluate_and_checkpoint(
     checkpoint_image(img, train_state.epoch, output_dir=params.checkpoint_dir)
     eval_metrics.log_image("samples", img)
 
+    train_metrics.finalize_epoch()
+
+    # Evaluate GAN
+    evaluate(params=params, stats_logger=eval_metrics)
+    eval_metrics.finalize_epoch()
+
     if train_state.epoch == params.epochs or train_state.epoch % params.checkpoint_every == 0:
         return checkpoint_gan(
             params,
-            train_state,
+            train_state.__dict__,
             {"eval": eval_metrics.stats, "train": train_metrics.stats},
             config,
             epoch=train_state.epoch,
@@ -242,16 +237,22 @@ def train(params: GANTrainArgs, config: ConfigGAN) -> tuple[TrainingState, str |
             real_data, _ = next(data_iter)
             real_data = real_data.to(params.device)
 
+            noise = torch.randn(params.batch_size, params.G.params.z_dim, device=params.device)
+            fake_data = params.G(noise)
+
             # Update Discriminator
-            d_loss, d_loss_terms = train_disc(params=params, train_metrics=train_metrics, real_data=real_data)
+            d_loss, d_loss_terms = train_disc(
+                params=params, train_metrics=train_metrics, real_data=real_data, fake_data=fake_data.detach()
+            )
 
             # Update Generator
             if i % params.n_disc_iters == 0:
                 curr_g_iter += 1
-                g_loss, g_loss_terms = train_gen(params=params, train_metrics=train_metrics)
+                noise = torch.randn(params.batch_size, params.G.params.z_dim, device=params.device)
+                g_loss, g_loss_terms = train_gen(params=params, train_metrics=train_metrics, noise=noise)
 
                 # Log Statistics
-                if curr_g_iter % 50 == 0 or curr_g_iter == g_iters_per_epoch:
+                if curr_g_iter == g_iters_per_epoch:
                     logger.info(
                         "[%d/%d][%d/%d]\tG loss: %.4f %s; D loss: %.4f %s",
                         epoch,
@@ -265,6 +266,7 @@ def train(params: GANTrainArgs, config: ConfigGAN) -> tuple[TrainingState, str |
                     )
 
         # Evaluate and Checkpoint After Epoch
+        train_state.epoch += 1
         latest_cp = evaluate_and_checkpoint(
             params=params,
             train_state=train_state,
@@ -272,6 +274,5 @@ def train(params: GANTrainArgs, config: ConfigGAN) -> tuple[TrainingState, str |
             train_metrics=train_metrics,
             config=checkpoint_data,
         )
-        train_state.epoch += 1
 
     return train_state, latest_cp, train_metrics, eval_metrics

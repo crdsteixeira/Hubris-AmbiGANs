@@ -13,7 +13,11 @@ from pydantic import ValidationError
 
 from src.classifier.classifier_cache import ClassifierCache
 from src.datasets.load import load_dataset
-from src.gan.construct_gan import construct_gan, construct_loss
+from src.gan.construct_gan import (
+    construct_discriminator_loss,
+    construct_gan,
+    construct_generator_loss,
+)
 from src.gan.train import train
 from src.gan.update_g import UpdateGeneratorGAN
 from src.metrics.c_output_hist import OutputsHistogram
@@ -29,6 +33,7 @@ from src.models import (
     LoadDatasetParams,
     Step1TrainingArgs,
     Step2TrainingArgs,
+    TrainingState,
 )
 from src.utils.checkpoint import (
     construct_classifier_from_checkpoint,
@@ -81,17 +86,26 @@ def train_modified_gan(
     class_cache: ClassifierCache,
 ) -> MetricsLogger:
     """Train GAN with extra loss."""
+    if params.weight is None:
+        logger.error("Failed to train: weight must not be None")
+        raise ValueError
+
     weight_name, update_g = params.weight
     c_out_hist = OutputsHistogram(class_cache, params.test_noise.size(0))
     run_name = f"{params.c_name}_{weight_name}_{params.s1_epoch}"
     if params.checkpoint_dir is not None:
-        checkpoint_dir = os.path.join(params.checkpoint_dir, run_name)
+        checkpoint_dir = params.checkpoint_dir
     else:
         checkpoint_dir = os.path.join(f"{os.environ['FILESDIR']}/checkpoint", run_name)
 
+    if params.gan_path is None:
+        logger.error("Failed to train: gan_path must not be None")
+        raise ValueError
+
     G, D, _, _ = construct_gan_from_checkpoint(params.gan_path, device=config.device)
     g_optim, d_optim = construct_optimizers(config.optimizer, G, D)
-    _, d_crit = construct_loss(config.model.loss, D)
+    g_crit = construct_generator_loss(config.model.loss)
+    d_crit = construct_discriminator_loss(config.model.loss, D)
 
     logger.info(f"Running experiment with classifier {params.c_name} and weight {weight_name} ...")
     if params.seed is not None:
@@ -113,12 +127,13 @@ def train_modified_gan(
 
     params_step_2 = GANTrainArgs(
         dataset=params.dataset,
-        device=params.device,
+        device=config.device,
         batch_size=config.train.step_2.batch_size,
         epochs=config.train.step_2.epochs,
         G=G,
         g_opt=g_optim,
         g_updater=update_g,
+        g_crit=g_crit,
         D=D,
         d_opt=d_optim,
         d_crit=d_crit,
@@ -148,11 +163,11 @@ def train_step2_gan(
     params: Step2TrainingArgs,
     config: ConfigGAN,
     original_fid: FID,
-    step_1_train_state: dict,
+    step_1_train_state: TrainingState,
 ) -> None:
     """Run GAN training with classifiers."""
     logger.info(" > Start step 2 (gan with modified (loss)")
-    step_1_epochs: list[int] | list[str] = ["best"]
+    step_1_epochs: list[int | str] = ["best"]
     if config.train.step_2.step_1_epochs is not None:
         step_1_epochs = config.train.step_2.step_1_epochs
 
@@ -181,6 +196,10 @@ def train_step2_gan(
         for s1_epoch in step_1_epochs:
             epoch = get_epoch_from_state(s1_epoch, step_1_train_state)
 
+            if params.gan_path is None:
+                logger.error("Failed to train: gan_path must not be None")
+                raise ValueError
+
             gan_path = get_gan_path_at_epoch(params.gan_path, epoch=epoch)
 
             if params.g_crit is None:
@@ -190,7 +209,7 @@ def train_step2_gan(
             weights = construct_weights(C, config.train.step_2.weight, params.g_crit)
             for weight_name, weight in weights:
                 eval_metrics = train_modified_gan(
-                    Step2TrainingArgs(
+                    params=Step2TrainingArgs(
                         dataset=params.dataset,
                         checkpoint_dir=params.checkpoint_dir,
                         gan_path=gan_path,
@@ -200,19 +219,8 @@ def train_step2_gan(
                         c_name=C_name,
                         weight=(weight_name, weight),
                         fixed_noise=params.fixed_noise,
-                        device=params.device,
                         seed=params.seed,
                         run_id=params.run_id,
-                        step_1_epochs=epoch,
-                        epochs=config.train.step_2.epochs,
-                        out_dir=config.out_dir,
-                        G=params.G,
-                        g_opt=params.g_opt,
-                        g_updater=params.g_updater,
-                        D=params.D,
-                        d_opt=params.d_opt,
-                        d_crit=params.d_crit,
-                        n_disc_iters=config.train.step_2.disc_iters,
                         s1_epoch=s1_epoch,
                     ),
                     config=config,
@@ -233,7 +241,7 @@ def train_step2_gan(
                 )
 
     if params.checkpoint_dir is not None:
-        checkpoint_dir = os.path.join(params.checkpoint_dir, str(params.run_id))
+        checkpoint_dir = params.checkpoint_dir
     else:
         checkpoint_dir = os.path.join(f"{os.environ['FILESDIR']}/checkpoint", str(params.run_id))
 
@@ -245,18 +253,19 @@ def train_step2_gan(
     plot_metrics(step2_metrics, checkpoint_dir, f"{C_name}-{params.run_id}")
 
 
-def train_step1_gan(params: Step1TrainingArgs, config: ConfigGAN) -> tuple[dict, str]:
+def train_step1_gan(params: Step1TrainingArgs, config: ConfigGAN) -> tuple[TrainingState, str]:
     """Train GAN step 1."""
     if params.seed is not None:
         setup_reprod(params.seed)
     G, D = construct_gan(config, params.img_size)
     g_optim, d_optim = construct_optimizers(config.optimizer, G, D)
-    g_crit, d_crit = construct_loss(config.model.loss, D)
+    g_crit = construct_generator_loss(config.model.loss)
+    d_crit = construct_discriminator_loss(config.model.loss, D)
     g_updater = UpdateGeneratorGAN(g_crit)
 
     logger.info(f"Storing generated artifacts in {params.checkpoint_dir}")
     if params.checkpoint_dir is not None:
-        checkpoint_dir = os.path.join(params.checkpoint_dir, str(params.run_id))
+        checkpoint_dir = params.checkpoint_dir
     else:
         checkpoint_dir = os.path.join(f"{os.environ['FILESDIR']}/checkpoint", str(params.run_id))
 
@@ -288,7 +297,7 @@ def train_step1_gan(params: Step1TrainingArgs, config: ConfigGAN) -> tuple[dict,
             },
         )
 
-        params = GANTrainArgs(
+        args = GANTrainArgs(
             G=G,
             g_opt=g_optim,
             g_updater=g_updater,
@@ -309,7 +318,7 @@ def train_step1_gan(params: Step1TrainingArgs, config: ConfigGAN) -> tuple[dict,
             device=config.device,
         )
 
-        step_1_train_state, _, _, _ = train(params, config)
+        step_1_train_state, _, _, _ = train(args, config)
         wandb.finish()
     else:
         original_gan_cp_dir = config.train.step_1
@@ -355,6 +364,10 @@ def main(config: ConfigGAN | None = None) -> None:
     else:
         fixed_noise = torch.randn(config.fixed_noise, config.model.z_dim, device=config.device.value)
 
+    if config.test_noise is None:
+        logger.error("Failed to train: test_noise must not be None")
+        raise ValueError
+
     test_noise, test_noise_conf = load_z(config.test_noise)
     logger.info(f"Loaded test noise from {config.test_noise}")
     logger.info("\t {test_noise_conf}")
@@ -369,7 +382,7 @@ def main(config: ConfigGAN | None = None) -> None:
         logger.info("##")
 
         run_id = wandb.util.generate_id()
-        cp_dir = create_checkpoint_path(config, run_id)
+        cp_dir = create_checkpoint_path(config.__dict__, run_id)
         with open(os.path.join(cp_dir, "fixed_noise.npy"), "wb") as f:
             np.save(f, fixed_noise.cpu().numpy())
 
@@ -381,13 +394,12 @@ def main(config: ConfigGAN | None = None) -> None:
             fid_metrics=fid_metrics,
             seed=config.step_1_seeds[i],
             checkpoint_dir=cp_dir,
-            device=config.device,
             dataset=dataset,
             fixed_noise=fixed_noise,
             test_noise=test_noise,
         )
 
-        step_1_train_state, _ = train_step1_gan(
+        step_1_train_state, step_1_gan_path = train_step1_gan(
             params=step_1_params,
             config=config,
         )
@@ -399,6 +411,8 @@ def main(config: ConfigGAN | None = None) -> None:
             dataset=dataset,
             fixed_noise=fixed_noise,
             test_noise=test_noise,
+            gan_path=step_1_gan_path,
+            g_crit=construct_generator_loss(config.model.loss),
         )
 
         train_step2_gan(

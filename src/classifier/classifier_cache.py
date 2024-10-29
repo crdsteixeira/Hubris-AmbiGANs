@@ -52,11 +52,11 @@ class ClassifierCache:
             output = self.C(x, output_feature_maps=True)
 
             # Check if the classifier returns both feature maps and output
-            if isinstance(output, list) and len(output) > 1:
-                self.last_output_feature_maps = output[-2]
-                self.last_output = output[-1]
+            if isinstance(output, tuple) and len(output) > 1:
+                self.last_output_feature_maps = output[-1]
+                self.last_output = output[-2]
             else:
-                self.last_output = output[0]
+                self.last_output = output
                 self.last_output_feature_maps = None  # No feature maps returned
 
             self.last_batch_idx = batch_idx

@@ -26,9 +26,9 @@ class MockCNN(nn.Module):
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Forward method for CNN mock classifier."""
         if output_feature_maps:
-            return torch.randn(x.shape[0], 64, 64, 64, requires_grad=True), torch.randn(
+            return [torch.randn(x.shape[0], 64, 64, 64, requires_grad=True), torch.randn(
                 x.shape[0], self.n_classes, requires_grad=True
-            )
+            )]
         return torch.randn(x.shape[0], self.n_classes, requires_grad=True)
 
 
@@ -161,10 +161,9 @@ def test_ensemble_forward_with_feature_maps() -> None:
 
     output, feature_maps = ensemble(x, output_feature_maps=True)
     assert output is not None, "Output should not be None"
-    assert len(feature_maps) == len(params.nf), f"Expected {len(params.nf)} feature maps, but got {len(feature_maps)}"
-    for fmap in feature_maps:
+    assert len(feature_maps[-1][0][0]) == len(params.nf), f"Expected {len(params.nf)} feature maps, but got {len(feature_maps[-1][0][0])}"
+    for fmap in feature_maps[:][0][:]:
         assert fmap.shape == (
-            1,
             64,
             64,
             64,

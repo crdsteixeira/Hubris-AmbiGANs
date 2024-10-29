@@ -1,6 +1,6 @@
 """Module for calculating FOCD metric. Not used, to be deprecated."""
 
-from torch import Tensor
+from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
@@ -10,12 +10,30 @@ from src.models import ConfigGAN
 from src.utils.utility_functions import seed_worker
 
 
+class FeatureExtractor(nn.Module):
+    """Wrapper for feature extractor function to be used with Torch FID."""
+
+    def __init__(self, C: nn.Module):
+        """Initialize class."""
+        super().__init__()
+        self.C = C
+        self.img_size: tuple[int, int, int] | None = C.params.img_size if hasattr(C, "params") else None
+
+    def forward(self, images: Tensor) -> Tensor:
+        """Extract feature map."""
+        if self.img_size is not None:
+            images = images[:, 0 : self.img_size[0], :, :]  # Convert back to greyscale if needed.
+        features: list = self.C(images, output_feature_maps=True)[-1]
+        return features[-1]
+
+
 class FOCD(FID):
     """FOCD Metric."""
 
     def __init__(self, n_images: int, config: ConfigGAN, classifier_cache: ClassifierCache, dataset: Dataset) -> None:
         """Initialize class."""
         self.classifier_cache = classifier_cache
+        self.feat_extractor = FeatureExtractor(self.classifier_cache.C)
         dataloader = DataLoader(
             dataset,
             batch_size=config.train.step_2.batch_size,
@@ -24,13 +42,13 @@ class FOCD(FID):
             worker_init_fn=seed_worker,
         )
 
-        dims = self.get_feature_map_fn(dataset[0][0].to(config.device), 0, 1).size(1)
+        dims = self.feat_extractor(dataset[0][0].to(config.device).unsqueeze(0)).size(1)
         super().__init__(
             fid_stats_file=None,
             dims=dims,
             n_images=n_images,
             device=config.device,
-            feature_map_fn=self.get_feature_map_fn,
+            feature_map_fn=self.feat_extractor,
         )
 
         # Calculate mu and sigma
@@ -46,7 +64,3 @@ class FOCD(FID):
 
             # Necessary to normalize pixels between 0 and 1
             self.fid.update((images + 1.0) / 2.0, is_real=True)
-
-    def get_feature_map_fn(self, images: Tensor, batch_idx: int, batch_size: int) -> Tensor:
-        """Get feature list of batch of images."""
-        return self.classifier_cache.get(images, batch_idx, batch_size, output_feature_maps=True)[1]

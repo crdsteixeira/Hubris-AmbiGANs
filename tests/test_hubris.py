@@ -47,8 +47,8 @@ def test_update(hubris_metric: Hubris) -> None:
 
     # Mock behavior for C.get()
     mock_y_hat = torch.randn(10).float()
-    mock_y_preds = [torch.randn(10).float(), torch.randn(10).float()]
-    hubris_metric.C.get = MagicMock(return_value=(mock_y_hat, [mock_y_preds]))
+    mock_y_preds = [torch.randn(10).float(), torch.randn(10, hubris_metric.output_clfs).float()]
+    hubris_metric.C.get = MagicMock(return_value=(mock_y_hat, mock_y_preds))
 
     # Call the update function
     hubris_metric.update(images, batch)
@@ -56,7 +56,7 @@ def test_update(hubris_metric: Hubris) -> None:
     # Check if values were updated correctly
     assert torch.equal(hubris_metric.preds[0:10], mock_y_hat)
     for i in range(hubris_metric.output_clfs):
-        assert torch.equal(hubris_metric.clf_preds[i, 0:10], mock_y_preds[i])
+        assert torch.equal(hubris_metric.clf_preds[i, 0:10], mock_y_preds[-1][:, i])
 
 
 def test_compute_no_reference(hubris_metric: Hubris) -> None:

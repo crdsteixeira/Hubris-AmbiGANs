@@ -37,7 +37,7 @@ class Hubris(Metric):
 
         self.preds[start_idx : start_idx + batch_size] = c_output
         for i in range(self.output_clfs):
-            self.clf_preds[i, start_idx : start_idx + batch_size] = c_all_output[0][i]
+            self.clf_preds[i, start_idx : start_idx + batch_size] = c_all_output[-1][:, i]
 
     def compute(self, preds: Tensor, ref_preds: Tensor | None = None) -> float:
         """Compute the hubris score based on the given predictions and reference predictions."""

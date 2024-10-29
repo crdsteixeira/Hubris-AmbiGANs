@@ -56,7 +56,7 @@ def test_cache_invalidation() -> None:
 def test_feature_maps_returned() -> None:
     """Test if feature maps and final output are returned correctly when requested."""
     mock_classifier = MockClassifier()
-    mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)])
+    mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 10), [torch.randn(1, 3, 64, 64)]])
 
     cache = ClassifierCache(mock_classifier)
 
@@ -65,7 +65,7 @@ def test_feature_maps_returned() -> None:
 
     assert output is not None, "Output should not be None"
     assert feature_maps is not None, "Feature maps should not be None"
-    assert len(feature_maps.size()) == 4, "Feature maps should be a 4D tensor"
+    assert len(feature_maps[-1].size()) == 4, "Feature maps should be a 4D tensor"
 
 
 def test_no_feature_maps_returned() -> None:

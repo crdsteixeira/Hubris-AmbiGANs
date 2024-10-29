@@ -157,7 +157,7 @@ def main() -> None:
         seed=args.seed,
         nf=classifiers_nf,
         device=args.device,
-        img_size=img_size,
+        img_size=img_size.image_size,
         n_classes=num_classes,
         ensemble_type=args.ensemble_type,
         output_method=args.ensemble_output_method,
@@ -213,15 +213,19 @@ def main() -> None:
 
     # Save checkpoint
     cp_path = checkpoint(
-        best_C,
-        (
-            f"{args_train_classifier.type}-"
-            f"{args_train_classifier.nf}-"
-            f"{args_train_classifier.epochs}."
-            f"{args_train_classifier.seed}"
+        model=best_C,
+        model_name=(
+            (
+                f"{args_train_classifier.type}-"
+                f"{args_train_classifier.nf}-"
+                f"{args_train_classifier.epochs}."
+                f"{args_train_classifier.seed}"
+            )
+            if args.name is None
+            else args.name
         ),
-        args_train_classifier,
-        stats,
+        model_params=args_train_classifier,
+        train_stats=stats,
         args=args,
         output_dir=args_train_classifier.out_dir,
     )

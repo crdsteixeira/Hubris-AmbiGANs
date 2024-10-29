@@ -13,7 +13,7 @@ from src.classifier.classifier_cli import parse_args
 from src.classifier.train_classifier import main, train
 from src.enums import ClassifierType, DeviceType
 from src.metrics.accuracy import binary_accuracy
-from src.models import ClassifierParams, CLTrainArgs, TrainClassifierArgs
+from src.models import ClassifierParams, CLTrainArgs, TrainClassifierArgs, TrainingStats
 
 
 # Mock Dataset
@@ -43,7 +43,7 @@ class MockClassifier(nn.Module):
         x = x.view(x.size(0), -1)
         output: torch.Tensor = torch.sigmoid(self.linear(x)).view(-1, 1)
         if output_feature_maps:
-            return [output, output]
+            return [output, [output]]
         return output
 
     @property

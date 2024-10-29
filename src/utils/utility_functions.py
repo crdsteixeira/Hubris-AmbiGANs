@@ -25,7 +25,13 @@ from src.gan.update_g import (
     UpdateGeneratorGASTEN,
     UpdateGeneratorGastenMgda,
 )
-from src.models import CLTestNoiseArgs, CLTrainArgs, ConfigOptimizer, ConfigWeights
+from src.models import (
+    CLTestNoiseArgs,
+    CLTrainArgs,
+    ConfigOptimizer,
+    ConfigWeights,
+    TrainingState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +39,7 @@ logger = logging.getLogger(__name__)
 def create_checkpoint_path(config: dict, run_id: str) -> str:
     """Create a path for storing checkpoints."""
     path = os.path.join(
-        config["out-dir"],
+        config["out_dir"],
         config["project"],
         config["name"],
         datetime.now().strftime(f"%b%dT%H-%M_{run_id}"),
@@ -46,7 +52,7 @@ def create_checkpoint_path(config: dict, run_id: str) -> str:
 
 def create_exp_path(config: dict) -> str:
     """Create an experimental path for storing outputs."""
-    path = os.path.join(config["out-dir"], config["name"])
+    path = os.path.join(config["out_dir"], config["name"])
 
     os.makedirs(path, exist_ok=True)
 
@@ -94,7 +100,7 @@ def create_and_store_z(
     out_path = os.path.join(config.out_dir, name)
     os.makedirs(out_path, exist_ok=True)
 
-    with open(os.path.join(out_path, "z.npy"), "wb", encoding="utf-8") as f:
+    with open(os.path.join(out_path, "z.npy"), "wb") as f:
         np.savez(f, z=noise)
 
     if config is not None:
@@ -107,7 +113,7 @@ def create_and_store_z(
 def load_z(path: str) -> tuple[torch.Tensor, dict]:
     """Load a noise tensor and associated configuration from disk."""
     z_path = os.path.join(path, "z.npy")
-    z = np.load(z_path, encoding="utf-8")["z"]
+    z = np.load(z_path, encoding="bytes")["z"]
 
     with open(os.path.join(path, "z.json"), encoding="utf-8") as f:
         conf = json.load(f)
@@ -331,10 +337,10 @@ def construct_optimizers(
     return g_optim, d_optim
 
 
-def get_epoch_from_state(s1_epoch: int | str, step_1_train_state: dict) -> int | str:
+def get_epoch_from_state(s1_epoch: int | str, step_1_train_state: TrainingState) -> int | str:
     """Return the appropriate epoch based on the input value."""
     if s1_epoch == "best":
-        return step_1_train_state["best_epoch"]
+        return step_1_train_state.best_epoch
     if s1_epoch == "last":
-        return step_1_train_state["epoch"]
+        return step_1_train_state.epoch
     return s1_epoch

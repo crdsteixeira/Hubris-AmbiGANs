@@ -15,6 +15,7 @@ from src.models import (
     CheckpointGAN,
     CLTrainArgs,
     GANTrainArgs,
+    ImageParams,
     TrainClassifierArgs,
     TrainingState,
     TrainingStats,
@@ -44,8 +45,8 @@ def checkpoint(
         "params": model_params,
         "args": args.__dict__,
     }
-    with open(os.path.join(output_dir, "stats.json"), "w", encoding="utf-8") as f:
 
+    with open(os.path.join(output_dir, "stats.json"), "w", encoding="utf-8") as f:
         json.dump(
             {
                 "train_stats": train_stats.__dict__,
@@ -68,7 +69,7 @@ def load_checkpoint(
     path: str, model: nn.Module, device: torch.device | None = None, optimizer: nn.Module | None = None
 ) -> None:
     """Load a model checkpoint from disk."""
-    cp = torch.load(path, map_location=device)
+    cp = torch.load(path, map_location=device, weights_only=False)
 
     model.load_state_dict(cp["state"])
     model.eval()  # just to be safe
@@ -81,7 +82,7 @@ def construct_classifier_from_checkpoint(
     path: str, device: DeviceType = DeviceType.cpu, optimizer: bool = False
 ) -> tuple[nn.Module, dict, dict, CLTrainArgs | dict, optim.Optimizer | None]:
     """Construct a classifier model from a saved checkpoint."""
-    cp = torch.load(os.path.join(path, "classifier.pth"), map_location=device)
+    cp = torch.load(os.path.join(path, "classifier.pth"), map_location=device, weights_only=False)
 
     logger.info(f" > Loading model from {path} ...")
 
@@ -111,10 +112,10 @@ def construct_gan_from_checkpoint(
 
     checkpoint_data = CheckpointGAN(**checkpoint_dict)
 
-    gen_cp = torch.load(os.path.join(path, "generator.pth"), map_location=device)
-    dis_cp = torch.load(os.path.join(path, "discriminator.pth"), map_location=device)
+    gen_cp = torch.load(os.path.join(path, "generator.pth"), map_location=device, weights_only=False)
+    dis_cp = torch.load(os.path.join(path, "discriminator.pth"), map_location=device, weights_only=False)
 
-    G, D = construct_gan(checkpoint_data.config, checkpoint_data.gen_params.image_size)
+    G, D = construct_gan(checkpoint_data.config, ImageParams(image_size=checkpoint_data.gen_params.image_size))
 
     g_optim = optim.Adam(
         G.parameters(),

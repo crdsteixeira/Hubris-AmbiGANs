@@ -96,13 +96,14 @@ class Ensemble(nn.Module):
         for model in self.models:
             # Get the output of each model
             out = model(x.clone(), output_feature_maps=output_feature_maps)
-            if output_feature_maps and isinstance(out, tuple):
+            if output_feature_maps and isinstance(out, list):
                 feature_maps.append(out[0])  # Assume first element in tuple is feature maps
-                out = out[1]  # Assume second element is the final output
+                out = out[-1]  # Assume second element is the final output
             outputs.append(out.unsqueeze(-1))  # Add a new dimension to align for stacking
 
         # Concatenate outputs along the last dimension
         output = torch.cat(outputs, dim=-1)
+        feature_maps.append(output)
 
         # Combine the outputs using the predictor
         combined_output = self.predictor(output).squeeze(-1)

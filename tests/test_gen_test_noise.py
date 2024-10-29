@@ -41,7 +41,7 @@ def test_create_and_store_z(
     # Since `open` is called twice, we need to check both calls
     mock_file.assert_has_calls(
         [
-            call(expected_z_path, "wb", encoding="utf-8"),
+            call(expected_z_path, "wb"),
             call(expected_json_path, "w", encoding="utf-8"),
         ],
         any_order=True,

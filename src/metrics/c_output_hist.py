@@ -50,7 +50,7 @@ class OutputsHistogram(Metric):
 
         self.y_hat[start_idx : start_idx + batch_size] = c_output
         for i in range(self.output_clfs):
-            self.y_preds[i, start_idx : start_idx + batch_size] = c_all_output[0][i]
+            self.y_preds[i, start_idx : start_idx + batch_size] = c_all_output[-1][:, i]
 
     def plot(self) -> None:
         """Plot histogram of ensemble predictions."""

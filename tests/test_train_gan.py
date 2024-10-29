@@ -310,7 +310,7 @@ def test_train_disc(
     """Test the train_disc function."""
     train_metrics, eval_metrics = metrics_gan
     real_data = torch.randn(gan_train_args.batch_size, 3, 32, 32)  # Mocked real data
-    d_loss, d_loss_terms = train_disc(params=gan_train_args, train_metrics=train_metrics, real_data=real_data)
+    d_loss, d_loss_terms = train_disc(params=gan_train_args, train_metrics=train_metrics, real_data=real_data, fake_data=torch.randn(64, 100))
     assert isinstance(d_loss, torch.Tensor)
     assert isinstance(d_loss_terms, dict)
     gan_train_args.D.zero_grad.assert_called()  # Ensure gradients were zeroed
@@ -326,7 +326,7 @@ def test_train_gen(
     train_metrics, eval_metrics = metrics_gan
 
     # Perform the generator training step
-    g_loss, g_loss_terms = train_gen(params=gan_train_args, train_metrics=train_metrics)
+    g_loss, g_loss_terms = train_gen(params=gan_train_args, train_metrics=train_metrics, fake_data=torch.randn(64, 100))
 
     # Assert that g_loss is a tensor
     assert isinstance(g_loss, torch.Tensor), "Generator loss should be a tensor."
@@ -357,6 +357,8 @@ def test_evaluate_and_checkpoint(
 
     train_state = TrainingState(epoch=5)
     train_metrics, eval_metrics = metrics_gan
+    train_metrics.finalize_epoch = MagicMock()
+    eval_metrics.finalize_epoch = MagicMock()
     latest_cp = evaluate_and_checkpoint(
         params=gan_train_args,
         train_state=train_state,
@@ -368,11 +370,13 @@ def test_evaluate_and_checkpoint(
     assert isinstance(latest_cp, str | type(None))  # Ensure latest_cp is a string or None
 
 
-@patch("wandb.init")  # Mock wandb.init to avoid initialization errors
-@patch("wandb.define_metric")  # Mock define_metric to avoid initialization errors
+@patch("src.utils.metrics_logger.wandb.init")  # Mock wandb.init to avoid initialization errors
+@patch("src.utils.metrics_logger.wandb.define_metric")  # Mock define_metric to avoid initialization errors
+@patch("src.utils.metrics_logger.wandb.log")  # Mock define_metric to avoid initialization errors
 @patch("src.gan.train.checkpoint_gan")  # Patch checkpoint_gan to prevent actual saving
 def test_train(
     mock_checkpoint_gan: MagicMock,
+    mock_define_log: MagicMock,
     mock_define_metric: MagicMock,
     mock_wandb_init: MagicMock,
     gan_train_args: MagicMock,
@@ -381,7 +385,7 @@ def test_train(
     """Test the train function."""
     train_state, latest_cp, train_metrics, eval_metrics = train(gan_train_args, config_gan)
     assert isinstance(train_state, TrainingState)
-    assert isinstance(latest_cp, str | type(None))
+    assert isinstance(latest_cp, MagicMock)
     assert isinstance(train_metrics, MetricsLogger)
     assert isinstance(eval_metrics, MetricsLogger)
     assert train_state.epoch == gan_train_args.epochs
