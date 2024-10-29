@@ -326,7 +326,7 @@ def test_train_gen(
     train_metrics, eval_metrics = metrics_gan
 
     # Perform the generator training step
-    g_loss, g_loss_terms = train_gen(params=gan_train_args, train_metrics=train_metrics, fake_data=torch.randn(64, 100))
+    g_loss, g_loss_terms = train_gen(params=gan_train_args, train_metrics=train_metrics, noise=torch.randn(64, 100))
 
     # Assert that g_loss is a tensor
     assert isinstance(g_loss, torch.Tensor), "Generator loss should be a tensor."
