@@ -1,4 +1,4 @@
-from typing import List
+"""Test for CNN classifier module."""
 
 import pytest
 import torch

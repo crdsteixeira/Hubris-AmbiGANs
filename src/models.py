@@ -1,6 +1,8 @@
 """Pydantic moels validation and settings management."""
 
 import os
+from collections.abc import Iterable
+from enum import Enum
 from typing import Any
 
 from dotenv import load_dotenv
@@ -282,16 +284,17 @@ class DatasetClasses(BaseModel):
         }
 
         # Get the enum class based on dataset_name
-        valid_classes_enum = dataset_class_mapping.get(self.dataset_name)
+        valid_classes_enum: Iterable[Enum] | None = dataset_class_mapping.get(self.dataset_name)
 
         # Check if pos_class and neg_class are valid members of the enum
         if valid_classes_enum:
-            if self.pos_class not in [item.value for item in valid_classes_enum]:
+            valid_classes: list[int | str] = [item.value for item in valid_classes_enum]
+            if self.pos_class not in valid_classes:
                 raise ValueError(
                     f"Invalid pos_class '{self.pos_class}' for dataset '{self.dataset_name}'. "
                     f"Valid classes are {[item.value for item in valid_classes_enum]}."
                 )
-            if self.neg_class not in [item.value for item in valid_classes_enum]:
+            if self.neg_class not in valid_classes:
                 raise ValueError(
                     f"Invalid neg_class '{self.neg_class}' for dataset '{self.dataset_name}'. "
                     f"Valid classes are {[item.value for item in valid_classes_enum]}."
@@ -332,7 +335,7 @@ class CLTrainArgs(DatasetClasses):
             DatasetNames.mnist: len(MnistClasses),
             DatasetNames.fashion_mnist: len(MnistClasses),
             DatasetNames.cifar10: len(Cifar10Classes),
-            DatasetNames.chest_xray: len(ChestXrayClasses)
+            DatasetNames.chest_xray: len(ChestXrayClasses),
         }
 
         # Set the number of classes based on the dataset provided
@@ -340,9 +343,8 @@ class CLTrainArgs(DatasetClasses):
             self.n_classes = dataset_class_mapping[self.dataset_name]
         else:
             raise ValueError(f"Dataset '{self.dataset_name}' is not supported.")
-        
-        return self
 
+        return self
 
 
 # Mix-in model that combines both training and classifier arguments
@@ -645,6 +647,7 @@ class Step1TrainingArgs(GANTrainArgs):
     run_id: int
     test_noise_conf: dict
 
+
 class Step2TrainingArgs(GANTrainArgs):
     """Extra arguments for step2 of GAN Training."""
 
@@ -655,7 +658,6 @@ class Step2TrainingArgs(GANTrainArgs):
     gan_path: str
     weight: tuple[str, UpdateGenerator]
     run_id: int
-
 
 
 class TrainingState(BaseModel):
@@ -696,16 +698,26 @@ class CLFIDArgs(DatasetClasses):
             raise ValueError(f"Model path '{value}' does not exist.")
         return value
 
+
 class CLTestNoiseArgs(BaseModel):
-    seed: int | None =  Field(None, description="Random seed for reproducibility")
+    """CLI Test Noise Arguments."""
+
+    seed: int | None = Field(None, description="Random seed for reproducibility")
     nz: int = Field(..., description="Number of sample to be generated")
     z_dim: int = Field(..., description="Latent space dimension")
     out_dir: str = Field(f"{os.environ['FILESDIR']}/data/z", description="Directory to store thes test noise")
 
 
 class CLFIDStatsArgs(BaseModel):
-    dataroot: str = Field(default=f"{os.environ.get('FILESDIR', '')}/data", description="Directory with dataset",)
-    dataset: DatasetNames = Field(default=DatasetNames.mnist, description="Dataset to use (mnist, fashion-mnist, cifar10 or chest x-ray)")
+    """CLI FID Stats Arguments."""
+
+    dataroot: str = Field(
+        default=f"{os.environ.get('FILESDIR', '')}/data",
+        description="Directory with dataset",
+    )
+    dataset: DatasetNames = Field(
+        default=DatasetNames.mnist, description="Dataset to use (mnist, fashion-mnist, cifar10 or chest x-ray)"
+    )
     device: DeviceType = Field(default=DeviceType.cpu, description="Device to use, cuda or cpu")
     n_classes: int = Field(None, description="Number of classes in the dataset")
 
@@ -716,7 +728,7 @@ class CLFIDStatsArgs(BaseModel):
             DatasetNames.mnist: len(MnistClasses),
             DatasetNames.fashion_mnist: len(MnistClasses),
             DatasetNames.cifar10: len(Cifar10Classes),
-            DatasetNames.chest_xray: len(ChestXrayClasses)
+            DatasetNames.chest_xray: len(ChestXrayClasses),
         }
 
         # Set the number of classes based on the dataset provided
@@ -724,6 +736,16 @@ class CLFIDStatsArgs(BaseModel):
             self.n_classes = dataset_class_mapping[self.dataset]
         else:
             raise ValueError(f"Dataset '{self.dataset}' is not supported.")
-        
+
         return self
 
+
+class ConfigMain(ConfigGAN):
+    """Config for main process."""
+
+    test_noise_seed: int | None = Field(None, description="Seed to be used for test noise generation.")
+    gen_pairwise_inception: bool = Field(..., description="Generate pairwise inception files.")
+    gen_test_noise: bool = Field(..., description="Generate test noise files.")
+    gen_classifiers: bool = Field(..., description="Generate classifiers models.")
+    gen_gan: bool = Field(..., description="Generate and train AmbiGAN model.")
+    classifiers: list[CLTrainArgs] | None = Field(None, description="List of classifiers to generate.")

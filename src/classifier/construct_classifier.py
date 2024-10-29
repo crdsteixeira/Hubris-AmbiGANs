@@ -26,7 +26,7 @@ def construct_classifier(params: TrainClassifierArgs) -> nn.Module:
             and len(params.nf) != len(C.models)
         ):
             raise ValueError(f"nf length {len(params.nf)} does not match the number of ensemble models {len(C.models)}")
-        
+
         if len(C.models) <= 1:  # Ensure ensemble has more than one model
             raise ValueError(f"Ensemble must have more than one model, but got {len(C.models)}")
     else:

@@ -332,10 +332,9 @@ def construct_optimizers(
 
 
 def get_epoch_from_state(s1_epoch: int | str, step_1_train_state: dict) -> int | str:
-    """Returns the appropriate epoch based on the input value."""
+    """Return the appropriate epoch based on the input value."""
     if s1_epoch == "best":
         return step_1_train_state["best_epoch"]
-    elif s1_epoch == "last":
+    if s1_epoch == "last":
         return step_1_train_state["epoch"]
-    else:
-        return s1_epoch
+    return s1_epoch

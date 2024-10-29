@@ -41,7 +41,7 @@ def main() -> None:
         config = CLTestNoiseArgs(**args_dict)
     except ValidationError as e:
         logger.error(f"Argument validation error: {e}")
-        raise 
+        raise
 
     logger.info(config)
 

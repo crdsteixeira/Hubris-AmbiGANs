@@ -15,7 +15,7 @@ from src.datasets.datasets import (
 )
 from src.datasets.utils import BinaryDataset
 from src.enums import DatasetNames
-from src.models import DatasetParams, LoadDatasetParams, ImageParams
+from src.models import DatasetParams, ImageParams, LoadDatasetParams
 
 logger = logging.getLogger(__name__)
 

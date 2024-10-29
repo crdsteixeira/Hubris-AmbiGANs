@@ -1,14 +1,19 @@
+"""Test FID CLI arguments."""
+
+import tempfile
+from argparse import Namespace
+from unittest.mock import MagicMock, patch
+
 import pytest
 import torch
-import tempfile
-from unittest.mock import patch, MagicMock, ANY
-from argparse import Namespace
-from src.models import CLFIDArgs
-from src.metrics.fid.fid_cli import main, get_feature_map_function
 from pydantic import ValidationError
 
+from src.metrics.fid.fid_cli import get_feature_map_function, main
+from src.models import CLFIDArgs
+
+
 @pytest.fixture
-def mock_args():
+def mock_args() -> dict:
     """Fixture to provide mocked CLI arguments for FID calculation."""
     return {
         "dataroot": "./mock_data",
@@ -22,15 +27,19 @@ def mock_args():
         "name": None,
     }
 
+
 @pytest.fixture
-def mock_dataset():
+def mock_dataset() -> list[torch.Tensor]:
     """Fixture to provide a mocked dataset."""
     return [torch.randn((3, 32, 32)) for _ in range(100)]
+
 
 @patch("src.metrics.fid.fid_cli.load_dataset")
 @patch("src.metrics.fid.fid_cli.FrechetInceptionDistance")
 @patch("src.metrics.fid.fid_cli.construct_classifier_from_checkpoint")
-def test_get_feature_map_function(mock_construct_classifier, mock_fid, mock_load_dataset, mock_args):
+def test_get_feature_map_function(
+    mock_construct_classifier: MagicMock, mock_fid: MagicMock, mock_load_dataset: MagicMock, mock_args: MagicMock
+) -> None:
     """Test get_feature_map_function."""
     # Case 1: Model path is provided and valid model returned
     mock_model = MagicMock()
@@ -52,16 +61,21 @@ def test_get_feature_map_function(mock_construct_classifier, mock_fid, mock_load
     feature_map_fn = get_feature_map_function(config)
     assert feature_map_fn is None
 
+
 @patch("src.metrics.fid.fid_cli.load_dataset")
 @patch("src.metrics.fid.fid_cli.FrechetInceptionDistance")
 @patch("numpy.savez")
 @patch("src.metrics.fid.fid_cli.torch.utils.data.DataLoader")
 def test_main(
-    mock_dataloader, mock_savez, mock_fid, mock_load_dataset, mock_args
-):
-    """Test the main function in fid_cli.py"""
+    mock_dataloader: MagicMock,
+    mock_savez: MagicMock,
+    mock_fid: MagicMock,
+    mock_load_dataset: MagicMock,
+    mock_args: MagicMock,
+) -> None:
+    """Test the main function in fid_cli.py."""
     mock_load_dataset.return_value = ("mocked_data", None, None)
-    
+
     # Mocking FID instance properly with Tensors
     mock_fid_instance = mock_fid.return_value
     mock_fid_instance.real_sum = torch.tensor([1.0])
@@ -74,7 +88,7 @@ def test_main(
 
         # Mock arguments namespace
         with patch("argparse.ArgumentParser.parse_args", return_value=Namespace(**mock_args)):
-            with patch("src.models.CLFIDArgs", wraps=CLFIDArgs) as mock_fid_args:
+            with patch("src.models.CLFIDArgs", wraps=CLFIDArgs) as _:
                 # Simulate passing arguments through parser and running the main function
                 main()
 
@@ -91,7 +105,7 @@ def test_main(
                 assert "sigma" in kwargs
 
 
-def test_argument_validation():
+def test_argument_validation() -> None:
     """Test CLFIDArgs pydantic model validation for different scenarios."""
     # Valid arguments
     valid_args = {
@@ -128,8 +142,12 @@ def test_argument_validation():
 @patch("src.metrics.fid.fid_cli.load_dataset")
 @patch("src.metrics.fid.fid_cli.FrechetInceptionDistance")
 def test_fid_statistics_calculation(
-    mock_fid, mock_load_dataset, mock_dataloader, mock_savez, mock_args
-):
+    mock_fid: MagicMock,
+    mock_load_dataset: MagicMock,
+    mock_dataloader: MagicMock,
+    mock_savez: MagicMock,
+    mock_args: MagicMock,
+) -> None:
     """Test if FID statistics are being calculated and saved properly."""
     # Mock dataset loading and DataLoader
     mock_load_dataset.return_value = ("mocked_data", None, None)

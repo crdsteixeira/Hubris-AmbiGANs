@@ -15,8 +15,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.enums import DeviceType, TrainingStage
-from src.models import TrainClassifierArgs
-from src.models import CLTrainArgs, EvaluateParams, TrainingStats
+from src.models import CLTrainArgs, EvaluateParams, TrainClassifierArgs, TrainingStats
 from src.utils.checkpoint import checkpoint
 
 logger = logging.getLogger(__name__)

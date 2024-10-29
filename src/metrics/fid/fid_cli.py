@@ -55,9 +55,8 @@ def get_feature_map_function(config: CLFIDArgs) -> nn.Module | None:
 
 def main() -> None:
     """Calculate and save FID statistics based on the provided CLI arguments."""
-
     logger.info("FID calculation is starting...")
-    
+
     args = parser.parse_args()
     logger.debug(args)
 

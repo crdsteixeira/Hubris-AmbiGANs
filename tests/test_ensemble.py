@@ -1,9 +1,11 @@
-from typing import Tuple, Union
+"""Test for ensemble classifiers module."""
+
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 import torch
-import torch.nn as nn
+from torch import nn
 
 from src.classifier.ensemble import Ensemble
 from src.enums import DeviceType, EnsembleType, OutputMethod
@@ -12,13 +14,17 @@ from src.models import ClassifierParams
 
 # Mock classifiers for testing purposes
 class MockCNN(nn.Module):
-    def __init__(self, n_classes: int, *args, **kwargs) -> None:
+    """Mock CNN module."""
+
+    def __init__(self, n_classes: int, *_: Any, **__: Any) -> None:
+        """Init method for CNN mock classifier."""
         super().__init__()
         self.n_classes = 1 if n_classes == 2 else n_classes
 
     def forward(
         self, x: torch.Tensor, output_feature_maps: bool = False
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """Forward method for CNN mock classifier."""
         if output_feature_maps:
             return torch.randn(x.shape[0], 64, 64, 64, requires_grad=True), torch.randn(
                 x.shape[0], self.n_classes, requires_grad=True
@@ -27,10 +33,14 @@ class MockCNN(nn.Module):
 
 
 class MockPretrained(nn.Module):
-    def __init__(self, *args, **kwargs) -> None:
+    """Mock pretrained model."""
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        """Init method for pretrained mock classifier."""
         super().__init__()
 
-    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, _: bool = False) -> torch.Tensor:
+        """Forward method for pretrained mock classifier."""
         return torch.randn(x.shape[0], 10)
 
 
@@ -66,7 +76,7 @@ def test_ensemble_pretrained_initialization() -> None:
     assert not ensemble.train_models, "Pretrained models should not be set to train."
 
 
-def test_ensemble_missing_ensemble_type_and_output_method():
+def test_ensemble_missing_ensemble_type_and_output_method() -> None:
     """Test that a ValueError is raised if ensemble_type or output_method are missing for ensemble classifiers."""
     # Case 1: Missing both ensemble_type and output_method
     with pytest.raises(

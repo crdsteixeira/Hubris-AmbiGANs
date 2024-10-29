@@ -1,12 +1,10 @@
 """Module for retrieving the datasets."""
 
-import io
 from typing import Any
 
 import torch
 import torchvision
 from datasets import load_dataset
-from PIL import Image
 from torch.utils.data import Dataset
 
 from src.models import DatasetParams
@@ -74,6 +72,7 @@ def get_chest_xray(params: DatasetParams) -> Dataset:
     ds = load_dataset("keremberke/chest-xray-classification", name="full", split=split)
     transform = torchvision.transforms.Compose(
         [
+            torchvision.transforms.Resize(256),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize((0.5,), (0.5,)),
         ]

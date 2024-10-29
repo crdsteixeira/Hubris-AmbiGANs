@@ -1,15 +1,14 @@
 """Test Module for generating FID statistics from dataset."""
 
-import itertools
-from argparse import Namespace
-from unittest.mock import MagicMock, patch, call
+from collections.abc import Generator
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from pydantic import ValidationError
-from typing import Generator
 
 from src.gen_pairwise_inception import main
 from src.models import CLFIDStatsArgs
+
 
 # Fixture for setting up valid arguments
 @pytest.fixture
@@ -21,25 +20,26 @@ def valid_args() -> dict[str, str]:
         "device": "cpu",
     }
 
+
 # Mock load_dotenv, configure_logging and subprocess in a setup fixture
 @pytest.fixture(autouse=True)
 @patch("dotenv.load_dotenv")
 @patch("src.utils.logging.configure_logging")
-def setup_logging_and_env(mock_configure_logging: MagicMock, mock_load_dotenv: MagicMock) -> Generator[None, None, None]:
+def setup_logging_and_env(
+    mock_configure_logging: MagicMock, mock_load_dotenv: MagicMock
+) -> Generator[None, None, None]:
     """Fixture to mock environment setup and logging configuration."""
     mock_load_dotenv.return_value = None
     mock_configure_logging.return_value = None
     yield
+
 
 # Optimized Test with Mocking Pydantic Validation and Subprocess Call
 @patch("argparse.ArgumentParser.parse_args")
 @patch("subprocess.run")
 @patch("itertools.combinations")
 def test_main_subprocess_calls(
-    mock_combinations: MagicMock,
-    mock_subprocess_run: MagicMock,
-    mock_parse_args: MagicMock,
-    valid_args: dict[str, str]
+    mock_combinations: MagicMock, mock_subprocess_run: MagicMock, mock_parse_args: MagicMock, valid_args: dict[str, str]
 ) -> None:
     """Test the main function end-to-end with subprocess mocking."""
     # Mock the command line arguments
@@ -75,6 +75,7 @@ def test_main_subprocess_calls(
         check=False,
     )
 
+
 @patch("argparse.ArgumentParser.parse_args")
 def test_pydantic_validation_failure(mock_parse_args: MagicMock) -> None:
     """Test if ValidationError is raised for invalid arguments."""
@@ -88,6 +89,7 @@ def test_pydantic_validation_failure(mock_parse_args: MagicMock) -> None:
     # Expect ValidationError due to invalid dataset value
     with pytest.raises(ValidationError):
         main()
+
 
 @patch("argparse.ArgumentParser.parse_args")
 def test_pydantic_validation_success(mock_parse_args: MagicMock, valid_args: dict[str, str]) -> None:
@@ -104,6 +106,7 @@ def test_pydantic_validation_success(mock_parse_args: MagicMock, valid_args: dic
     assert config.dataroot == valid_args["dataroot"]
     assert config.device == valid_args["device"]
 
+
 @patch("argparse.ArgumentParser.parse_args")
 @patch("src.models.CLFIDStatsArgs")
 @patch("itertools.combinations")
@@ -113,7 +116,7 @@ def test_main_logging_and_validation(
     mock_combinations: MagicMock,
     mock_CLFIDStatsArgs: MagicMock,
     mock_parse_args: MagicMock,
-    valid_args: dict[str, str]
+    valid_args: dict[str, str],
 ) -> None:
     """Test logging and validation integration."""
     # Mock arguments and validation
@@ -131,14 +134,12 @@ def test_main_logging_and_validation(
     mock_logger.info.assert_any_call(mock_CLFIDStatsArgs.return_value)
     mock_logger.info.assert_any_call("0vs1")
 
+
 @patch("argparse.ArgumentParser.parse_args")
 @patch("subprocess.run")
 @patch("itertools.combinations")
 def test_multiple_class_combinations(
-    mock_combinations: MagicMock,
-    mock_subprocess_run: MagicMock,
-    mock_parse_args: MagicMock,
-    valid_args: dict[str, str]
+    mock_combinations: MagicMock, mock_subprocess_run: MagicMock, mock_parse_args: MagicMock, valid_args: dict[str, str]
 ) -> None:
     """Test subprocess is called for multiple class combinations."""
     # Mock the command line arguments
@@ -173,7 +174,7 @@ def test_multiple_class_combinations(
                 "--neg",
                 str(neg),
             ],
-            check=False
+            check=False,
         )
         for neg, pos in mock_combinations.return_value
     ]

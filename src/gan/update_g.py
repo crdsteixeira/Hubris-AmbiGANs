@@ -255,7 +255,7 @@ class UpdateGeneratorAmbiGanKLDiv(UpdateGenerator):
             target = full_like(input=class_prob, fill_value=self.target, device=device)
             # Compute the KL Divergence loss, accumulate it
             loss_1 = loss_1 + self.c_loss(log(class_prob), target).sum()
-            #loss_1 += self.c_loss(log(class_prob.clip(self.eps, 1.0)), target)
+            # loss_1 += self.c_loss(log(class_prob.clip(self.eps, 1.0)), target)
 
         # update from discriminator
         output = D(fake_data)
@@ -265,7 +265,7 @@ class UpdateGeneratorAmbiGanKLDiv(UpdateGenerator):
         # Combine the losses
         loss = (self.alpha * loss_1 + loss_2).sum()
 
-        #loss = hstack((self.alpha * loss_1, loss_2.unsqueeze(-1))).sum()
+        # loss = hstack((self.alpha * loss_1, loss_2.unsqueeze(-1))).sum()
 
         loss.backward()
         optimizer.step()
@@ -313,7 +313,7 @@ class UpdateGeneratorAmbiGanGaussianIdentity(UpdateGenerator):
             target = full_like(input=c_pred, fill_value=self.target, device=device)
             # Compute variance and ensure it has the same shape as c_pred
             var = full_like(input=c_pred, fill_value=self.var, device=device)
-            
+
             loss_1 = loss_1 + self.c_loss(c_pred, target, var).sum()
 
         # update from discriminator
@@ -324,7 +324,7 @@ class UpdateGeneratorAmbiGanGaussianIdentity(UpdateGenerator):
         # Combine the losses
         loss = (self.alpha * loss_1 + loss_2).sum()
 
-        #loss = hstack((self.alpha * loss_1, loss_2)).sum()
+        # loss = hstack((self.alpha * loss_1, loss_2)).sum()
 
         loss.backward()
         optimizer.step()

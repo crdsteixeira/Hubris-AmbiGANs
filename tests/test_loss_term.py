@@ -1,10 +1,12 @@
 """Module for testing the Confusion Distance metric."""
 
+from unittest.mock import MagicMock
+
 import pytest
 import torch
-from unittest.mock import MagicMock
-from src.metrics.loss_term import LossSecondTerm
+
 from src.classifier.classifier_cache import ClassifierCache
+from src.metrics.loss_term import LossSecondTerm
 
 
 @pytest.fixture
@@ -83,4 +85,3 @@ def test_reset(loss_second_term: LossSecondTerm) -> None:
     assert loss_second_term.count == 0
     assert loss_second_term.acc == 0
     assert loss_second_term.result == float("inf")
-

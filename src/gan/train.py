@@ -8,7 +8,13 @@ import torch
 from torch import Tensor
 from tqdm import tqdm
 
-from src.models import CheckpointGAN, ConfigGAN, GANTrainArgs, TrainingState, MetricsParams
+from src.models import (
+    CheckpointGAN,
+    ConfigGAN,
+    GANTrainArgs,
+    MetricsParams,
+    TrainingState,
+)
 from src.utils.checkpoint import checkpoint_gan, checkpoint_image
 from src.utils.metrics_logger import MetricsLogger
 from src.utils.utility_functions import group_images, seed_worker

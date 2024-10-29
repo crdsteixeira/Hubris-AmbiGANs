@@ -1,22 +1,24 @@
 """Module to test Hubris metric."""
 
+from unittest.mock import MagicMock
+
 import pytest
 import torch
-from unittest.mock import MagicMock, patch
-from src.metrics.hubris import Hubris
+
 from src.classifier.classifier_cache import ClassifierCache
+from src.metrics.hubris import Hubris
 
 
 @pytest.fixture
 def mock_classifier_cache() -> ClassifierCache:
     """Fixture to provide a mock classifier cache."""
     mock_cache = MagicMock(spec=ClassifierCache)
-    
+
     # Create a mock for the C attribute and models
     mock_C = MagicMock()
     mock_C.models = [MagicMock(), MagicMock()]  # Assume there are two models
     mock_cache.configure_mock(C=mock_C)
-    
+
     return mock_cache
 
 
@@ -105,5 +107,3 @@ def test_reset(hubris_metric: Hubris) -> None:
 
     assert torch.equal(hubris_metric.preds, torch.zeros(100, dtype=float))
     assert torch.equal(hubris_metric.result, torch.tensor([1.0]))
-
-

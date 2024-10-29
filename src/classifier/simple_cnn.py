@@ -1,7 +1,7 @@
 """Module for a Simple CNN."""
 
-import math
 import logging
+import math
 
 import torch
 from torch import nn

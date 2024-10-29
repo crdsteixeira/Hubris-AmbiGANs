@@ -14,7 +14,7 @@ from src.utils.utility_functions import create_and_store_z, gen_seed, set_seed
 
 
 @pytest.fixture
-def mock_args() -> None:
+def mock_args() -> CLTestNoiseArgs:
     """Fixture to provide mock command line arguments."""
     return CLTestNoiseArgs(seed=42, nz=5, z_dim=100, out_dir="mock_out")
 
@@ -22,7 +22,9 @@ def mock_args() -> None:
 @patch("os.makedirs")
 @patch("numpy.savez")
 @patch("builtins.open", new_callable=mock_open)
-def test_create_and_store_z(mock_file, mock_savez, mock_makedirs, mock_args) -> None:
+def test_create_and_store_z(
+    mock_file: MagicMock, mock_savez: MagicMock, mock_makedirs: MagicMock, mock_args: MagicMock
+) -> None:
     """Test that noise tensor z is created and stored correctly."""
     z, path = create_and_store_z(config=mock_args)
 
@@ -91,7 +93,12 @@ def test_set_seed() -> None:
 @patch("src.utils.utility_functions.create_and_store_z")
 @patch("src.utils.logging.configure_logging")
 @patch("dotenv.load_dotenv")
-def test_main(mock_load_dotenv, mock_configure_logging, mock_create_and_store_z, mock_parse_args) -> None:
+def test_main(
+    mock_load_dotenv: MagicMock,
+    mock_configure_logging: MagicMock,
+    mock_create_and_store_z: MagicMock,
+    mock_parse_args: MagicMock,
+) -> None:
     """Test the main function end-to-end."""
     mock_args = MagicMock(seed=42, nz=5, z_dim=100, out_dir="mock_out")
     mock_parse_args.return_value = mock_args
@@ -114,5 +121,6 @@ def test_main(mock_load_dotenv, mock_configure_logging, mock_create_and_store_z,
     except ValidationError:
         pytest.fail("Validation failed with valid arguments.")
 
-    set_seed(config.seed)
+    if config.seed:
+        set_seed(config.seed)
     mock_create_and_store_z.assert_called_once_with(config=config)

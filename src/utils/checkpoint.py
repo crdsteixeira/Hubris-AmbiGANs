@@ -16,8 +16,8 @@ from src.models import (
     CLTrainArgs,
     GANTrainArgs,
     TrainClassifierArgs,
+    TrainingState,
     TrainingStats,
-    TrainingState
 )
 
 logger = logging.getLogger(__name__)

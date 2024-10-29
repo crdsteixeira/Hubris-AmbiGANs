@@ -1,10 +1,14 @@
-import pytest
-import tempfile
+"""Test for read config module."""
+
 import os
+import tempfile
+
+import pytest
 import yaml
+from pydantic import ValidationError
+
 from src.models import ConfigWeights
 from src.utils.read_config import read_config
-from pydantic import ValidationError
 
 
 @pytest.fixture
@@ -26,9 +30,7 @@ def sample_config_data() -> dict:
         "step_2_seeds": [44, 45],
         "dataset": {
             "name": "cifar10",
-            "binary": {
-                "pos": 0,
-                "neg": 5},
+            "binary": {"pos": 0, "neg": 5},
         },
         "model": {
             "z_dim": 100,
@@ -41,7 +43,7 @@ def sample_config_data() -> dict:
             },
             "loss": {
                 "name": "wgan-gp",
-                "args":  10,
+                "args": 10,
             },
         },
         "optimizer": {
@@ -60,7 +62,6 @@ def sample_config_data() -> dict:
                 "weight": [
                     {"gaussian": [{"alpha": 0.5, "var": 0.1}]},
                     {"cd": {"alpha": [1, 2.5]}},
-                   
                 ],
             },
         },
@@ -68,14 +69,14 @@ def sample_config_data() -> dict:
 
 
 def write_yaml_file(data: dict) -> str:
-    """Helper function to write YAML data to a temporary file."""
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".yaml")
-    with open(temp_file.name, 'w', encoding="utf-8") as file:
-        yaml.dump(data, file)
+    """Write YAML data to a temporary file."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".yaml") as temp_file:
+        with open(temp_file.name, "w", encoding="utf-8") as file:
+            yaml.dump(data, file)
     return temp_file.name
 
 
-def test_read_config_valid(sample_config_data):
+def test_read_config_valid(sample_config_data: dict) -> None:
     """Test reading a valid configuration."""
     config_file_path = write_yaml_file(sample_config_data)
     try:
@@ -91,7 +92,8 @@ def test_read_config_valid(sample_config_data):
     finally:
         os.remove(config_file_path)
 
-def test_read_config_missing_field(sample_config_data):
+
+def test_read_config_missing_field(sample_config_data: dict) -> None:
     """Test reading a configuration with a missing required field."""
     del sample_config_data["name"]  # Remove required field
     config_file_path = write_yaml_file(sample_config_data)
@@ -101,7 +103,8 @@ def test_read_config_missing_field(sample_config_data):
     finally:
         os.remove(config_file_path)
 
-def test_read_config_invalid_field_type(sample_config_data):
+
+def test_read_config_invalid_field_type(sample_config_data: dict) -> None:
     """Test reading a configuration with an invalid field type."""
     sample_config_data["num_runs"] = "invalid_integer"  # Invalid type for num_runs
     config_file_path = write_yaml_file(sample_config_data)
@@ -111,7 +114,8 @@ def test_read_config_invalid_field_type(sample_config_data):
     finally:
         os.remove(config_file_path)
 
-def test_read_config_add_paths(sample_config_data):
+
+def test_read_config_add_paths(sample_config_data: dict) -> None:
     """Test reading a configuration and validating that paths are updated properly on any OS."""
     config_file_path = write_yaml_file(sample_config_data)
     os.environ["FILESDIR"] = os.path.join(os.sep, "base", "path")  # Cross-platform

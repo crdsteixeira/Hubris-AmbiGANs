@@ -1,6 +1,5 @@
 """Module to test checkpoint."""
 
-import json
 import os
 import tempfile
 from unittest.mock import MagicMock, mock_open, patch
@@ -39,7 +38,6 @@ from src.models import (
 from src.utils.checkpoint import (
     checkpoint,
     checkpoint_gan,
-    checkpoint_image,
     construct_classifier_from_checkpoint,
     construct_gan_from_checkpoint,
     load_checkpoint,
@@ -100,7 +98,13 @@ def mock_train_classifier_args() -> TrainClassifierArgs:
 
 
 @patch("torch.save")
-def test_checkpoint(mock_save, mock_model, mock_train_classifier_args, mock_train_stats, mock_cl_train_args) -> None:
+def test_checkpoint(
+    mock_save: MagicMock,
+    mock_model: MagicMock,
+    mock_train_classifier_args: MagicMock,
+    mock_train_stats: MagicMock,
+    mock_cl_train_args: MagicMock,
+) -> None:
     """Test saving a model checkpoint."""
     output_dir = tempfile.mkdtemp()
     result_dir = checkpoint(
@@ -120,7 +124,7 @@ def test_checkpoint(mock_save, mock_model, mock_train_classifier_args, mock_trai
 
 
 @patch("torch.load")
-def test_load_checkpoint(mock_load, mock_model, mock_optimizer) -> None:
+def test_load_checkpoint(mock_load: MagicMock, mock_model: MagicMock, mock_optimizer: MagicMock) -> None:
     """Test loading a model checkpoint from disk."""
     mock_load.return_value = {
         "state": mock_model.state_dict(),
@@ -135,7 +139,10 @@ def test_load_checkpoint(mock_load, mock_model, mock_optimizer) -> None:
 @patch("torch.load")
 @patch("src.utils.checkpoint.construct_classifier")
 def test_construct_classifier_from_checkpoint(
-    mock_construct_classifier, mock_load, mock_train_classifier_args, mock_cl_train_args
+    mock_construct_classifier: MagicMock,
+    mock_load: MagicMock,
+    mock_train_classifier_args: MagicMock,
+    mock_cl_train_args: MagicMock,
 ) -> None:
     """Test constructing a classifier model from a saved checkpoint."""
     mock_load.return_value = {
@@ -147,7 +154,7 @@ def test_construct_classifier_from_checkpoint(
         "optimizer": MagicMock(spec=optim.Optimizer).state_dict(),
     }
 
-    model, model_params, stats, args, optimizer = construct_classifier_from_checkpoint("mock_path")
+    model, model_params, _, args, optimizer = construct_classifier_from_checkpoint("mock_path")
 
     mock_construct_classifier.assert_called_once()
     assert model == mock_construct_classifier.return_value
@@ -169,10 +176,10 @@ def test_construct_classifier_from_checkpoint(
             "data_dir": "data_dir",
             "fid_stats_path": "fid_path",
             "fixed_noise": "fixed_noise_str",
-            "test_noise": "test_noise_str", 
+            "test_noise": "test_noise_str",
             "dataset": {
-                "name": "mnist", 
-                "binary": {"pos": 1, "neg": 7}  
+                "name": "mnist",
+                "binary": {"pos": 1, "neg": 7}
             },
             "model": {
                 "z_dim": 128,
@@ -205,11 +212,13 @@ def test_construct_classifier_from_checkpoint(
                 }
             }
         },
-        "gen_params": {"image_size": [3, 64, 64]},  
+        "gen_params": {"image_size": [3, 64, 64]},
         "dis_params": {"image_size": [3, 64, 64]}
 }""",
 )
-def test_construct_gan_from_checkpoint(mock_open_file, mock_construct_gan, mock_load) -> None:
+def test_construct_gan_from_checkpoint(
+    mock_open_file: MagicMock, mock_construct_gan: MagicMock, mock_load: MagicMock
+) -> None:
     """Test constructing a GAN model from a saved checkpoint."""
     mock_load.side_effect = [
         {
@@ -252,7 +261,7 @@ def test_construct_gan_from_checkpoint(mock_open_file, mock_construct_gan, mock_
 
 @patch("torch.save")
 @patch("json.dump")
-def test_checkpoint_gan(mock_json_dump, mock_save):
+def test_checkpoint_gan(mock_json_dump: MagicMock, mock_save: MagicMock) -> None:
     """Test saving a GAN checkpoint."""
     output_dir = tempfile.mkdtemp()
 
@@ -331,8 +340,8 @@ def test_checkpoint_gan(mock_json_dump, mock_save):
     )
 
     # Mock state and stats
-    mock_state = {}
-    mock_stats = {}
+    mock_state: dict = {}
+    mock_stats: dict = {}
 
     # Use the proper ConfigGAN instance
     result_dir = checkpoint_gan(

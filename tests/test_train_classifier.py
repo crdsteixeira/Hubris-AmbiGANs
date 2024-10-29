@@ -4,7 +4,7 @@ import os
 
 import pytest
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.classifier.train_classifier import default_train_fn, evaluate, save_predictions

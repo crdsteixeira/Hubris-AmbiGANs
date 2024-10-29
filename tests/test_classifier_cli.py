@@ -1,9 +1,12 @@
+"""Test for classifier CLI arguments."""
+
 import os
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.classifier.classifier_cli import parse_args
@@ -11,7 +14,6 @@ from src.classifier.train_classifier import main, train
 from src.enums import ClassifierType, DeviceType
 from src.metrics.accuracy import binary_accuracy
 from src.models import ClassifierParams, CLTrainArgs, TrainClassifierArgs
-from tests.test_train_classifier import MockClassifier
 
 
 # Mock Dataset
@@ -124,7 +126,7 @@ def test_main(
 
     monkeypatch.setattr("src.classifier.classifier_cli.parse_args", mock_parse_args)
 
-    def mock_load_dataset(*args, **kwargs) -> tuple[TensorDataset, int, tuple[int, int, int]]:
+    def mock_load_dataset(*_: Any, **__: Any) -> tuple[TensorDataset, int, tuple[int, int, int]]:
         dataset = mock_dataloader.dataset
         return dataset, 2, (3, 28, 28)
 
@@ -146,7 +148,7 @@ def test_main(
     assert os.path.exists(tmp_path), "The output directory should be created"
 
 
-def test_parse_args_valid():
+def test_parse_args_valid() -> None:
     """Test parse_args function with valid command-line arguments."""
     test_args = [
         "train_classifier.py",
@@ -183,7 +185,7 @@ def test_parse_args_valid():
         assert args.device == "cuda"
 
 
-def test_parse_args_missing_required():
+def test_parse_args_missing_required() -> None:
     """Test parse_args function to ensure it raises ValidationError on missing required arguments."""
     test_args = ["train_classifier.py", "--data_dir", "/some/data/dir"]  # Missing several required arguments
 
@@ -192,7 +194,7 @@ def test_parse_args_missing_required():
             parse_args()
 
 
-def test_parse_args_invalid_type():
+def test_parse_args_invalid_type() -> None:
     """Test parse_args function to ensure it raises ValidationError on invalid argument type."""
     test_args = [
         "train_classifier.py",

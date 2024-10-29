@@ -1,20 +1,26 @@
-import pytest
+"""Test for update generator methods."""
+
+from collections.abc import Callable
 from unittest.mock import MagicMock
+
+import pytest
 import torch
 from torch import nn, optim
-from typing import Callable
+
+from src.enums import DeviceType
 from src.gan.update_g import (
+    UpdateGeneratorAmbiGanGaussian,
+    UpdateGeneratorAmbiGanGaussianIdentity,
+    UpdateGeneratorAmbiGanKLDiv,
     UpdateGeneratorGAN,
     UpdateGeneratorGASTEN,
     UpdateGeneratorGastenMgda,
-    UpdateGeneratorAmbiGanGaussian,
-    UpdateGeneratorAmbiGanKLDiv,
-    UpdateGeneratorAmbiGanGaussianIdentity,
 )
-from src.enums import DeviceType
+
 
 @pytest.fixture
-def mock_models():
+def mock_models() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock, MagicMock, torch.Tensor, torch.device]:
+    """Define mock models for test."""
     # Mock Generator and Discriminator
     G = MagicMock(spec=nn.Module)
     D = MagicMock(spec=nn.Module)
@@ -36,15 +42,16 @@ def mock_models():
 
     # Let's simulate two different tensors for different purposes (e.g., class predictions, auxiliary features)
     C_identity.return_value = (
-        torch.sigmoid(torch.randn((16, 10))),  # Prediction from the several classifiers 
-        torch.sigmoid(torch.randn((16, 1)))    # Final predictions from ambiguity estimator 
+        torch.sigmoid(torch.randn((16, 10))),  # Prediction from the several classifiers
+        torch.sigmoid(torch.randn((16, 1))),  # Final predictions from ambiguity estimator
     )
 
     return G, D, C, C_identity, optimizer, noise, device
 
+
 @pytest.fixture
-def mock_crit():
-    # Mock criterion that returns a scalar tensor requiring gradient
+def mock_crit() -> MagicMock:
+    """Define mock criterion that returns a scalar tensor requiring gradient."""
     return MagicMock(return_value=torch.tensor(1.0, requires_grad=True))
 
 

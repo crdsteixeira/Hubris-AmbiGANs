@@ -1,22 +1,14 @@
 """Module for testing GAN CLI."""
 
-from argparse import Namespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
 from torch import nn, optim
-from torch.utils.data import Dataset
 from torchvision.datasets import FakeData
 from torchvision.transforms import ToTensor
 
-from src.gan.gan_cli import (
-    main,
-    parse_args,
-    train_modified_gan,
-    train_step1_gan,
-    train_step2_gan,
-)
+from src.gan.gan_cli import parse_args, train_step1_gan, train_step2_gan
 from src.gan.loss import DiscriminatorLoss
 from src.gan.update_g import UpdateGenerator, UpdateGeneratorGAN
 from src.metrics.fid.fid import FID
@@ -131,7 +123,7 @@ def mock_step1_args(mock_config: ConfigGAN) -> Step1TrainingArgs:
 
 
 @pytest.fixture
-def mock_step2_args(mock_step1_args) -> Step2TrainingArgs:
+def mock_step2_args(mock_step1_args: MagicMock) -> Step2TrainingArgs:
     """Fixture to provide mock Step2TrainingArgs."""
     return Step2TrainingArgs(
         run_id=1234,

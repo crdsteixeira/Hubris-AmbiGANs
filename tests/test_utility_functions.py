@@ -42,13 +42,13 @@ from src.utils.utility_functions import (
 
 
 @pytest.fixture
-def mock_config():
+def mock_config() -> dict:
     """Fixture to provide a mock configuration dictionary."""
     return {"out-dir": "mock_out", "project": "test_project", "name": "test_run"}
 
 
 @pytest.fixture
-def mock_args() -> None:
+def mock_args() -> CLTrainArgs:
     """Fixture to provide mock CLTrainArgs for classifier training."""
     return CLTrainArgs(
         device="cpu",
@@ -65,7 +65,7 @@ def mock_args() -> None:
     )
 
 
-def test_create_checkpoint_path(mock_config) -> None:
+def test_create_checkpoint_path(mock_config: MagicMock) -> None:
     """Test creating a checkpoint path."""
     with patch("os.makedirs") as mock_makedirs:
         path = create_checkpoint_path(mock_config, "001")
@@ -75,7 +75,7 @@ def test_create_checkpoint_path(mock_config) -> None:
         mock_makedirs.assert_called_once_with(path, exist_ok=True)
 
 
-def test_create_exp_path(mock_config) -> None:
+def test_create_exp_path(mock_config: MagicMock) -> None:
     """Test creating an experimental path."""
     with patch("os.makedirs") as mock_makedirs:
         path = create_exp_path(mock_config)
@@ -120,7 +120,7 @@ def test_seed_worker() -> None:
 
 @patch("os.makedirs")
 @patch("numpy.savez")
-def test_create_and_store_z(mock_savez, mock_makedirs):
+def test_create_and_store_z(mock_savez: MagicMock, mock_makedirs: MagicMock) -> None:
     """Test creating and storing noise tensor z."""
     out_dir = "mock_out"
     n, dim = 5, 100
@@ -184,7 +184,7 @@ def test_generate_cnn_configs() -> None:
 
 
 @patch("subprocess.run")
-def test_run_training_subprocess(mock_run, mock_args) -> None:
+def test_run_training_subprocess(mock_run: MagicMock, mock_args: MagicMock) -> None:
     """Test running a classifier training subprocess."""
     run_training_subprocess(
         CLTrainArgs(
@@ -201,7 +201,7 @@ def test_run_training_subprocess(mock_run, mock_args) -> None:
 
 
 @patch("src.utils.utility_functions.logger")
-def test_handle_subprocess_output(mock_logger) -> None:
+def test_handle_subprocess_output(mock_logger: MagicMock) -> None:
     """Test handling output from subprocess."""
     # Mock subprocess result with stdout and stderr
     proc_mock = MagicMock()

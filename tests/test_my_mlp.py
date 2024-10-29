@@ -1,14 +1,16 @@
+"""Test MLP classifier module."""
+
 import pytest
 import torch
-import torch.nn as nn
 from pydantic import ValidationError
+from torch import nn
 
 from src.classifier.my_mlp import Classifier
 from src.enums import DeviceType
 from src.models import ClassifierParams
 
 
-def test_valid_mlp_params():
+def test_valid_mlp_params() -> None:
     """Test valid MLP classifier params."""
     params = ClassifierParams(
         type="mlp",
@@ -20,7 +22,7 @@ def test_valid_mlp_params():
     assert params.nf == 64
 
 
-def test_invalid_mlp_nf():
+def test_invalid_mlp_nf() -> None:
     """Test invalid 'nf' value for MLP (should raise validation error)."""
     with pytest.raises(ValidationError):
         ClassifierParams(
@@ -32,7 +34,7 @@ def test_invalid_mlp_nf():
         )
 
 
-def test_invalid_img_size():
+def test_invalid_img_size() -> None:
     """Test invalid img_size (should raise validation error)."""
     with pytest.raises(ValidationError):
         ClassifierParams(
@@ -44,7 +46,7 @@ def test_invalid_img_size():
         )
 
 
-def test_invalid_number_of_classes():
+def test_invalid_number_of_classes() -> None:
     """Test invalid number of classes (should raise validation error)."""
     with pytest.raises(ValidationError):
         ClassifierParams(
@@ -56,7 +58,7 @@ def test_invalid_number_of_classes():
         )
 
 
-def test_mlp_binary_classification_output():
+def test_mlp_binary_classification_output() -> None:
     """Test forward pass for binary classification produces scalar output."""
     params = ClassifierParams(
         type="mlp",
@@ -74,7 +76,7 @@ def test_mlp_binary_classification_output():
     assert output.shape == (1,), f"Expected shape (1,), but got {output.shape}"
 
 
-def test_mlp_multiclass_classification_output():
+def test_mlp_multiclass_classification_output() -> None:
     """Test forward pass for multi-class classification produces correct output."""
     params = ClassifierParams(
         type="mlp",
@@ -92,7 +94,7 @@ def test_mlp_multiclass_classification_output():
     assert output.shape == (1, 10), f"Expected shape (1, 10), but got {output.shape}"
 
 
-def test_mlp_output_with_feature_maps():
+def test_mlp_output_with_feature_maps() -> None:
     """Test forward pass with feature maps output enabled."""
     params = ClassifierParams(
         type="mlp",
@@ -114,7 +116,7 @@ def test_mlp_output_with_feature_maps():
     assert outputs[-1].shape == (1,), f"Expected final output shape (1,), but got {outputs[-1].shape}"
 
 
-def test_invalid_input_shape():
+def test_invalid_input_shape() -> None:
     """Test that an invalid input shape raises an error."""
     params = ClassifierParams(type="mlp", img_size=(3, 28, 28), n_classes=10, nf=64, device=DeviceType.cpu)
     model = Classifier(params)
@@ -125,7 +127,7 @@ def test_invalid_input_shape():
         model(x)
 
 
-def test_mlp_device_compatibility():
+def test_mlp_device_compatibility() -> None:
     """Test that the MLP model works on both CPU and GPU (if available)."""
     params = ClassifierParams(type="mlp", img_size=(3, 28, 28), n_classes=10, nf=64, device=DeviceType.cpu)
     model = Classifier(params)
@@ -143,7 +145,7 @@ def test_mlp_device_compatibility():
         assert output_gpu is not None, "Output on GPU should not be None"
 
 
-def test_mlp_initialization_properties():
+def test_mlp_initialization_properties() -> None:
     """Test if MLP initializes with correct properties."""
     params = ClassifierParams(type="mlp", img_size=(1, 28, 28), n_classes=2, nf=64, device=DeviceType.cpu)
     model = Classifier(params)

@@ -10,7 +10,7 @@ import torch
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-import wandb # noqa
+import wandb  # type: ignore[attr-defined]
 from src.classifier.classifier_cache import ClassifierCache
 from src.datasets.load import load_dataset
 from src.gan.construct_gan import construct_gan, construct_loss
@@ -266,10 +266,9 @@ def train_step1_gan(params: Step1TrainingArgs, config: ConfigGAN) -> tuple[dict,
     # Step 1 (train GAN with normal GAN loss)
     ###
     if not isinstance(config.train.step_1, str):
-        early_stop_crit: int = 0
+        early_stop: tuple[str, int] | None = None
         if config.train.step_1.early_stop is not None:
-            early_stop_crit = config.train.step_1.early_stop
-        early_stop = ("fid", early_stop_crit)
+            early_stop = config.train.step_1.early_stop
 
         wandb.init(
             project=config.project,
@@ -319,14 +318,15 @@ def train_step1_gan(params: Step1TrainingArgs, config: ConfigGAN) -> tuple[dict,
     return step_1_train_state, original_gan_cp_dir
 
 
-def main() -> None:
+def main(config: ConfigGAN | None = None) -> None:
     """Run process of GAN training."""
     load_dotenv()
     logger.info("AmbiGANs is starting...")
 
-    args = parse_args()
-    config = read_config(args.config_path)
-    logger.info(f"Loaded experiment configuration from {args.config_path}")
+    if config is None:
+        args = parse_args()
+        config = read_config(args.config_path)
+        logger.info(f"Loaded experiment configuration from {args.config_path}")
 
     if config.step_1_seeds is None:
         config.step_1_seeds = [gen_seed() for _ in range(config.num_runs)]

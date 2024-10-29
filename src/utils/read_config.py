@@ -4,7 +4,7 @@ import os
 
 import yaml
 
-from src.models import ConfigGAN
+from src.models import ConfigGAN, ConfigMain
 
 
 def read_config(path: str) -> ConfigGAN:
@@ -27,3 +27,11 @@ def read_config(path: str) -> ConfigGAN:
             ]
 
     return ConfigGAN(**config_data)
+
+
+def read_main_config(path: str) -> ConfigMain:
+    """Read and parse AmbiGAN configuration from a YAML file."""
+    with open(path, encoding="utf-8") as file:
+        config_data = yaml.safe_load(file)
+
+    return ConfigMain(**config_data)

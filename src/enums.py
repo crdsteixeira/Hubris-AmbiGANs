@@ -112,8 +112,9 @@ class LossType(str, Enum):
     ns = "ns"
     wgan = "wgan-gp"
 
+
 class WeightType(str, Enum):
-    """Valid weight names"""
+    """Valid weight names."""
 
     kldiv = "kldiv"
     gaussian = "gaussian"

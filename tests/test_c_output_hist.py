@@ -1,27 +1,28 @@
 """Module for testing histograms for wandb."""
 
+from collections.abc import Generator
+from unittest.mock import MagicMock, Mock, patch
 
-import pytest
-import torch
 import numpy as np
 import PIL
-from unittest.mock import MagicMock, patch, Mock
+import pytest
+import torch
+
 from src.classifier.classifier_cache import ClassifierCache
-from src.metrics.hubris import Hubris
 from src.metrics.c_output_hist import OutputsHistogram
-from typing import Generator
+from src.metrics.hubris import Hubris
 
 
 @pytest.fixture
 def mock_classifier_cache() -> Generator[ClassifierCache, None, None]:
     """Fixture to provide a mock classifier cache."""
     mock_cache = MagicMock(spec=ClassifierCache)
-    
+
     # Create a mock for the C attribute
     mock_C = Mock()
     mock_C.models = [MagicMock(), MagicMock()]
     mock_cache.configure_mock(C=mock_C)
-    
+
     yield mock_cache
 
 
@@ -52,8 +53,9 @@ def test_initialization(outputs_histogram: OutputsHistogram, mock_classifier_cac
     if outputs_histogram.output_clfs > 0:
         assert outputs_histogram.y_preds.shape == (outputs_histogram.output_clfs, 100)
 
+
 @patch("src.metrics.c_output_hist.Hubris.update")
-def test_update(mock_hubris_update, outputs_histogram: OutputsHistogram, mock_hubris: Hubris) -> None:
+def test_update(mock_hubris_update: MagicMock, outputs_histogram: OutputsHistogram, mock_hubris: Hubris) -> None:
     """Test OutputsHistogram update with new batch of images."""
     # Mock data
     images = torch.randn((10, 3, 64, 64))  # Example batch of 10 images
@@ -67,7 +69,6 @@ def test_update(mock_hubris_update, outputs_histogram: OutputsHistogram, mock_hu
     # Call the update function
     outputs_histogram.update(images, batch)
 
-
     # Assert hubris update is called
     mock_hubris_update.assert_called_once_with(images, batch)
 
@@ -79,8 +80,9 @@ def test_update(mock_hubris_update, outputs_histogram: OutputsHistogram, mock_hu
 
     # Check the updated y_preds values with close approximation
     for i in range(outputs_histogram.output_clfs):
-        assert torch.allclose(outputs_histogram.y_preds[i, 0:10].float(), mock_y_preds[0][i], atol=1e-5), f"y_preds values for classifier {i} do not match."
-
+        assert torch.allclose(
+            outputs_histogram.y_preds[i, 0:10].float(), mock_y_preds[0][i], atol=1e-5
+        ), f"y_preds values for classifier {i} do not match."
 
 
 def test_plot(outputs_histogram: OutputsHistogram) -> None:
@@ -92,17 +94,18 @@ def test_plot(outputs_histogram: OutputsHistogram) -> None:
 
 def test_plot_clfs(outputs_histogram: OutputsHistogram, mock_hubris: Hubris) -> None:
     """Test OutputsHistogram plot_clfs function."""
-
     outputs_histogram.output_clfs = 2
     outputs_histogram.y_hat = torch.rand((100,))
     outputs_histogram.y_preds = torch.rand((2, 100))
 
-    placeholder_image = PIL.Image.new('RGB', (10, 10))
-    with patch("matplotlib.pyplot.subplots") as mock_subplots, \
-         patch("seaborn.kdeplot") as mock_kdeplot, \
-         patch("seaborn.scatterplot") as mock_scatterplot, \
-         patch("PIL.Image.frombytes", return_value=placeholder_image) as mock_image_frombytes, \
-         patch("matplotlib.pyplot.close"):
+    placeholder_image = PIL.Image.new("RGB", (10, 10))
+    with (
+        patch("matplotlib.pyplot.subplots") as mock_subplots,
+        patch("seaborn.kdeplot") as mock_kdeplot,
+        patch("seaborn.scatterplot") as mock_scatterplot,
+        patch("PIL.Image.frombytes", return_value=placeholder_image) as mock_image_frombytes,
+        patch("matplotlib.pyplot.close"),
+    ):
 
         mock_fig = MagicMock()
         mock_axs = MagicMock(spec=np.empty((2, 3)))
@@ -113,7 +116,6 @@ def test_plot_clfs(outputs_histogram: OutputsHistogram, mock_hubris: Hubris) -> 
             ax.set_xlim = MagicMock()
             ax.set_title = MagicMock()
 
-        
         result = outputs_histogram.plot_clfs()
 
         assert result is not None

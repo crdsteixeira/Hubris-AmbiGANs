@@ -14,8 +14,8 @@ class LossSecondTerm(Metric):
         """Initialize LossSecondTerm metric."""
         super().__init__()
         self.C = C
-        self.count = 0
-        self.acc = 0
+        self.count: int = 0
+        self.acc: float = 0.0
         self.result = float("inf")
 
     def update(self, images: Tensor, batch: tuple[int, int]) -> None:
@@ -41,5 +41,5 @@ class LossSecondTerm(Metric):
     def reset(self) -> None:
         """Reset the metric to its initial state."""
         self.count = 0
-        self.acc = 0
+        self.acc = 0.0
         self.result = float("inf")

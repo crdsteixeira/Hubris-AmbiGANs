@@ -1,3 +1,7 @@
+"""Test pretrained classifier module."""
+
+from unittest.mock import MagicMock
+
 import pytest
 import torch
 
@@ -8,20 +12,21 @@ from src.models import ClassifierParams
 
 # Mock input data for testing
 @pytest.fixture
-def mock_pretrained_data():
-    # Mock a batch of 224x224 single-channel images
+def mock_pretrained_data() -> torch.Tensor:
+    """Mock a batch of 224x224 single-channel images."""
     return torch.randn(1, 1, 224, 224)
 
 
 @pytest.fixture
-def mock_grayscale_data():
-    return torch.randn(1, 1, 28, 28)  # Mock a batch of 28x28 single-channel images for MLP
+def mock_grayscale_data() -> torch.Tensor:
+    """Mock a batch of 28x28 single-channel images for MLP."""
+    return torch.randn(1, 1, 28, 28)
 
 
 # Test initialization for each model
 
 
-def test_vit_initialization():
+def test_vit_initialization() -> None:
     """Test that ViT classifier initializes correctly with single-channel image for pretrained ensemble."""
     params = ClassifierParams(
         type="ensemble",
@@ -36,7 +41,7 @@ def test_vit_initialization():
     assert vit_model is not None, "ViT model should be initialized successfully."
 
 
-def test_resnet_initialization():
+def test_resnet_initialization() -> None:
     """Test that ResNet classifier initializes correctly with single-channel image for pretrained ensemble."""
     params = ClassifierParams(
         type="ensemble",
@@ -51,7 +56,7 @@ def test_resnet_initialization():
     assert resnet_model is not None, "ResNet model should be initialized successfully."
 
 
-def test_mlp_initialization():
+def test_mlp_initialization() -> None:
     """Test that MLP classifier initializes correctly with single-channel image."""
     params = ClassifierParams(
         type="mlp",
@@ -67,7 +72,7 @@ def test_mlp_initialization():
 # Test forward pass for each model
 
 
-def test_vit_forward_pass(mock_pretrained_data):
+def test_vit_forward_pass(mock_pretrained_data: MagicMock) -> None:
     """Test forward pass of the ViT classifier with 1-channel pretrained data."""
     params = ClassifierParams(
         type="ensemble",
@@ -86,7 +91,7 @@ def test_vit_forward_pass(mock_pretrained_data):
     ), f"Expected output shape (1, 10), but got {output.shape}"
 
 
-def test_resnet_forward_pass(mock_pretrained_data):
+def test_resnet_forward_pass(mock_pretrained_data: MagicMock) -> None:
     """Test forward pass of the ResNet classifier with 1-channel pretrained data."""
     params = ClassifierParams(
         type="ensemble",
@@ -105,7 +110,7 @@ def test_resnet_forward_pass(mock_pretrained_data):
     ), f"Expected output shape (1, 10), but got {output.shape}"
 
 
-def test_mlp_forward_pass(mock_grayscale_data):
+def test_mlp_forward_pass(mock_grayscale_data: MagicMock) -> None:
     """Test forward pass of the MLP classifier with 1-channel grayscale data."""
     params = ClassifierParams(
         type="mlp",
@@ -125,7 +130,7 @@ def test_mlp_forward_pass(mock_grayscale_data):
 # Test binary classification output (n_classes=2)
 
 
-def test_vit_binary_classification(mock_pretrained_data):
+def test_vit_binary_classification(mock_pretrained_data: MagicMock) -> None:
     """Test binary classification output (1D) from ViT classifier."""
     params = ClassifierParams(
         type="ensemble",
@@ -144,7 +149,7 @@ def test_vit_binary_classification(mock_pretrained_data):
     ), f"Expected output shape (1, 1) for binary classification, but got {output.shape}"
 
 
-def test_resnet_binary_classification(mock_pretrained_data):
+def test_resnet_binary_classification(mock_pretrained_data: MagicMock) -> None:
     """Test binary classification output (1D) from ResNet classifier."""
     params = ClassifierParams(
         type="ensemble",
@@ -163,7 +168,7 @@ def test_resnet_binary_classification(mock_pretrained_data):
     ), f"Expected output shape (1, 1) for binary classification, but got {output.shape}"
 
 
-def test_mlp_binary_classification(mock_grayscale_data):
+def test_mlp_binary_classification(mock_grayscale_data: MagicMock) -> None:
     """Test binary classification output (1D) from MLP classifier."""
     params = ClassifierParams(
         type="mlp",
