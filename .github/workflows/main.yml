@@ -34,7 +34,7 @@ jobs:
       - name: Install Dependencies with Poetry
         run: poetry install
       - name: Login to WandB
-        run: wandb login
+        run: poetry run wandb login
       - name: Install Pytest Plugins
         run: poetry add pytest-md pytest-emoji
       - name: Run Pytest Action
