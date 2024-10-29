@@ -10,7 +10,7 @@ import torch
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-import wandb  # type: ignore[attr-defined]
+import wandb
 from src.classifier.classifier_cache import ClassifierCache
 from src.datasets.load import load_dataset
 from src.gan.construct_gan import construct_gan, construct_loss
