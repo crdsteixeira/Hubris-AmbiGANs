@@ -3,9 +3,9 @@ project: GAN-test
 name: mnist-7v1
 out_dir: out
 data_dir: data
-fixed_noise: 2048
-test_noise: data/z/z_2048_100
-fid_stats_path: data/fid-stats/stats.inception.mnist.7v1.npz
+fixed_noise: 32
+test_noise: data/z/z_32_10
+fid_stats_path: data/fid-stats/stats.mnist.7v1.npz
 device: cpu
 num_workers: 0
 
@@ -27,11 +27,11 @@ step_2_seeds:
 
 # GAN model parameters
 model:
-  z_dim: 100
+  z_dim: 10
   architecture:
     name: dcgan
-    g_filter_dim: 64
-    d_filter_dim: 64
+    g_filter_dim: 8
+    d_filter_dim: 8
     g_num_blocks: 3
     d_num_blocks: 3
   loss:
@@ -55,16 +55,14 @@ train:
     checkpoint_every: 1
     disc_iters: 1
     batch_size: 64
+    step_1_epochs:
+      - last
     classifier:
       - models/mnist.7v1/ensemble_mean_1
-      - models/mnist.7v1/ensemble_mean_2
     weight:
       - gaussian:
           - alpha: 0.50
             var: 0.10
-          - alpha: 0.75
-            var: 0.10
       - cd:
           alpha:
             - 1.0
-            - 2.5
