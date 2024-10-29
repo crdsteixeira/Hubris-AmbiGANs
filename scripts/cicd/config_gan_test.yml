@@ -39,7 +39,7 @@ model:
 
 # GAN optimizer parameters
 optimizer:
-  ls: 0.0002
+  lr: 0.0002
   beta1: 0.50
   beta2: 0.999
 
