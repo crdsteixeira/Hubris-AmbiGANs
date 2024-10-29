@@ -1,0 +1,70 @@
+# Global definitions
+project: GAN-test
+name: mnist-7v1
+out_dir: out
+data_dir: data
+fixed_noise: 2048
+test_noise: data/z/z_2048_100
+fid_stats_path: data/fid-stats/stats.inception.mnist.7v1.npz
+device: cpu
+num_workers: 0
+
+# Number of runs to perform using same parameters.
+num_runs: 1
+
+# Dataset parameters, including positive and negative class.
+dataset:
+  name: mnist
+  binary:
+    pos: 7
+    neg: 1
+
+# Seed parameters for each run (step1 and step2).
+step_1_seeds:
+  - 42
+step_2_seeds:
+  - 34
+
+# GAN model parameters
+model:
+  z_dim: 100
+  architecture:
+    name: dcgan
+    g_filter_dim: 64
+    d_filter_dim: 64
+    g_num_blocks: 3
+    d_num_blocks: 3
+  loss:
+    name: ns
+
+# GAN optimizer parameters
+optimizer:
+  ls: 0.0002
+  beta1: 0.50
+  beta2: 0.999
+
+# GAN training parameters
+train:
+  step_1:
+    epochs: 1
+    checkpoint_every: 1
+    disc_iters: 1
+    batch_size: 64
+  step_2:
+    epochs: 1
+    checkpoint_every: 1
+    disc_iters: 1
+    batch_size: 64
+    classifier:
+      - models/mnist.7v1/ensemble_mean_1
+      - models/mnist.7v1/ensemble_mean_2
+    weight:
+      - gaussian:
+          - alpha: 0.50
+            var: 0.10
+          - alpha: 0.75
+            var: 0.10
+      - cd:
+          alpha:
+            - 1.0
+            - 2.5

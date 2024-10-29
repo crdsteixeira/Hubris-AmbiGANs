@@ -43,3 +43,24 @@ jobs:
           custom-arguments: '-q'
           click-to-expand: true
           report-title: 'Test Report'
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.10'
+      - uses: abatilo/actions-poetry@v2
+      - name: Install Dependencies with Poetry
+        run: poetry install
+      - name: Run Integration Tests (Main)
+        run: source ./scripts/cicd/main_test.sh
+      - name: Run Integration Tests (Classifier)
+        run: source ./scripts/cicd/classifier_test.sh
+      - name: Run Integration Tests (Gen Test Noise)
+        run: source ./scripts/cicd/gen_test_noise_test.sh
+      - name: Run Integration Tests (GAN)
+        run: source ./scripts/cicd/gan_test.sh
