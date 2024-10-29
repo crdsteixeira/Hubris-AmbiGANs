@@ -21,6 +21,8 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
+    env:
+      - WANDB_API_KEY: ${{secrets.WANDB_API_KEY}}
     needs: pre-commit
     steps:
       - uses: actions/checkout@v3
@@ -31,6 +33,8 @@ jobs:
       - uses: abatilo/actions-poetry@v2
       - name: Install Dependencies with Poetry
         run: poetry install
+      - name: Login to WandB
+        run: wandb login
       - name: Install Pytest Plugins
         run: poetry add pytest-md pytest-emoji
       - name: Run Pytest Action
