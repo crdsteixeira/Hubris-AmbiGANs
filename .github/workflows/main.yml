@@ -47,7 +47,7 @@ jobs:
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
-          sh -c "poetry run wandb login && source ./scripts/cicd/main_test.sh"
+          sh -c "poetry run wandb login && . ./scripts/cicd/main_test.sh"
       - name: Run Integration Tests (Classifier)
         run: |
           docker run \
@@ -55,7 +55,7 @@ jobs:
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
-          sh -c "poetry run wandb login && source ./scripts/cicd/classifier_test.sh"
+          sh -c "poetry run wandb login && . ./scripts/cicd/classifier_test.sh"
       - name: Run Integration Tests (Gen Test Noise)
         run: |
           docker run \
@@ -63,7 +63,7 @@ jobs:
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
-          sh -c "poetry run wandb login && source ./scripts/cicd/gen_test_noise_test.sh"
+          sh -c "poetry run wandb login && . ./scripts/cicd/gen_test_noise_test.sh"
       - name: Run Integration Tests (GAN)
         run: |
           docker run \
@@ -71,4 +71,4 @@ jobs:
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
-          sh -c "poetry run wandb login && source ./scripts/cicd/gan_test.sh"
+          sh -c "poetry run wandb login && . ./scripts/cicd/gan_test.sh"
