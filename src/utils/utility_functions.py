@@ -316,10 +316,11 @@ def construct_weights(
                         for w in value
                     )
                 case WeightType.cd:
-                    weights.extend((f"{key}_{w}", UpdateGeneratorGASTEN(g_crit, classifier, w)) for w in value)
+                    weights.extend((f"{key}_{w}", UpdateGeneratorGASTEN(g_crit, classifier, w)) for w in value.alpha)
                 case WeightType.mgda:
                     weights.extend(
-                        (f"{key}_{w}", UpdateGeneratorGastenMgda(g_crit, classifier, normalize=w)) for w in value
+                        (f"{key}_norm_{w}", UpdateGeneratorGastenMgda(g_crit, classifier, normalize=w))
+                        for w in value.norm
                     )
                 case _:
                     logger.error(f"Invalid weight specified {key}")
