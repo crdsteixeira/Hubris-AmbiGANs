@@ -22,19 +22,26 @@ jobs:
         uses: actions/cache@v3
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          key: ${{ runner.os }}-buildx
           restore-keys: |
-            ${{ runner.os }}-buildx-
+            ${{ runner.os }}-buildx
       - name: Build Docker Image
         run: docker build -t ambigan -f container_cicd.Dockerfile .
+      - name: Create shared workspace
+        run: mkdir -p "${{ env.FILESDIR }}"
       - name: Run Pre-Commit
         run: |
           docker run \
+          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
+          -e ENTITY="${{ env.ENTITY }}" \
+          -e FILESDIR="${{ env.FILESDIR }}" \
+          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run pre-commit run --all-files"
       - name: Run Unit Tests
         run: |
           docker run \
+          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
@@ -43,6 +50,7 @@ jobs:
       - name: Run Integration Tests (Main)
         run: |
           docker run \
+          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
@@ -51,6 +59,7 @@ jobs:
       - name: Run Integration Tests (Classifier)
         run: |
           docker run \
+          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
@@ -59,6 +68,7 @@ jobs:
       - name: Run Integration Tests (Gen Test Noise)
         run: |
           docker run \
+          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
@@ -67,6 +77,7 @@ jobs:
       - name: Run Integration Tests (GAN)
         run: |
           docker run \
+          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
