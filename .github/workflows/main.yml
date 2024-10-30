@@ -11,61 +11,51 @@ env:
   ENTITY: ${{ vars.ENTITY }}
 
 jobs:
-  pre-commit:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v3
-        with:
-          python-version: '3.9'
-      - uses: pre-commit/action@v3.0.1
-
-  unit-tests:
-    runs-on: ubuntu-latest
-    env:
-      WANDB_API_KEY: ${{secrets.WANDB_API_KEY}}
-    needs: pre-commit
-    steps:
-      - uses: actions/checkout@v3
-      - name: Setup Python
-        uses: actions/setup-python@v3
-        with:
-          python-version: '3.10'
-      - uses: abatilo/actions-poetry@v2
-      - name: Install Dependencies with Poetry
-        run: poetry install
-      - name: Login to WandB
-        run: poetry run wandb login
-      - name: Install Pytest Plugins
-        run: poetry add pytest-md pytest-emoji
-      - name: Run Pytest Action
-        uses: pavelzw/pytest-action@v2
-        with:
-          custom-pytest: "poetry run pytest"
-          verbose: true
-          emoji: true
-          job-summary: true
-          custom-arguments: '-q'
-          click-to-expand: true
-          report-title: 'Test Report'
-
-  integration-tests:
-    runs-on: ubuntu-latest
-    needs: unit-tests
-    steps:
-      - uses: actions/checkout@v3
-      - name: Setup Python
-        uses: actions/setup-python@v3
-        with:
-          python-version: '3.10'
-      - uses: abatilo/actions-poetry@v2
-      - name: Install Dependencies with Poetry
-        run: poetry install
+      - name: Checkout latest commit
+        uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker Image
+        run: docker build -t ambigan -f container_cicd.Dockerfile .
+      - name: Run Pre-Commit
+        run: docker run \
+          ambigan \
+          sh -c "poetry run pre-commit run --all-files"
+      - name: Run Unit Tests
+        run: docker run \
+          -e ENTITY="${{ env.ENTITY }}" \
+          -e FILESDIR="${{ env.FILESDIR }}" \
+          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          ambigan \
+          sh -c "poetry run wandb login && poetry run pytest"
       - name: Run Integration Tests (Main)
-        run: source ./scripts/cicd/main_test.sh
+        run: docker run \
+          -e ENTITY="${{ env.ENTITY }}" \
+          -e FILESDIR="${{ env.FILESDIR }}" \
+          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          ambigan \
+          sh -c "poetry run wandb login && source ./scripts/cicd/main_test.sh"
       - name: Run Integration Tests (Classifier)
-        run: source ./scripts/cicd/classifier_test.sh
+        run: docker run \
+          -e ENTITY="${{ env.ENTITY }}" \
+          -e FILESDIR="${{ env.FILESDIR }}" \
+          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          ambigan \
+          sh -c "poetry run wandb login && source ./scripts/cicd/classifier_test.sh"
       - name: Run Integration Tests (Gen Test Noise)
-        run: source ./scripts/cicd/gen_test_noise_test.sh
+        run: docker run \
+          -e ENTITY="${{ env.ENTITY }}" \
+          -e FILESDIR="${{ env.FILESDIR }}" \
+          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          ambigan \
+          sh -c "poetry run wandb login && source ./scripts/cicd/gen_test_noise_test.sh"
       - name: Run Integration Tests (GAN)
-        run: source ./scripts/cicd/gan_test.sh
+        run: docker run \
+          -e ENTITY="${{ env.ENTITY }}" \
+          -e FILESDIR="${{ env.FILESDIR }}" \
+          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          ambigan \
+          sh -c "poetry run wandb login && source ./scripts/cicd/gan_test.sh"
