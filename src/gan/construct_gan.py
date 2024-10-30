@@ -60,7 +60,7 @@ def construct_gan(config: ConfigGAN, img_size: ImageParams) -> tuple[nn.Module, 
         D = Discriminator(
             DisParams(
                 image_size=img_size.image_size,
-                filter_dim=config.model.architecture.d_num_blocks,
+                filter_dim=config.model.architecture.d_filter_dim,
                 n_blocks=config.model.architecture.d_num_blocks,
                 use_batch_norm=use_batch_norm,
                 is_critic=is_critic,
