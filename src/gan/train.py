@@ -159,7 +159,6 @@ def evaluate_and_checkpoint(
         params.G.train()
 
     img = group_images(fake, classifier=params.classifier, device=params.device)
-    checkpoint_image(img, train_state.epoch, output_dir=params.checkpoint_dir)
     eval_metrics.log_image("samples", img)
 
     train_metrics.finalize_epoch()
@@ -169,6 +168,7 @@ def evaluate_and_checkpoint(
     eval_metrics.finalize_epoch()
 
     if train_state.epoch == params.epochs or train_state.epoch % params.checkpoint_every == 0:
+        checkpoint_image(img, train_state.epoch, output_dir=params.checkpoint_dir)
         return checkpoint_gan(
             params,
             train_state.__dict__,
