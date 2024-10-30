@@ -35,9 +35,8 @@ def read_main_config(path: str) -> ConfigMain:
         config_data = yaml.safe_load(file)
 
     # Add base paths using FILESDIR
-    files_dir = os.environ.get("FILESDIR", "")
-    for rel_path_key in ["out_dir", "data_dir", "fid_stats_path", "test_noise"]:
-        if rel_path_key in config_data and isinstance(config_data[rel_path_key], str):
-            config_data[rel_path_key] = os.path.join(files_dir, config_data[rel_path_key])
+    files_dir = os.environ.get("FILESDIR", None)
+    if files_dir is not None:
+        config_data["out_dir"] = files_dir
 
     return ConfigMain(**config_data)
