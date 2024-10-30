@@ -1,9 +1,12 @@
 FROM python:3.10-buster
 
-RUN python3 -m pip install pipx && python3 -m pipx ensurepath
-RUN pipx install poetry
-RUN pipx ensurepath
-RUN . ~/.bashrc
+# Install pipx and Poetry
+RUN pip install pipx && \
+    pipx install poetry && \
+    pipx ensurepath
+
+# Add /root/.local/bin to PATH directly in Docker
+ENV PATH="/root/.local/bin:$PATH"
 
 COPY . /app
 WORKDIR /app
