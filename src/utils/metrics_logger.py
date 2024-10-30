@@ -1,10 +1,14 @@
 """Module for logging Metrics to wandb."""
 
+import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
 import wandb
 
 from src.models import MetricsParams
+
+logger = logging.getLogger(__name__)
 
 
 class MetricsLogger:
@@ -66,7 +70,7 @@ class MetricsLogger:
         self.log_dict[self.apply_prefix(name)] = value
 
         if prnt:
-            print(name, " = ", value)
+            logger.info(f"{name} = {value}")
 
     def finalize_epoch(self) -> None:
         """Finalize epoch metrics by computing averages and logging them."""
@@ -77,7 +81,7 @@ class MetricsLogger:
             self.log_dict[self.apply_prefix(name)] = epoch_value
 
             if self.params.log_epoch:
-                print(name, " = ", epoch_value)
+                logger.info(f"{name} = {epoch_value}")
 
         self.log_dict[self.apply_prefix("epoch")] = self.epoch
         self.epoch += 1
