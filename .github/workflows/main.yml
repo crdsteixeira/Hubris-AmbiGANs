@@ -21,39 +21,45 @@ jobs:
       - name: Build Docker Image
         run: docker build -t ambigan -f container_cicd.Dockerfile .
       - name: Run Pre-Commit
-        run: docker run \
+        run: |
+          docker run \
           ambigan \
           sh -c "poetry run pre-commit run --all-files"
       - name: Run Unit Tests
-        run: docker run \
+        run: |
+          docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run wandb login && poetry run pytest"
       - name: Run Integration Tests (Main)
-        run: docker run \
+        run: |
+          docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run wandb login && source ./scripts/cicd/main_test.sh"
       - name: Run Integration Tests (Classifier)
-        run: docker run \
+        run: |
+          docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run wandb login && source ./scripts/cicd/classifier_test.sh"
       - name: Run Integration Tests (Gen Test Noise)
-        run: docker run \
+        run: |
+          docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run wandb login && source ./scripts/cicd/gen_test_noise_test.sh"
       - name: Run Integration Tests (GAN)
-        run: docker run \
+        run: |
+          docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
