@@ -18,6 +18,13 @@ jobs:
         uses: actions/checkout@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
       - name: Build Docker Image
         run: docker build -t ambigan -f container_cicd.Dockerfile .
       - name: Run Pre-Commit
@@ -30,7 +37,7 @@ jobs:
           docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run wandb login && poetry run pytest"
       - name: Run Integration Tests (Main)
@@ -38,7 +45,7 @@ jobs:
           docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run wandb login && source ./scripts/cicd/main_test.sh"
       - name: Run Integration Tests (Classifier)
@@ -46,7 +53,7 @@ jobs:
           docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run wandb login && source ./scripts/cicd/classifier_test.sh"
       - name: Run Integration Tests (Gen Test Noise)
@@ -54,7 +61,7 @@ jobs:
           docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run wandb login && source ./scripts/cicd/gen_test_noise_test.sh"
       - name: Run Integration Tests (GAN)
@@ -62,6 +69,6 @@ jobs:
           docker run \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ env.WANDB_API_KEY }}" \
+          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
           ambigan \
           sh -c "poetry run wandb login && source ./scripts/cicd/gan_test.sh"
