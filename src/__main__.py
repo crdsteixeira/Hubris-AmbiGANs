@@ -56,7 +56,7 @@ def gen_test_noise(config: ConfigMain) -> None:
 def gen_pairwise_inception(config: ConfigMain) -> None:
     """Generate pairwise inception using config parameters."""
     params = CLFIDStatsArgs(
-        datarot=config.data_dir,
+        dataroot=os.path.join(config.out_dir, config.data_dir),
         dataset=config.dataset.name,
         device=config.device,
     )
