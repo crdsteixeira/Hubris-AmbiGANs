@@ -1,4 +1,4 @@
-name: Test Pipeline
+name: ci-test
 
 on:
   push:
@@ -9,52 +9,93 @@ on:
 env:
   FILESDIR: ${{ vars.FILESDIR }}
   ENTITY: ${{ vars.ENTITY }}
+  IMAGE_NAME: ghcr.io/${{ github.repository }}/ci-image
+  IMAGE_TAG: latest
 
 jobs:
-  test:
+  build-image:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout latest commit
         uses: actions/checkout@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      - name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx
-          restore-keys: |
-            ${{ runner.os }}-buildx
+      # Check if `pyproject.toml` changed
+      - name: Check for pyproject.toml changes
+        id: pyproject_check
+        run: |
+          if git diff --quiet HEAD^ HEAD -- pyproject.toml; then
+            echo "no_changes=true" >> $GITHUB_ENV
+          else
+            echo "no_changes=false" >> $GITHUB_ENV
+          fi
       - name: Build Docker Image
-        run: docker build -t ambigan -f container_cicd.Dockerfile .
-      - name: Create shared workspace
-        run: mkdir -p "${{ env.FILESDIR }}"
+        if: env.no_changes == 'false'
+        run: |
+          docker build -t $IMAGE_NAME:$IMAGE_TAG -f container_cicd.Dockerfile .
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push $IMAGE_NAME:$IMAGE_TAG
+        
+  pre-commit:
+    needs: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      # Pull the existing Docker image if no changes detected
+      - name: Pull existing Docker image
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker pull $IMAGE_NAME:$IMAGE_TAG
       - name: Run Pre-Commit
         run: |
           docker run \
-          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
+          -v $GITHUB_WORKSPACE:/app \
+          $IMAGE_NAME \
           sh -c "poetry run pre-commit run --all-files"
-      - name: Run Unit Tests
+
+  unit-tests:
+    needs: build-image
+    runs-on: ubuntu-latest
+    env:
+      WANDB_API_KEY: ${{secrets.WANDB_API_KEY}}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Pull existing Docker image
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker pull $IMAGE_NAME:$IMAGE_TAG
+      - name: Run unit tests
         run: |
           docker run \
           -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
+          -v $GITHUB_WORKSPACE:/app \
+          $IMAGE_NAME \
           sh -c "poetry run wandb login && poetry run pytest"
+
+  integration-tests:
+    needs: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Pull existing Docker image
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker pull $IMAGE_NAME:$IMAGE_TAG
       - name: Run Integration Tests (Main)
         run: |
           docker run \
           -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
+          -v $GITHUB_WORKSPACE:/app \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
+          $IMAGE_NAME \
           sh -c "poetry run wandb login && . ./scripts/cicd/main_test.sh"
       - name: Run Integration Tests (Classifier)
         run: |
@@ -63,7 +104,8 @@ jobs:
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
+          -v $GITHUB_WORKSPACE:/app \
+          $IMAGE_NAME \
           sh -c "poetry run wandb login && . ./scripts/cicd/classifier_test.sh"
       - name: Run Integration Tests (Gen Test Noise)
         run: |
@@ -72,7 +114,8 @@ jobs:
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
+          -v $GITHUB_WORKSPACE:/app \
+          $IMAGE_NAME \
           sh -c "poetry run wandb login && . ./scripts/cicd/gen_test_noise_test.sh"
       - name: Run Integration Tests (GAN)
         run: |
@@ -81,5 +124,6 @@ jobs:
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
+          -v $GITHUB_WORKSPACE:/app \
+          $IMAGE_NAME \
           sh -c "poetry run wandb login && . ./scripts/cicd/gan_test.sh"
