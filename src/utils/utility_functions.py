@@ -14,6 +14,7 @@ import numpy as np
 import torch
 import torchvision.utils as vutils
 from torch import nn
+from torchvision.transforms.functional import resize
 
 from src.enums import WeightType
 from src.gan.loss import GeneratorLoss
@@ -143,7 +144,8 @@ def make_grid(images: torch.Tensor, nrow: int | None = None, total_images: int |
             )
             images = torch.concat((images, blank_images), 0)
 
-    img = vutils.make_grid(images, padding=2, normalize=True, nrow=int(nrow), value_range=(-1, 1))
+    img = vutils.make_grid(images, padding=2, normalize=True, nrow=int(nrow), value_range=(-1, 1), scale_each=True)
+    img = resize(img, size=(1024, 1024))
 
     return img
 
@@ -158,7 +160,8 @@ def group_images(images: torch.Tensor, classifier: nn.Module = None, device: tor
 
     for i in range(0, n_images, 100):
         i_stop = min(i + 100, n_images)
-        y[i:i_stop] = classifier(images[i:i_stop].to(device))
+        with torch.no_grad():
+            y[i:i_stop] = classifier(images[i:i_stop].to(device))
 
     y, idxs = torch.sort(y)
     images = images[idxs]
@@ -188,6 +191,7 @@ def group_images(images: torch.Tensor, classifier: nn.Module = None, device: tor
 
     grids = [make_grid(g, nrow=3, total_images=largest_group) for g in groups]
     img = torch.concat(grids, 2)
+    img = resize(img, size=(1024, 1024))
 
     return img
 
