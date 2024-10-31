@@ -17,6 +17,8 @@ jobs:
   build-image:
     runs-on: ubuntu-latest
     steps:
+      - name: Delete huge unnecessary tools folder
+        run: rm -rf /opt/hostedtoolcache
       - name: Checkout latest commit
         uses: actions/checkout@v3
       - name: Set up Docker Buildx
