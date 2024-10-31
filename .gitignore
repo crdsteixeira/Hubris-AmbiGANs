@@ -147,3 +147,11 @@ wandb/
 
 # poetry
 poetry.lock
+
+# pre-commit hooks
+.isort.cfg
+
+# test data
+checkpoints/
+mock_data/
+mock_dir/

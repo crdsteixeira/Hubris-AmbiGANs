@@ -1,42 +1,68 @@
-import torch.nn as nn
+"""Module for a Simple CNN."""
+
+import logging
 import math
 
+import torch
+from torch import nn
 
-def pool_out(in_size, kernel, dilation=1, padding=0, stride=None):
-    stride = kernel if stride is None else stride
+from src.models import ClassifierParams, PoolParams
 
-    out_size = (in_size + 2 * padding - dilation * (kernel-1) - 1) / stride + 1
+logger = logging.getLogger(__name__)
 
+
+def pool_out(params: PoolParams) -> int:
+    """Calculate the output size after a pooling operation using PoolingParams."""
+    stride = params.kernel if params.stride is None else params.stride
+    out_size = (params.in_size + 2 * params.padding - params.dilation * (params.kernel - 1) - 1) / stride + 1
     return int(math.floor(out_size))
 
 
 class Classifier(nn.Module):
-    def __init__(self, img_size, nf, num_classes):
-        super(Classifier, self).__init__()
-        nc, nh, nw = img_size
+    """CNN classifier that processes images with convolutional layers and combines outputs for classification."""
+
+    def __init__(self, params: ClassifierParams) -> None:
+        """Initialize the CNN classifier using ClassifierParams."""
+        super().__init__()
+        nc: int
+        nh: int
+        nw: int
+        nc, nh, nw = params.img_size
         self.blocks = nn.ModuleList()
 
         n_in = nc
-        for i in range(len(nf)):
-            self.blocks.append(nn.Sequential(
-                nn.Conv2d(n_in, nf[i], 3, padding='same'),
-                nn.ReLU(),
-                nn.MaxPool2d(2),
-            ))
+        if isinstance(params.nf, list):
+            for nf in params.nf:
+                # Ensure nf is an int for type safety.
+                assert isinstance(nf, int), f"Expected nf to be an int, got {type(nf)}"
+                self.blocks.append(
+                    nn.Sequential(
+                        nn.Conv2d(n_in, nf, 3, padding="same"),
+                        nn.ReLU(),
+                        nn.MaxPool2d(2),
+                    )
+                )
+                pool_params = PoolParams(in_size=nh, kernel=2)
+                nh = pool_out(pool_params)
+                nw = pool_out(pool_params)
+                n_in = nf
 
-            nh = pool_out(nh, 2)
-            nw = pool_out(nw, 2)
-            n_in = nf[i]
+        else:
+            error = f"Expected params.nf to be a list, got type: {type(params.nf)}"
+            logger.error(error)
+            raise TypeError(error)
 
-        self.blocks.append(nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(nh * nw * n_in, 1 if num_classes == 2 else num_classes),
-            nn.Sigmoid() if num_classes == 2 else nn.Softmax(dim=1)
-        ))
+        self.blocks.append(
+            nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(nh * nw * n_in, 1 if params.n_classes == 2 else params.n_classes),
+                nn.Sigmoid() if params.n_classes == 2 else nn.Softmax(dim=1),
+            )
+        )
 
-    def forward(self, x, output_feature_maps=False):
+    def forward(self, x: torch.Tensor, output_feature_maps: bool = False) -> torch.Tensor:
+        """Forward pass through the CNN classifier."""
         intermediate_outputs = []
-
         for block in self.blocks:
             x = block(x)
             intermediate_outputs.append(x)

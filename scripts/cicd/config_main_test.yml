@@ -1,0 +1,85 @@
+# Global definitions
+project: Main-test
+name: mnist-7v1
+out_dir: out
+data_dir: data
+fixed_noise: 32
+test_noise_seed: 15
+device: cpu
+num_workers: 0
+
+# Number of runs to perform using same parameters.
+num_runs: 1
+
+# Configuration
+gen_test_noise: true
+gen_pairwise_inception: true
+gen_classifiers: true
+gen_gan: true
+
+# Dataset parameters, including positive and negative class.
+dataset:
+  name: mnist
+  binary:
+    pos: 7
+    neg: 1
+
+# Classifier list to be generated.
+classifiers:
+  - name: ensemble_mean_1
+    c_type: ensemble
+    batch_size: 64
+    epochs: 1
+    lr: 0.001
+    nf: 2
+    seed: 32
+    ensemble_type: cnn
+    ensemble_output_method: mean
+
+# Seed parameters for each run (step1 and step2).
+step_1_seeds:
+  - 42
+step_2_seeds:
+  - 34
+
+# GAN model parameters
+model:
+  z_dim: 10
+  architecture:
+    name: dcgan
+    g_filter_dim: 8
+    d_filter_dim: 8
+    g_num_blocks: 2
+    d_num_blocks: 2
+  loss:
+    name: ns
+
+# GAN optimizer parameters
+optimizer:
+  lr: 0.0002
+  beta1: 0.50
+  beta2: 0.999
+
+# GAN training parameters
+train:
+  step_1:
+    epochs: 1
+    checkpoint_every: 1
+    disc_iters: 1
+    batch_size: 64
+  step_2:
+    epochs: 1
+    checkpoint_every: 1
+    disc_iters: 1
+    batch_size: 64
+    step_1_epochs:
+      - last
+    classifier:
+      - ensemble_mean_1
+    weight:
+      - gaussian:
+          - alpha: 0.50
+            var: 0.10
+      - cd:
+          alpha:
+            - 1.0

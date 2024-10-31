@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "src"
-version = "0.1.0"
+version = "0.2.0"
 description = "Hubris Benchmarking with AmbiGANs for publication"
 authors = ["Catia Teixeira <catia.rds.teixeira@gmail.com>"]
 readme = "README.md"
@@ -16,13 +16,105 @@ schema = "^0.7.7"
 scikit-learn = "^1.5.2"
 scipy = "^1.14.1"
 seaborn = "^0.13.2"
-torch = "^2.4.1"
-torchvision = "^0.19.1"
+setuptools = "57.5.0"
 tqdm = "^4.66.5"
 wandb = "^0.18.3"
 pillow = "^10.4.0"
+datasets = "^3.0.1"
+jaraco-functools = "^4.1.0"
+transformers = "^4.45.2"
+pydantic = "^2.9.2"
+pytest = "^8.3.3"
+torchaudio = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
+torch = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
+torchvision = {version = "^0.19.1+cu124", source = "pytorch-gpu"}
+pre-commit = "^4.0.1"
+pylint = "^3.3.1"
+ruff = "^0.6.9"
+autoflake = "^2.3.1"
+isort = "^5.13.2"
+pre-commit-hooks = "^5.0.0"
+pre-commit-update = "^0.5.1.post1"
+flake8 = "^7.1.1"
+autopep8 = "^2.3.1"
+black = "^24.10.0"
+tomli = "^2.0.2"
+torcheval = "^0.0.7"
+types-pyyaml = "^6.0.12.20240917"
 
+
+[[tool.poetry.source]]
+name = "pytorch-gpu"
+url = "https://download.pytorch.org/whl/cu124"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+########### Linting ############
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["D", "F", "UP", "I"]
+ignore = ["D203", "D205", "D212", "E203", "E251", "E266", "E302", "E305", "E401", "E402", "E501", "F401", "F403", "I001"]
+
+[tool.ruff.format]
+exclude = ["*.ipynb"]
+line-ending = "lf"
+docstring-code-format = true
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 120
+
+[tool.pylint.main]
+suggestion-mode = true
+
+[tool-pylint.basic]
+class-cont-naming-style = "UPPER_CASE"
+const-naming-style = "UPPER_CASE"
+docstring-min-length = -1
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint."message control"]
+confidence = ["HIGH", "INFERENCE", "INFERENCE_FAILURE", "UNDEFINED"]
+
+disable = [
+    "import-error",
+    "logging-fstring-interpolation",
+    "no-name-in-module",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-few-public-methods",
+]
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["D203", "D212", "E203", "E251", "E266", "E302", "E305", "E401", "E402", "E501", "F401", "F403", "W503"]
+exclude = [".git", "__pycache__"]
+max-complexity = 10
+
+[tool.black]
+line-length = 120
+target-version = ['py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+)/
+'''
+
+[tool.mypy]
+ignore_missing_imports = true
+exclude = '.*_deprecated.*\.py$'
+
+[tool.pydocstyle]
+ignore = "D203,D205,D406,D407,D212"
+
+[tool.isort]
+known_third_party = ["PIL", "datasets", "dotenv", "matplotlib", "numpy", "pandas", "pydantic", "pytest", "seaborn", "torch", "torcheval", "torchvision", "tqdm", "transformers", "wandb", "yaml"]

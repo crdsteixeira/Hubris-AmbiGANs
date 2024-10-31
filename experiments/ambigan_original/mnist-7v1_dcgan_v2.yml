@@ -1,0 +1,77 @@
+project: gasten_comparison_v8
+name: mnist-7v1
+out_dir: out
+data_dir: data
+test_noise: data/z/z_2048_64
+fixed_noise: 2048
+
+device: cuda
+num_workers: 6
+
+fid_stats_path: data/fid-stats/stats.inception.mnist.7v1.npz
+
+num_runs: 1
+
+dataset:
+  name: mnist
+  binary:
+    pos: 7
+    neg: 1
+
+model:
+  z_dim: 64
+  architecture:
+    name: dcgan
+    g_filter_dim: 64
+    d_filter_dim: 128
+    g_num_blocks: 2
+    d_num_blocks: 2
+  loss:
+    name: ns
+
+optimizer:
+  lr: 0.0002
+  beta1: 0.5
+  beta2: 0.999
+
+train:
+  step_1:
+    epochs: 20
+    checkpoint_every: 5
+    disc_iters: 1
+    batch_size: 64
+
+  step_2:
+    epochs: 40
+    checkpoint_every: 10
+    step_1_epochs:
+      - 20
+    batch_size: 64
+    disc_iters: 5
+    classifier:
+      - models/mnist.7v1/ensemble_cnn_meta-learner_3331_50
+      - models/mnist.7v1/ensemble_cnn_mean_3331_50
+      - models/mnist.7v1/ensemble_cnn_linear_3331_50
+      #- models/mnist.7v1/ensemble_cnn_meta-learner_3331_1
+      #- models/mnist.7v1/ensemble_cnn_mean_3331_1
+      #- models/mnist.7v1/ensemble_cnn_linear_3331_1
+    weight:
+      - gaussian:
+          alpha: 1.00
+          var: 0.01
+      - gaussian:
+          alpha: 1.00
+          var: 0.02
+      - gaussian:
+          alpha: 1.00
+          var: 0.03
+      - gaussian:
+          alpha: 1.00
+          var: 0.05
+      - cd:
+        - 1
+        - 10
+        - 25
+        - 50
+      - mgda: 
+          norm: False
