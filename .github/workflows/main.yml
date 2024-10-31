@@ -9,7 +9,8 @@ on:
 env:
   FILESDIR: ${{ vars.FILESDIR }}
   ENTITY: ${{ vars.ENTITY }}
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hubris-ambigans-image
+  IMAGE: ${{ github.repository_owner }}/hubris-ambigans-image
+  IMAGE_NAME: ghcr.io/$IMAGE
   IMAGE_TAG: latest
 
 jobs:
@@ -29,12 +30,16 @@ jobs:
           else
             echo "no_changes=false" >> $GITHUB_ENV
           fi
-      - name: Build Docker Image
+      - name: Build docker and push
         if: env.no_changes == 'false'
-        run: |
-          docker build -t $IMAGE_NAME:$IMAGE_TAG -f container_cicd.Dockerfile .
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker push $IMAGE_NAME:$IMAGE_TAG
+        uses: docker/build-push-action@v6
+        with:
+          file: container_cicd.Dockerfile
+          context: .
+          push: true
+          tags: $IMAGE:$IMAGE_TAG
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
         
   pre-commit:
     needs: build-image
