@@ -1,4 +1,4 @@
-FROM python:3.10-buster
+FROM python:3.10-slim
 
 # Install pipx and Poetry
 RUN pip install pipx && \
