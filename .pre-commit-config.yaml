@@ -16,9 +16,7 @@ repos:
     -   id: check-added-large-files
     -   id: mixed-line-ending
     -   id: no-commit-to-branch
-        args:
-        -   '--branch'
-        -   'main'
+        args: ["--branch", "main"]
 
 -   repo: https://gitlab.com/vojko.pribudic.foss/pre-commit-update
     rev: v0.6.0post1
