@@ -1,4 +1,4 @@
-name: pre-commit & unit-tests
+name: Test Pipeline
 
 on:
   push:
