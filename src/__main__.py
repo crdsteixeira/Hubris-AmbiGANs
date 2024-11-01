@@ -35,8 +35,6 @@ def gen_test_noise(config: ConfigMain) -> None:
     )
 
     args = [
-        "poetry",
-        "run",
         "python",
         "-m",
         "src.gen_test_noise",
@@ -62,8 +60,6 @@ def gen_pairwise_inception(config: ConfigMain) -> None:
     )
 
     args = [
-        "poetry",
-        "run",
         "python",
         "-m",
         "src.metrics.fid.fid_cli",
@@ -108,8 +104,6 @@ def gen_classifiers(config: ConfigMain, classifier: ClassifierClasses) -> None:
     )
 
     args: list[str] = [
-        "poetry",
-        "run",
         "python",
         "-m",
         "src.classifier.classifier_cli",

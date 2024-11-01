@@ -1,4 +1,4 @@
-name: pre-commit & unit-tests
+name: ci-test
 
 on:
   push:
@@ -9,77 +9,99 @@ on:
 env:
   FILESDIR: ${{ vars.FILESDIR }}
   ENTITY: ${{ vars.ENTITY }}
+  WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hubris-ambigans-ci-image
+  IMAGE_TAG: latest
 
 jobs:
-  test:
+  build-image:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout latest commit
-        uses: actions/checkout@v3
+      - name: Delete unnecessary tools folder
+        run: rm -rf /opt/hostedtoolcache
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      - name: Cache Docker layers
-        uses: actions/cache@v3
+
+      - name: Check for pyproject.toml changes
+        id: pyproject_check
+        run: |
+          if git diff --quiet origin/main -- pyproject.toml; then
+            echo "no_changes=true" >> $GITHUB_ENV
+          else
+            echo "no_changes=false" >> $GITHUB_ENV
+          fi
+
+      - name: Build and push Docker image if pyproject.toml has changed
+        if: env.no_changes == 'false'
+        uses: docker/build-push-action@v6
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx
-          restore-keys: |
-            ${{ runner.os }}-buildx
-      - name: Build Docker Image
-        run: docker build -t ambigan -f container_cicd.Dockerfile .
-      - name: Create shared workspace
-        run: mkdir -p "${{ env.FILESDIR }}"
+          file: container_cicd.Dockerfile
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
+
+  pre-commit:
+    needs: build-image
+    runs-on: ubuntu-latest
+    container: 
+      image: ghcr.io/${{ github.repository_owner }}/hubris-ambigans-ci-image:latest
+      options: --env WANDB_API_KEY --env ENTITY --env FILESDIR
+    steps:
+      - name: Checkout code in container
+        uses: actions/checkout@v4
+
+      # git checkout is not creating a working git folder, it has dubious ownership if not configured
+      # The pre-commit hook will not work on this original git folder
+      - name: Fix git
+        run: git config --system --add safe.directory '*'
+
       - name: Run Pre-Commit
-        run: |
-          docker run \
-          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
-          -e ENTITY="${{ env.ENTITY }}" \
-          -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
-          sh -c "poetry run pre-commit run --all-files"
+        run: poetry run pre-commit run --all-files
+
+  unit-tests:
+    needs: build-image
+    runs-on: ubuntu-latest
+    container: 
+      image: ghcr.io/${{ github.repository_owner }}/hubris-ambigans-ci-image:latest
+      options: --env WANDB_API_KEY --env ENTITY --env FILESDIR
+    steps:
+      - name: Checkout code in container
+        uses: actions/checkout@v4
+
       - name: Run Unit Tests
-        run: |
-          docker run \
-          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
-          -e ENTITY="${{ env.ENTITY }}" \
-          -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
-          sh -c "poetry run wandb login && poetry run pytest"
+        run: poetry run wandb login && poetry run pytest
+
+  integration-tests:
+    needs: build-image
+    runs-on: ubuntu-latest
+    container: 
+      image: ghcr.io/${{ github.repository_owner }}/hubris-ambigans-ci-image:latest
+      options: --env WANDB_API_KEY --env ENTITY --env FILESDIR
+    steps:
+      - name: Checkout code in container
+        uses: actions/checkout@v4
+
       - name: Run Integration Tests (Main)
-        run: |
-          docker run \
-          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
-          -e ENTITY="${{ env.ENTITY }}" \
-          -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
-          sh -c "poetry run wandb login && . ./scripts/cicd/main_test.sh"
+        run: poetry run wandb login && . ./scripts/cicd/main_test.sh
+
       - name: Run Integration Tests (Classifier)
-        run: |
-          docker run \
-          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
-          -e ENTITY="${{ env.ENTITY }}" \
-          -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
-          sh -c "poetry run wandb login && . ./scripts/cicd/classifier_test.sh"
+        run: poetry run wandb login && . ./scripts/cicd/classifier_test.sh
+
       - name: Run Integration Tests (Gen Test Noise)
-        run: |
-          docker run \
-          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
-          -e ENTITY="${{ env.ENTITY }}" \
-          -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
-          sh -c "poetry run wandb login && . ./scripts/cicd/gen_test_noise_test.sh"
+        run: poetry run wandb login && . ./scripts/cicd/gen_test_noise_test.sh
+
       - name: Run Integration Tests (GAN)
-        run: |
-          docker run \
-          -v "${{ env.FILESDIR }}":"${{ env.FILESDIR }}" \
-          -e ENTITY="${{ env.ENTITY }}" \
-          -e FILESDIR="${{ env.FILESDIR }}" \
-          -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          ambigan \
-          sh -c "poetry run wandb login && . ./scripts/cicd/gan_test.sh"
+        run: poetry run wandb login && . ./scripts/cicd/gan_test.sh

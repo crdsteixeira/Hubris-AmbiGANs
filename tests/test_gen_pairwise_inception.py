@@ -56,8 +56,6 @@ def test_main_subprocess_calls(
     assert mock_subprocess_run.call_count == 1
     mock_subprocess_run.assert_called_with(
         [
-            "poetry",
-            "run",
             "python",
             "-m",
             "src.metrics.fid.fid_cli",
@@ -158,8 +156,6 @@ def test_multiple_class_combinations(
     expected_calls = [
         call(
             [
-                "poetry",
-                "run",
                 "python",
                 "-m",
                 "src.metrics.fid.fid_cli",
