@@ -224,8 +224,6 @@ def run_training_subprocess(args: CLTrainArgs, cnn_nfs: list[list[int]]) -> None
     """Run a subprocess to train the classifier."""
     proc = subprocess.run(
         [
-            "poetry",
-            "run",
             "python",
             "-m",
             "src.classifier.train",

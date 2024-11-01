@@ -59,8 +59,6 @@ def main() -> None:
         logger.info(f"{neg_class}vs{pos_class}")
         subprocess.run(
             [
-                "poetry",
-                "run",
                 "python",
                 "-m",
                 "src.metrics.fid.fid_cli",
