@@ -4,7 +4,7 @@ on:
   push:
     branches: '**'
     tags:
-      - 'ready'  # Trigger on 'ready' tag
+      - 'ready-*'  # Trigger on 'ready' tag
 
 env:
   FILESDIR: ${{ vars.FILESDIR }}
