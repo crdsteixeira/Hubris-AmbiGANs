@@ -1,0 +1,29 @@
+name: Verify Tests Before Merge
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Test Pipeline Statuses
+        id: check_tests
+        run: |
+          # Fetch the commit SHA of the head of the pull request
+          COMMIT_SHA=$(git rev-parse HEAD)
+
+          # List all status checks for this commit using GitHub API
+          TEST_STATUSES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${COMMIT_SHA}/status" \
+            | jq -r '.statuses[] | select(.context | contains("test")) | .state')
+
+          # Ensure all statuses are 'success'
+          if echo "$TEST_STATUSES" | grep -v "success"; then
+            echo "❌ Not all tests passed. Please ensure all required tests have succeeded before merging."
+            exit 1
+          else
+            echo "✅ All tests passed on the latest commit."
+          fi
