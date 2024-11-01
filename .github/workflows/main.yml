@@ -9,7 +9,6 @@ on:
 env:
   FILESDIR: ${{ vars.FILESDIR }}
   ENTITY: ${{ vars.ENTITY }}
-  IMAGE: ${{ github.repository_owner }}/hubris-ambigans-ci-image
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hubris-ambigans-ci-image
   IMAGE_TAG: latest
 
@@ -39,7 +38,7 @@ jobs:
           file: container_cicd.Dockerfile
           context: .
           push: true
-          tags: ${{ env.IMAGE }}:${{ env.IMAGE_TAG }}
+          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           secrets: |
             GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
         
