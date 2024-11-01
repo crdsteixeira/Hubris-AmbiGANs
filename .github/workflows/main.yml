@@ -5,8 +5,6 @@ on:
     branches: '**'
     tags:
       - 'ready'  # Trigger on 'ready' tag
-  pull_request:
-    branches: '**'
 
 env:
   FILESDIR: ${{ vars.FILESDIR }}
