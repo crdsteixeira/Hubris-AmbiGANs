@@ -3,6 +3,8 @@ name: ci-test
 on:
   push:
     branches: '**'
+    tags:
+      - 'ready'  # Trigger on 'ready' tag
   pull_request:
     branches: '**'
 
@@ -90,6 +92,7 @@ jobs:
         run: poetry run wandb login && poetry run pytest
 
   integration-tests:
+    if: contains(github.ref, 'refs/tags/ready')
     needs: build-image
     runs-on: ubuntu-latest
     container: 
