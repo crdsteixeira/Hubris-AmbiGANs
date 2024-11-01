@@ -15,6 +15,9 @@ env:
 jobs:
   build-image:
     runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ${{ env.IMAGE_NAME }}
+      IMAGE_TAG: ${{ env.IMAGE_TAG }}
     steps:
       - name: Delete unnecessary tools folder
         run: rm -rf /opt/hostedtoolcache
@@ -55,9 +58,15 @@ jobs:
   pre-commit:
     needs: build-image
     runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ${{ env.IMAGE_NAME }}
+      IMAGE_TAG: ${{ env.IMAGE_TAG }}
+      WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+      ENTITY: ${{ env.ENTITY }}
+      FILESDIR: ${{ env.FILESDIR }}
     container: 
       image: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-      options: --env WANDB_API_KEY=${{ secrets.WANDB_API_KEY }} --env ENTITY=${{ env.ENTITY }} --env FILESDIR=${{ env.FILESDIR }}
+      options: --env WANDB_API_KEY --env ENTITY --env FILESDIR
     steps:
       - name: Checkout code in container
         uses: actions/checkout@v4
@@ -68,9 +77,15 @@ jobs:
   unit-tests:
     needs: build-image
     runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ${{ env.IMAGE_NAME }}
+      IMAGE_TAG: ${{ env.IMAGE_TAG }}
+      WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+      ENTITY: ${{ env.ENTITY }}
+      FILESDIR: ${{ env.FILESDIR }}
     container: 
       image: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-      options: --env WANDB_API_KEY=${{ secrets.WANDB_API_KEY }} --env ENTITY=${{ env.ENTITY }} --env FILESDIR=${{ env.FILESDIR }}
+      options: --env WANDB_API_KEY --env ENTITY --env FILESDIR
     steps:
       - name: Checkout code in container
         uses: actions/checkout@v4
@@ -81,9 +96,15 @@ jobs:
   integration-tests:
     needs: build-image
     runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ${{ env.IMAGE_NAME }}
+      IMAGE_TAG: ${{ env.IMAGE_TAG }}
+      WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+      ENTITY: ${{ env.ENTITY }}
+      FILESDIR: ${{ env.FILESDIR }}
     container: 
       image: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-      options: --env WANDB_API_KEY=${{ secrets.WANDB_API_KEY }} --env ENTITY=${{ env.ENTITY }} --env FILESDIR=${{ env.FILESDIR }}
+      options: --env WANDB_API_KEY --env ENTITY --env FILESDIR
     steps:
       - name: Checkout code in container
         uses: actions/checkout@v4
