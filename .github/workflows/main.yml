@@ -56,9 +56,12 @@ jobs:
   pre-commit:
     needs: build-image
     runs-on: ubuntu-latest
+    env: 
+      SKIP: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' && 'no-commit-to-branch' || 
+              (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'no-commit-to-branch') || '' }}
     container: 
       image: ghcr.io/${{ github.repository_owner }}/hubris-ambigans-ci-image:latest
-      options: --env WANDB_API_KEY --env ENTITY --env FILESDIR
+      options: --env WANDB_API_KEY --env ENTITY --env FILESDIR --env SKIP
     steps:
       - name: Checkout code in container
         uses: actions/checkout@v4
