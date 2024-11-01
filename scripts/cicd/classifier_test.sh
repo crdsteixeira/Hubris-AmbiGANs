@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Run the classifier script
-poetry run python -m src.classifier.classifier_cli \
+python -m src.classifier.classifier_cli \
     --data_dir="$FILESDIR/data" \
     --out_dir="$FILESDIR/models" \
     --name="test_classifier_cicd" \
