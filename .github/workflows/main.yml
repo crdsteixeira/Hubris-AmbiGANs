@@ -64,7 +64,7 @@ jobs:
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          -v ${{ env.GITHUB_WORKSPACE }}:/app \
+          -v $GITHUB_WORKSPACE:/app \
           ${{ env.IMAGE_NAME }} \
           sh -c "poetry run pre-commit run --all-files"
 
@@ -86,7 +86,7 @@ jobs:
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          -v ${{ env.GITHUB_WORKSPACE }}:/app \
+          -v $GITHUB_WORKSPACE:/app \
           ${{ env.IMAGE_NAME }} \
           sh -c "poetry run wandb login && poetry run pytest"
 
@@ -106,7 +106,7 @@ jobs:
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          -v ${{ env.GITHUB_WORKSPACE }}:/app \
+          -v $GITHUB_WORKSPACE:/app \
           ${{ env.IMAGE_NAME }} \
           sh -c "poetry run wandb login && . ./scripts/cicd/main_test.sh"
       - name: Run Integration Tests (Classifier)
@@ -116,7 +116,7 @@ jobs:
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          -v ${{ env.GITHUB_WORKSPACE }}:/app \
+          -v $GITHUB_WORKSPACE:/app \
           ${{ env.IMAGE_NAME }} \
           sh -c "poetry run wandb login && . ./scripts/cicd/classifier_test.sh"
       - name: Run Integration Tests (Gen Test Noise)
@@ -126,7 +126,7 @@ jobs:
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          -v ${{ env.GITHUB_WORKSPACE }}:/app \
+          -v $GITHUB_WORKSPACE:/app \
           ${{ env.IMAGE_NAME }} \
           sh -c "poetry run wandb login && . ./scripts/cicd/gen_test_noise_test.sh"
       - name: Run Integration Tests (GAN)
@@ -136,6 +136,6 @@ jobs:
           -e ENTITY="${{ env.ENTITY }}" \
           -e FILESDIR="${{ env.FILESDIR }}" \
           -e WANDB_API_KEY="${{ secrets.WANDB_API_KEY }}" \
-          -v ${{ env.GITHUB_WORKSPACE }}:/app \
+          -v $GITHUB_WORKSPACE:/app \
           ${{ env.IMAGE_NAME }} \
           sh -c "poetry run wandb login && . ./scripts/cicd/gan_test.sh"
