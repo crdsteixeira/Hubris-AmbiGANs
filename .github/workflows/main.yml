@@ -63,6 +63,11 @@ jobs:
       - name: Checkout code in container
         uses: actions/checkout@v4
 
+      # git checkout is not creating a working git folder, it has dubious ownership if not configured
+      # The pre-commit hook will not work on this original git folder
+      - name: Fix git
+        run: git config --system --add safe.directory '*'
+
       - name: Run Pre-Commit
         run: poetry run pre-commit run --all-files
 
