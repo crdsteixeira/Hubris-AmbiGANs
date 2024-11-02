@@ -19,6 +19,7 @@ jobs:
 
           # List all status checks for this commit using GitHub API
           TEST_STATUSES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ github.repository }}/commits/${COMMIT_SHA}/status" \
             | jq -r '.statuses[] | select(.context | contains("test")) | .state')
 
