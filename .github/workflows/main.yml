@@ -1,6 +1,8 @@
 name: ci-test
 
 on:
+  create:
+    branches: []
   push:
     branches: '**'
     tags:
@@ -12,7 +14,7 @@ env:
   WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hubris-ambigans-ci-image
   IMAGE_TAG: latest
-
+  
 jobs:
   build-image:
     runs-on: ubuntu-latest
