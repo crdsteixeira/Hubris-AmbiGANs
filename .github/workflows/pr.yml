@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check Test and Pre-Commit Hook Statuses
         id: check_statuses
@@ -18,6 +20,8 @@ jobs:
           # Fetch the commit SHA of the head of the pull request
           COMMIT_SHA=$(git rev-parse HEAD)
 
-          source ./scripts/cicd/test_pr.sh "${{ secrets.GITHUB_TOKEN }}" \
+          echo "Commit SHA: $COMMIT_SHA"
+
+          source ./scripts/cicd/test_pr.sh "${{ secrets.PR_TOKEN }}" \
               "${{ github.repository }}" \
               "$COMMIT_SHA"
