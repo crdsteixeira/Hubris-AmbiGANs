@@ -4,6 +4,7 @@ import itertools
 import logging
 import os
 import subprocess
+import sys
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 from dotenv import load_dotenv
@@ -59,7 +60,7 @@ def main() -> None:
         logger.info(f"{neg_class}vs{pos_class}")
         subprocess.run(
             [
-                "python",
+                sys.executable,
                 "-m",
                 "src.metrics.fid.fid_cli",
                 "--data",
@@ -74,6 +75,7 @@ def main() -> None:
                 str(neg_class),
             ],
             check=False,
+            env=os.environ.copy(),
         )
 
 

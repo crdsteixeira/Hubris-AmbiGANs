@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import subprocess
+import sys
 
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -35,7 +36,7 @@ def gen_test_noise(config: ConfigMain) -> None:
     )
 
     args = [
-        "python",
+        sys.executable,
         "-m",
         "src.gen_test_noise",
         "--seed",
@@ -48,7 +49,7 @@ def gen_test_noise(config: ConfigMain) -> None:
         str(params.out_dir),
     ]
 
-    subprocess.run(args, check=True)
+    subprocess.run(args, check=True, env=os.environ.copy())
 
 
 def gen_pairwise_inception(config: ConfigMain) -> None:
@@ -60,7 +61,7 @@ def gen_pairwise_inception(config: ConfigMain) -> None:
     )
 
     args = [
-        "python",
+        sys.executable,
         "-m",
         "src.metrics.fid.fid_cli",
         "--data",
@@ -75,7 +76,7 @@ def gen_pairwise_inception(config: ConfigMain) -> None:
         str(config.dataset.binary.neg),
     ]
 
-    subprocess.run(args, check=True)
+    subprocess.run(args, check=True, env=os.environ.copy())
 
 
 def gen_classifiers(config: ConfigMain, classifier: ClassifierClasses) -> None:
@@ -104,7 +105,7 @@ def gen_classifiers(config: ConfigMain, classifier: ClassifierClasses) -> None:
     )
 
     args: list[str] = [
-        "python",
+        sys.executable,
         "-m",
         "src.classifier.classifier_cli",
         "--dataset_name",
@@ -144,7 +145,7 @@ def gen_classifiers(config: ConfigMain, classifier: ClassifierClasses) -> None:
     if classifier.ensemble_output_method is not None:
         args.extend(["--ensemble_output_method", classifier.ensemble_output_method])
 
-    subprocess.run(args, check=True)
+    subprocess.run(args, check=True, env=os.environ.copy())
 
 
 def gen_gan(config: ConfigMain, fid_stats_path: str, test_noise: str) -> None:

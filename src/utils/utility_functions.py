@@ -8,6 +8,7 @@ import math
 import os
 import random
 import subprocess
+import sys
 from datetime import datetime
 
 import numpy as np
@@ -224,7 +225,7 @@ def run_training_subprocess(args: CLTrainArgs, cnn_nfs: list[list[int]]) -> None
     """Run a subprocess to train the classifier."""
     proc = subprocess.run(
         [
-            "python",
+            sys.executable,
             "-m",
             "src.classifier.train",
             "--device",
@@ -258,6 +259,7 @@ def run_training_subprocess(args: CLTrainArgs, cnn_nfs: list[list[int]]) -> None
         ],
         check=False,
         capture_output=True,
+        env=os.environ.copy(),
     )
     handle_subprocess_output(proc)
 

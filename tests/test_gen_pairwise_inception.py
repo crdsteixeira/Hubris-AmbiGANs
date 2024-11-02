@@ -4,6 +4,8 @@ from collections.abc import Generator
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+import sys
+import os
 from pydantic import ValidationError
 
 from src.gen_pairwise_inception import main
@@ -56,7 +58,7 @@ def test_main_subprocess_calls(
     assert mock_subprocess_run.call_count == 1
     mock_subprocess_run.assert_called_with(
         [
-            "python",
+            sys.executable,
             "-m",
             "src.metrics.fid.fid_cli",
             "--data",
@@ -71,6 +73,7 @@ def test_main_subprocess_calls(
             str(0),
         ],
         check=False,
+        env=os.environ.copy(),
     )
 
 
@@ -156,7 +159,7 @@ def test_multiple_class_combinations(
     expected_calls = [
         call(
             [
-                "python",
+                sys.executable,
                 "-m",
                 "src.metrics.fid.fid_cli",
                 "--data",
@@ -171,6 +174,7 @@ def test_multiple_class_combinations(
                 str(neg),
             ],
             check=False,
+            env=os.environ.copy(),
         )
         for neg, pos in mock_combinations.return_value
     ]
