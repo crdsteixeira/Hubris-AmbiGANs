@@ -11,22 +11,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Check Test Pipeline Statuses
-        id: check_tests
+
+      - name: Check Test and Pre-Commit Hook Statuses
+        id: check_statuses
         run: |
           # Fetch the commit SHA of the head of the pull request
           COMMIT_SHA=$(git rev-parse HEAD)
 
-          # List all status checks for this commit using GitHub API
-          TEST_STATUSES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          # List all relevant status checks for this commit using the GitHub API
+          TEST_AND_HOOK_STATUSES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ github.repository }}/commits/${COMMIT_SHA}/status" \
-            | jq -r '.statuses[] | select(.context | contains("test")) | .state')
+            | jq -r '.statuses[] | select(.context == "unit-tests" or .context == "integration-tests" or .context == "pre-commit") | .state')
+
+          # Output the retrieved statuses for debugging
+          echo "Statuses found: $TEST_AND_HOOK_STATUSES"
 
           # Ensure all statuses are 'success'
-          if echo "$TEST_STATUSES" | grep -v "success"; then
-            echo "❌ Not all tests passed. Please ensure all required tests have succeeded before merging."
+          if [ -z "$TEST_AND_HOOK_STATUSES" ] || echo "$TEST_AND_HOOK_STATUSES" | grep -v "success"; then
+            echo "❌ Not all tests and pre-commit hooks passed. Ensure all required checks are successful before merging."
             exit 1
           else
-            echo "✅ All tests passed on the latest commit."
+            echo "✅ All tests and pre-commit hooks passed on the latest commit."
           fi
