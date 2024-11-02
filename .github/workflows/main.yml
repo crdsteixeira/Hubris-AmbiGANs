@@ -3,6 +3,7 @@ name: ci-test
 on:
   create:
     branches: []
+    tags: []
   push:
     branches: '**'
     tags:
