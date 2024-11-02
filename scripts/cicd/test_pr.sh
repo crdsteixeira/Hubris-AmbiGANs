@@ -7,7 +7,7 @@ COMMIT_SHA="$3"
 RUN_ID=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
   -H "Accept: application/vnd.github.v3+json" \
   "https://api.github.com/repos/$REPO/actions/runs?head_sha=$COMMIT_SHA" \
-  | jq -r '.workflow_runs[0].id')
+  | jq -r '.workflow_runs[1].id')
 
 # Check if RUN_ID was found
 if [ -z "$RUN_ID" ]; then
@@ -18,13 +18,17 @@ fi
 echo "Workflow Run ID: $RUN_ID"
 
 # Step 2: Fetch job statuses for the specific workflow run
-JOB_STATUSES=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+JOB_STATUSES=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
   -H "Accept: application/vnd.github.v3+json" \
   "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/jobs" \
   | jq -r '.jobs[] | select(.name == "unit-tests" or .name == "integration-tests" or .name == "pre-commit") | {name: .name, status: .status, conclusion: .conclusion}')
 
 # Output the job statuses for debugging
 echo "Job statuses found: $JOB_STATUSES"
+if [ -z "$JOB_STATUSES" ]; then
+  echo "❌ No Jobs found for the workflow."
+  exit 1
+fi
 
 # Step 3: Check if all jobs have completed successfully
 ALL_SUCCESS=1
