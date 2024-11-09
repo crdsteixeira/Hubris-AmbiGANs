@@ -15,7 +15,7 @@ env:
   
 jobs:
   build-image:
-    if: github.event.created == false
+    if: ! (github.event.created && startsWith(github.ref, 'refs/heads/'))
     runs-on: ubuntu-latest
     steps:
       - name: Delete unnecessary tools folder
@@ -57,7 +57,7 @@ jobs:
             GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
   pre-commit:
-    if: github.event.created == false
+    if: ! (github.event.created && startsWith(github.ref, 'refs/heads/'))
     needs: build-image
     runs-on: ubuntu-latest
     env: 
@@ -79,7 +79,7 @@ jobs:
         run: poetry run pre-commit run --all-files
 
   unit-tests:
-    if: github.event.created == false
+    if: ! (github.event.created && startsWith(github.ref, 'refs/heads/'))
     needs: build-image
     runs-on: ubuntu-latest
     container: 
