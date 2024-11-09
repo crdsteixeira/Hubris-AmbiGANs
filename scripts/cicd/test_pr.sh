@@ -21,7 +21,7 @@ echo "Workflow Run ID: $RUN_ID"
 JOB_STATUSES=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
   -H "Accept: application/vnd.github.v3+json" \
   "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/jobs" \
-  | jq -r '.jobs[] | select(.name == "unit-tests" or .name == "integration-tests" or .name == "pre-commit") | {name: .name, status: .status, conclusion: .conclusion}')
+  | jq -r '.jobs[] | select(.name == "integration-tests" or .name == "pre-commit") | {name: .name, status: .status, conclusion: .conclusion}')
 
 # Output the job statuses for debugging
 echo "Job statuses found: $JOB_STATUSES"

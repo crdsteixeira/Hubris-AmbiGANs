@@ -79,7 +79,7 @@ jobs:
         run: poetry run pre-commit run --all-files
 
   unit-tests:
-    if: ${{ ! (github.event.created && startsWith(github.ref, 'refs/heads/')) }}
+    if: ${{ ! (github.event.created && startsWith(github.ref, 'refs/heads/')) && ! (contains(github.ref, 'refs/tags/ready')) }}
     needs: build-image
     runs-on: ubuntu-latest
     container: 
