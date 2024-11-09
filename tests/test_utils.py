@@ -101,3 +101,67 @@ def test_binary_dataset_get_item(
 
     expected_label = torch.tensor(0.0)  # Since class 0 was set as the neg_class in the params
     assert torch.equal(label, expected_label), f"Expected label {expected_label}, but got {label}"
+
+def test_binary_dataset_balancing() -> None:
+    """Test that the balance_dataset method correctly balances the dataset."""
+
+    # Create an unbalanced mock dataset
+    class UnbalancedMockDataset(Dataset):
+        """Mock dataset with unbalanced classes for testing."""
+        
+
+        def __init__(self) -> None:
+            """Initialize with 8 negatives (class 1) and 2 positives (class 7)."""
+            self.data = [torch.tensor([[i]], dtype=torch.float32) for i in range(10)]
+            self.targets = [1] * 8 + [7] * 2  # Majority class is 1, minority is 7
+
+        def __len__(self) -> int:
+            """Return the number of samples in the mock dataset."""
+            return len(self.targets)
+
+        def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
+            """Get a specific item from the mock dataset."""
+            return self.data[index], self.targets[index]
+
+    unbalanced_dataset = UnbalancedMockDataset()
+
+    # Count positives and negatives before balancing
+    original_targets = torch.tensor(
+        [1.0 if t == 7 else 0.0 for t in unbalanced_dataset.targets]
+    )
+    num_pos_before = (original_targets == 1).sum().item()
+    num_neg_before = (original_targets == 0).sum().item()
+
+    # Define dataset parameters
+    dataset_params = LoadDatasetParams(
+        dataroot="",
+        train=True,
+        pytesting=True,
+        dataset_name=DatasetNames.mnist,
+        pos_class=7,
+        neg_class=1,
+    )
+
+    # Initialize BinaryDataset (which balances the dataset)
+    binary_dataset = BinaryDataset(unbalanced_dataset, dataset_params)
+
+    # Count positives and negatives after balancing
+    num_pos = (binary_dataset.targets == 1).sum().item()
+    num_neg = (binary_dataset.targets == 0).sum().item()
+
+    # Check that the dataset is now balanced
+    assert num_pos == num_neg, f"Dataset is not balanced: {num_pos} positives, {num_neg} negatives."
+
+    # Calculate expected length after balancing
+    num_to_add = abs(num_pos_before - num_neg_before)
+    expected_length = len(unbalanced_dataset) + num_to_add
+    assert len(binary_dataset) == expected_length, f"Expected length {expected_length}, got {len(binary_dataset)}."
+
+    # Verify that oversampled data are duplicates of minority class samples
+    original_length = len(unbalanced_dataset)
+    oversampled_data = binary_dataset.data[original_length:]
+    original_minority_data = binary_dataset.data[(binary_dataset.targets == 1).nonzero(as_tuple=True)[0][:num_pos_before]]
+
+    for sample in oversampled_data:
+        assert any(torch.equal(sample, orig_sample) for orig_sample in original_minority_data), \
+            "Oversampled data contains unexpected samples."
