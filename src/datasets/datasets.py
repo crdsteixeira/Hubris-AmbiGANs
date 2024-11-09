@@ -67,7 +67,7 @@ def get_chest_xray(params: DatasetParams) -> Dataset:
 
     # If the `pytesting` flag is set to True, download only 10% of the data
     if params.train and params.pytesting:
-        split = f"test[:30%]"
+        split = "test[:30%]"
 
     ds = load_dataset("keremberke/chest-xray-classification", name="full", split=split)
     transform = torchvision.transforms.Compose(
