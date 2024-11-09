@@ -12,9 +12,10 @@ env:
   WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hubris-ambigans-ci-image
   IMAGE_TAG: latest
-
+  
 jobs:
   build-image:
+    if: ${{ ! (github.event.created && startsWith(github.ref, 'refs/heads/')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Delete unnecessary tools folder
@@ -56,6 +57,7 @@ jobs:
             GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
   pre-commit:
+    if: ${{ ! (github.event.created && startsWith(github.ref, 'refs/heads/')) }}
     needs: build-image
     runs-on: ubuntu-latest
     env: 
@@ -77,6 +79,7 @@ jobs:
         run: poetry run pre-commit run --all-files
 
   unit-tests:
+    if: ${{ ! (github.event.created && startsWith(github.ref, 'refs/heads/')) }}
     needs: build-image
     runs-on: ubuntu-latest
     container: 
