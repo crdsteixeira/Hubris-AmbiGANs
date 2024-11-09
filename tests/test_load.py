@@ -38,7 +38,7 @@ class MockDataset:
 def dataset_params(tmp_path: str) -> LoadDatasetParams:
     """Fixture to provide dataset parameters for different dataset names."""
     return LoadDatasetParams(
-        dataroot=str(tmp_path), train=True, dataset_name=DatasetNames.mnist, pos_class=7, neg_class=1, pytesting=True
+        dataroot=str(tmp_path), train=True, dataset_name=DatasetNames.mnist, pos_class=1, neg_class=0, pytesting=True
     )
 
 
