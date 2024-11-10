@@ -37,6 +37,39 @@ class BinaryDataset(Dataset):
         self.data: torch.Tensor = torch.vstack(data)
         self.targets: torch.Tensor = torch.hstack(targets)
 
+        self.balance_dataset()
+
+    def balance_dataset(self) -> None:
+        """Oversample the minority class to balance the dataset."""
+        pos_indices = (self.targets == 1).nonzero(as_tuple=True)[0]
+        neg_indices = (self.targets == 0).nonzero(as_tuple=True)[0]
+
+        # Determine which class is the minority
+        num_pos = len(pos_indices)
+        num_neg = len(neg_indices)
+
+        if num_pos == num_neg:
+            return  # Dataset is already balanced
+
+        # Oversample the minority class
+        if num_pos < num_neg:
+            minority_indices = pos_indices
+            num_to_add = num_neg - num_pos
+            minority_target = 1
+
+        else:
+            minority_indices = neg_indices
+            num_to_add = num_pos - num_neg
+            minority_target = 0
+
+        # Randomly duplicate samples from the minority class
+        oversampled_data = self.data[minority_indices][torch.randint(len(minority_indices), (num_to_add,))]
+        oversampled_targets = torch.full((num_to_add,), fill_value=minority_target)
+
+        # Append the oversampled data to the existing dataset
+        self.data = torch.vstack([self.data, oversampled_data])
+        self.targets = torch.hstack([self.targets, oversampled_targets])
+
     def __len__(self) -> int:
         """Return the number of samples in the dataset."""
         return len(self.targets)
