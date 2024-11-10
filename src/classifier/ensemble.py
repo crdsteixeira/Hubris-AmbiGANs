@@ -143,7 +143,7 @@ class Ensemble(nn.Module):
             if early_acc >= (local_acc / len(y)):
                 loss.backward()
 
-        return loss_overall / len(self.models), acc / len(self.models)
+        return loss_overall, acc
 
     def optimize_helper(
         self,
