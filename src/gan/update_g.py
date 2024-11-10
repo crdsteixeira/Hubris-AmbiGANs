@@ -45,6 +45,7 @@ class UpdateGeneratorGAN(UpdateGenerator):
         loss = self.crit(device, output)
 
         loss.backward()
+        clip_grad_norm_(G.parameters(), 1.00)
         optimizer.step()
 
         return loss, {}
@@ -201,7 +202,7 @@ class UpdateGeneratorAmbiGanGaussian(UpdateGenerator):
         var = full_like(input=clf_output, fill_value=self.var, device=device)
         loss_1 = self.c_loss(clf_output, target, var)
         loss_1.backward()
-        clip_grad_norm_(G.parameters(), 0.50 * self.alpha)
+        clip_grad_norm_(G.parameters(), 1.00 * self.alpha)
         optimizer.step()
         # update from discriminator
         optimizer.zero_grad()
@@ -209,7 +210,7 @@ class UpdateGeneratorAmbiGanGaussian(UpdateGenerator):
         output = D(fake_data)
         loss_2 = self.crit(device, output)
         loss_2.backward()
-        clip_grad_norm_(G.parameters(), 0.50)
+        clip_grad_norm_(G.parameters(), 1.00)
         optimizer.step()
 
         loss = loss_1 + loss_2

@@ -38,6 +38,7 @@ class Classifier(nn.Module):
                 self.blocks.append(
                     nn.Sequential(
                         nn.Conv2d(n_in, nf, 3, padding="same"),
+                        nn.BatchNorm2d(nf),
                         nn.ReLU(),
                         nn.MaxPool2d(2),
                     )

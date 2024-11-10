@@ -2,6 +2,7 @@
 
 import numpy as np
 from torch import Tensor, nn
+from torch.nn.utils import spectral_norm
 
 from src.models import ConvParams, DisParams, GenParams, PadParams
 
@@ -11,12 +12,8 @@ def weights_init(m: nn.Module) -> None:
     classname = m.__class__.__name__
     if classname.find("Same") != -1:
         nn.init.normal_(m.conv_transpose_2d.weight.data, 0.0, 0.02)
-        if m.conv_transpose_2d.bias is not None:
-            nn.init.constant_(m.conv_transpose_2d.bias, 0)
     elif classname.find("Conv") != -1:
         nn.init.normal_(m.weight.data, 0.0, 0.02)
-        if m.bias is not None:
-            nn.init.constant_(m.bias, 0)
     elif classname.find("BatchNorm") != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         if m.bias is not None:
@@ -195,31 +192,30 @@ class Discriminator(nn.Module):
             if i == 0:
                 in_channels = n_channels
                 block = nn.Sequential(
-                    nn.Conv2d(
-                        in_channels=in_channels,
-                        out_channels=out_channels,
-                        kernel_size=4,
-                        stride=2,
-                        padding=1,
-                        bias=True,
+                    spectral_norm(
+                        nn.Conv2d(
+                            in_channels=in_channels,
+                            out_channels=out_channels,
+                            kernel_size=4,
+                            stride=2,
+                            padding=1,
+                            bias=True,
+                        )
                     ),
                     nn.LeakyReLU(0.2, inplace=True),
                 )
             else:
                 in_channels = self.params.filter_dim * 2 ** (i - 1)
                 block = nn.Sequential(
-                    nn.Conv2d(
-                        in_channels=in_channels,
-                        out_channels=out_channels,
-                        kernel_size=4,
-                        stride=2,
-                        padding=1,
-                        bias=False,
-                    ),
-                    (
-                        nn.BatchNorm2d(out_channels)
-                        if self.params.use_batch_norm
-                        else nn.LayerNorm(normalized_shape=[out_channels, current_size_height, current_size_width])
+                    spectral_norm(
+                        nn.Conv2d(
+                            in_channels=in_channels,
+                            out_channels=out_channels,
+                            kernel_size=4,
+                            stride=2,
+                            padding=1,
+                            bias=True,
+                        )
                     ),
                     nn.LeakyReLU(0.2, inplace=True),
                 )
@@ -227,13 +223,15 @@ class Discriminator(nn.Module):
             self.conv_blocks.append(block)
 
         self.predict = nn.Sequential(
-            nn.Conv2d(
-                in_channels=self.params.filter_dim * 2 ** (self.params.n_blocks - 1),
-                out_channels=1,
-                kernel_size=(current_size_height, current_size_width),
-                stride=1,
-                padding=0,
-                bias=False,
+            spectral_norm(
+                nn.Conv2d(
+                    in_channels=self.params.filter_dim * 2 ** (self.params.n_blocks - 1),
+                    out_channels=1,
+                    kernel_size=(current_size_height, current_size_width),
+                    stride=1,
+                    padding=0,
+                    bias=True,
+                )
             ),
             nn.Flatten(),
         )

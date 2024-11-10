@@ -53,7 +53,7 @@ def test_weights_init() -> None:
     weights_init(layer)
     assert layer.weight.mean().item() == pytest.approx(0.0, abs=0.1), "Weights should be initialized around 0."
     assert layer.bias is not None and layer.bias.mean().item() == pytest.approx(
-        0.0, abs=0.1
+        0.0, abs=0.5
     ), "Biases should be initialized around 0."
 
 
