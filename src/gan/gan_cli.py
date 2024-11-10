@@ -94,7 +94,7 @@ def train_modified_gan(
     c_out_hist = OutputsHistogram(class_cache, params.test_noise.size(0))
     run_name = f"{params.c_name}_{weight_name}_{params.s1_epoch}"
     if params.checkpoint_dir is not None:
-        checkpoint_dir = params.checkpoint_dir
+        checkpoint_dir = os.path.join(params.checkpoint_dir, run_name)
     else:
         checkpoint_dir = os.path.join(f"{os.environ['FILESDIR']}/checkpoint", run_name)
 
