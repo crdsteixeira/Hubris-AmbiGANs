@@ -2,8 +2,8 @@
 
 import logging
 import math
+import os
 
-import matplotlib.pyplot as plt
 import torch
 from torch import Tensor
 from tqdm import tqdm
@@ -64,11 +64,6 @@ def evaluate(
             result = metric.finalize()
             stats_logger.update_epoch_metric(metric_name, result, prnt=True)
             metric.reset()
-
-    if params.c_out_hist is not None:
-        params.c_out_hist.plot()
-        params.c_out_hist.reset()
-        plt.clf()
 
     if training:
         params.G.train()
@@ -160,6 +155,10 @@ def evaluate_and_checkpoint(
 
     img = group_images(fake, classifier=params.classifier, device=params.device)
     eval_metrics.log_image("samples", img)
+    plot_img = None
+    if params.c_out_hist is not None:
+        plot_img = params.c_out_hist.plot_clfs()
+        eval_metrics.log_image("plot", plot_img)
 
     train_metrics.finalize_epoch()
 
@@ -169,6 +168,8 @@ def evaluate_and_checkpoint(
 
     if train_state.epoch == params.epochs or train_state.epoch % params.checkpoint_every == 0:
         checkpoint_image(img, train_state.epoch, output_dir=params.checkpoint_dir)
+        if plot_img is not None and params.checkpoint_dir is not None:
+            checkpoint_image(plot_img, train_state.epoch, output_dir=os.path.join(params.checkpoint_dir, "plots"))
         return checkpoint_gan(
             params,
             train_state.__dict__,
