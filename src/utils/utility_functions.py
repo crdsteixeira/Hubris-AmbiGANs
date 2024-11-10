@@ -146,7 +146,7 @@ def make_grid(images: torch.Tensor, nrow: int | None = None, total_images: int |
             images = torch.concat((images, blank_images), 0)
 
     img = vutils.make_grid(images, padding=2, normalize=True, nrow=int(nrow), value_range=(-1, 1), scale_each=True)
-    img = resize(img, size=(1024, 1024))
+    img = resize(img, size=1024)
 
     return img
 
@@ -192,7 +192,7 @@ def group_images(images: torch.Tensor, classifier: nn.Module = None, device: tor
 
     grids = [make_grid(g, nrow=3, total_images=largest_group) for g in groups]
     img = torch.concat(grids, 2)
-    img = resize(img, size=(1024, 1024))
+    img = resize(img, size=1024)
 
     return img
 
