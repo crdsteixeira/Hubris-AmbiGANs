@@ -1,5 +1,5 @@
 # Global definitions
-project: AmbiGAN-Chest-XRAY
+project: AmbiGAN-Chest-XRAY-Nov24
 name: chest-xray
 out_dir: out
 data_dir: data
@@ -13,8 +13,8 @@ num_runs: 3
 
 # Configuration
 gen_test_noise: true
-gen_pairwise_inception: false # true
-gen_classifiers: false # true
+gen_pairwise_inception: true
+gen_classifiers: true
 gen_gan: true
 
 # Dataset parameters, including positive and negative class.
@@ -26,10 +26,10 @@ dataset:
 
 # Classifier list to be generated.
 classifiers:
-  - name: ensemble_mean_chestxray
+  - name: ensemble_mean_32_chestxray_200
     c_type: ensemble
-    batch_size: 200
-    epochs: 50
+    batch_size: 800
+    epochs: 200
     lr: 0.001
     nf: 50
     seed: 32
@@ -51,7 +51,7 @@ model:
   z_dim: 256
   architecture:
     name: dcgan
-    g_filter_dim: 32
+    g_filter_dim: 16
     d_filter_dim: 16
     g_num_blocks: 5
     d_num_blocks: 5
@@ -60,7 +60,7 @@ model:
 
 # GAN optimizer parameters
 optimizer:
-  lr: 0.0002
+  lr: 0.0001
   beta1: 0.00
   beta2: 0.999
 
@@ -79,17 +79,12 @@ train:
     step_1_epochs:
       - last
     classifier:
-      - ensemble_mean_chestxray
+      - ensemble_mean_32_chestxray_200
     weight:
       - gaussian:
-          - alpha: 0.25
+          - alpha: 0.15
+            var: 0.10
+          - alpha: 0.30
             var: 0.10
           - alpha: 0.50
             var: 0.10
-          - alpha: 0.75
-            var: 0.25
-      - cd:
-          alpha:
-            - 10.0
-            - 25.0
-            - 50.0
