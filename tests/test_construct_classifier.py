@@ -6,7 +6,7 @@ from torch import nn
 from src.classifier.construct_classifier import construct_classifier
 from src.classifier.my_mlp import Classifier as MyMLP
 from src.classifier.simple_cnn import Classifier as SimpleCNN
-from src.enums import ClassifierType, DeviceType, EnsembleType
+from src.enums import ClassifierType, DeviceType, EnsembleType, DatasetNames
 from src.models import TrainClassifierArgs
 
 
@@ -26,6 +26,9 @@ def cnn_params() -> TrainClassifierArgs:
         lr=0.001,  # Add learning rate
         batch_size=32,  # Batch size for training
         seed=42,  # Optional seed for reproducibility
+        dataset_name=DatasetNames.mnist,
+        pos_class=1,
+        neg_class=7,
     )
 
 
@@ -45,6 +48,9 @@ def mlp_params() -> TrainClassifierArgs:
         lr=0.001,  # Add learning rate
         batch_size=32,  # Batch size for training
         seed=42,  # Optional seed for reproducibility
+        dataset_name=DatasetNames.mnist,
+        pos_class=1,
+        neg_class=7,
     )
 
 
@@ -66,6 +72,9 @@ def ensemble_params() -> TrainClassifierArgs:
         lr=0.001,  # Add learning rate
         batch_size=32,  # Batch size for training
         seed=42,  # Optional seed for reproducibility
+        dataset_name=DatasetNames.mnist,
+        pos_class=1,
+        neg_class=7,
     )
 
 
@@ -147,6 +156,9 @@ def test_invalid_classifier_type() -> None:
                 out_dir="./models",  # Add required field 'out_dir'
                 lr=0.001,  # Add learning rate
                 batch_size=32,  # Batch size for training
+                dataset_name=DatasetNames.mnist,
+                pos_class=1,
+                neg_class=7,
             )
         )
 
@@ -165,6 +177,9 @@ def test_ensemble_nf_mismatch() -> None:
         out_dir="./models",  # Add required field 'out_dir'
         lr=0.001,  # Add learning rate
         batch_size=32,  # Batch size for training
+        dataset_name=DatasetNames.mnist,
+        pos_class=1,
+        neg_class=7,
     )
     with pytest.raises(ValueError, match="Ensemble must have more than one model, but got*"):
         construct_classifier(invalid_ensemble_params)

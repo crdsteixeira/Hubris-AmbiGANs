@@ -56,27 +56,30 @@ def main() -> None:
 
     logger.info(config)
 
-    for neg_class, pos_class in itertools.combinations(range(config.n_classes), 2):
-        logger.info(f"{neg_class}vs{pos_class}")
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "src.metrics.fid.fid_cli",
-                "--data",
-                config.dataroot,
-                "--dataset",
-                config.dataset,
-                "--device",
-                config.device,
-                "--pos",
-                str(pos_class),
-                "--neg",
-                str(neg_class),
-            ],
-            check=False,
-            env=os.environ.copy(),
-        )
+    if config.n_classes is not None:
+        for neg_class, pos_class in itertools.combinations(range(config.n_classes), 2):
+            logger.info(f"{neg_class}vs{pos_class}")
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "src.metrics.fid.fid_cli",
+                    "--data",
+                    config.dataroot,
+                    "--dataset",
+                    config.dataset,
+                    "--device",
+                    config.device,
+                    "--pos",
+                    str(pos_class),
+                    "--neg",
+                    str(neg_class),
+                ],
+                check=False,
+                env=os.environ.copy(),
+            )
+    else:
+        raise RuntimeError("Missing number of classes for dataset.")
 
 
 if __name__ == "__main__":

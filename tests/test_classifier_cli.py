@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from src.classifier.classifier_cli import parse_args
 from src.classifier.train_classifier import main, train
-from src.enums import ClassifierType, DeviceType
+from src.enums import ClassifierType, DeviceType, DatasetNames
 from src.metrics.accuracy import binary_accuracy
 from src.models import ClassifierParams, CLTrainArgs, TrainClassifierArgs, TrainingStats
 
@@ -90,6 +90,9 @@ def test_train(mock_dataloader: DataLoader, mock_classifier: MockClassifier, tmp
         early_acc=1.0,
         device=DeviceType.cpu,
         out_dir=str(tmp_path),
+        dataset_name=DatasetNames.mnist,
+        pos_class=1,
+        neg_class=7,
     )
 
     stats, cp_path = train(

@@ -126,7 +126,7 @@ def construct_discriminator_loss(config: ConfigLoss | ConfigLossWG, D: nn.Module
     """Construct loss functions for discriminator based on the given configuration."""
     if config.name == LossType.ns:
         return NS_DiscriminatorLoss()
-    if config.name == LossType.wgan:
+    if config.name == LossType.wgan and isinstance(config, ConfigLossWG):
         return WGP_DiscriminatorLoss(D, config.args)
 
     valid_loss_types = [loss.value for loss in LossType]  # Get the list of valid loss types
