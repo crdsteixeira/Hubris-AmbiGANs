@@ -17,4 +17,4 @@ RUN poetry config virtualenvs.create false
 # Install libraries
 COPY pyproject.toml /app/pyproject.toml
 WORKDIR /app
-RUN poetry install --no-root --no-cache
+RUN poetry install --no-root --no-cache --with dev
