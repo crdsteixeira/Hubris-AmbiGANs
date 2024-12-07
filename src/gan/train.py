@@ -8,6 +8,7 @@ import torch
 from torch import Tensor
 from tqdm import tqdm
 
+from src.enums import TrainingStage
 from src.models import (
     CheckpointGAN,
     ConfigGAN,
@@ -203,8 +204,8 @@ def train(params: GANTrainArgs, config: ConfigGAN) -> tuple[TrainingState, str |
         num_workers=config.num_workers,
         worker_init_fn=seed_worker,
     )
-    train_metrics: MetricsLogger = MetricsLogger(MetricsParams(prefix="train", log_epoch=True))
-    eval_metrics: MetricsLogger = MetricsLogger(MetricsParams(prefix="validation", log_epoch=True))
+    train_metrics: MetricsLogger = MetricsLogger(MetricsParams(prefix=TrainingStage.train, log_epoch=True))
+    eval_metrics: MetricsLogger = MetricsLogger(MetricsParams(prefix=TrainingStage.validation, log_epoch=True))
     train_state: TrainingState = initialize_training_state(params=params)
 
     log_generator_discriminator_metrics(train_metrics=train_metrics, eval_metrics=eval_metrics, params=params)
@@ -233,6 +234,9 @@ def train(params: GANTrainArgs, config: ConfigGAN) -> tuple[TrainingState, str |
         curr_g_iter = 0
         g_iters_per_epoch = int(math.floor(len(dataloader) / params.n_disc_iters))
         iters_per_epoch = g_iters_per_epoch * params.n_disc_iters
+
+        params.G.train()
+        params.D.train()
 
         for i in range(1, iters_per_epoch + 1):
             real_data, _ = next(data_iter)

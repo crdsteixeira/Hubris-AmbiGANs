@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "src"
-version = "0.2.4"
+version = "0.2.7"
 description = "Hubris Benchmarking with AmbiGANs for publication"
 authors = ["Catia Teixeira <catia.rds.teixeira@gmail.com>"]
 readme = "README.md"
@@ -47,6 +47,10 @@ types-pyyaml = "^6.0.12.20240917"
 name = "pytorch-gpu"
 url = "https://download.pytorch.org/whl/cu124"
 priority = "explicit"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
 
 [build-system]
 requires = ["poetry-core"]

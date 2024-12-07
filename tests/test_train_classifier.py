@@ -8,7 +8,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.classifier.train_classifier import default_train_fn, evaluate, save_predictions
-from src.enums import ClassifierType, DeviceType, TrainingStage
+from src.enums import ClassifierType, DeviceType, TrainingStage, DatasetNames
 from src.metrics.accuracy import binary_accuracy
 from src.models import ClassifierParams, EvaluateParams, TrainClassifierArgs
 
@@ -89,6 +89,9 @@ def test_default_train_fn(mock_dataloader: DataLoader, mock_classifier: MockClas
         early_acc=0.9,
         device=DeviceType.cpu,
         out_dir=str(tmp_path),  # Example output directory
+        dataset_name=DatasetNames.mnist,
+        pos_class=1,
+        neg_class=7,
     )
 
     for X, Y in mock_dataloader:
@@ -109,6 +112,9 @@ def test_save_predictions(mock_dataloader: DataLoader, mock_classifier: MockClas
         early_acc=1.0,
         device=DeviceType.cpu,
         out_dir=str(tmp_path),
+        dataset_name=DatasetNames.mnist,
+        pos_class=1,
+        neg_class=7,
     )
     dataset_name: TrainingStage = TrainingStage.test
     cp_path: str = str(tmp_path)

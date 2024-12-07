@@ -1,5 +1,7 @@
 """Pydantic moels validation and settings management."""
 
+from __future__ import annotations
+
 import os
 from collections.abc import Iterable
 from enum import Enum
@@ -49,7 +51,7 @@ class ClassifierParams(BaseModel):
     )  # Using Enum for device validation
 
     @model_validator(mode="after")
-    def validate_n_classes(self) -> "ClassifierParams":
+    def validate_n_classes(self) -> ClassifierParams:
         """Validate that n_classes is at least 2."""
         if self.n_classes < 2:
             raise ValueError("n_classes must be at least 2")
@@ -81,7 +83,7 @@ class ClassifierParams(BaseModel):
         return values
 
     @model_validator(mode="after")
-    def check_ensemble_fields(self) -> "ClassifierParams":
+    def check_ensemble_fields(self) -> ClassifierParams:
         """Validate that both ensemble_type and output_method are provided for ensemble type classifiers."""
         if self.type == ClassifierType.ensemble:
             if not self.ensemble_type or not self.output_method:
@@ -89,7 +91,7 @@ class ClassifierParams(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_img_size(self) -> "ClassifierParams":
+    def check_img_size(self) -> ClassifierParams:
         """Validate img_size based on the classifier type and ensemble type."""
         img_size = self.img_size
         if self.type == ClassifierType.ensemble and self.ensemble_type == EnsembleType.pretrained:
@@ -108,7 +110,7 @@ class ClassifierParams(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_nf(self) -> "ClassifierParams":
+    def check_nf(self) -> ClassifierParams:
         """Validate nf based on classifier type and ensemble type."""
         if self.type == ClassifierType.cnn:
             if not isinstance(self.nf, list) or any(not isinstance(n, int) for n in self.nf):
@@ -131,21 +133,21 @@ class SpatialParams(BaseModel):
 
     in_size: int | tuple[int, int] = Field(..., description="Input size (height or width) for spatial operation.")
     out_size: int | tuple[int, int] | None = Field(
-        None, description="Output size (height or width) for spatial operation."
+        default=None, description="Output size (height or width) for spatial operation."
     )
     kernel: int = Field(..., description="Kernel size for pooling or convolution.")
-    dilation: int | None = Field(1, description="Dilation factor for pooling or convolution.")
-    padding: int | None = Field(0, description="Padding applied to the input.")
+    dilation: int | None = Field(default=1, description="Dilation factor for pooling or convolution.")
+    padding: int | None = Field(default=0, description="Padding applied to the input.")
     stride: int | None = Field(
-        None,
+        default=None,
         description="Stride for pooling or convolution. Defaults to kernel size if not provided.",
     )
-    in_channels: int | None = Field(None, description="Input channels for spatial operation.")
-    out_channels: int | None = Field(None, description="Output channels for spatial operation.")
-    bias: bool | None = Field(None, description="Use bias during spatial operation")
+    in_channels: int | None = Field(default=None, description="Input channels for spatial operation.")
+    out_channels: int | None = Field(default=None, description="Output channels for spatial operation.")
+    bias: bool | None = Field(default=None, description="Use bias during spatial operation")
 
     @model_validator(mode="after")
-    def check_valid_values(self) -> "SpatialParams":
+    def check_valid_values(self) -> SpatialParams:
         """Validate that the input size, kernel, dilation, padding, and stride are all non-negative."""
         if self.kernel < 0:
             raise ValueError("Kernel size must be non-negative.")
@@ -166,11 +168,11 @@ class PoolParams(SpatialParams):
     """Arguments for Pooling."""
 
     in_size: int = Field(..., description="Input size (height or width) for pooling operation.")
-    padding: int = Field(0, description="Padding applied to the input.")
-    dilation: int = Field(1, description="Dilation factor for pooling or convolution.")
+    padding: int = Field(default=0, description="Padding applied to the input.")
+    dilation: int = Field(default=1, description="Dilation factor for pooling or convolution.")
 
     @model_validator(mode="after")
-    def validate_in_size(self) -> "PoolParams":
+    def validate_in_size(self) -> PoolParams:
         """Validate inut image size."""
         if self.in_size < 0:
             raise ValueError("Input image size must be non-negative.")
@@ -185,7 +187,7 @@ class PadParams(SpatialParams):
     stride: int = Field(..., description="Stride for pooling or convolution. Defaults to kernel size if not provided.")
 
     @model_validator(mode="after")
-    def validate_in_size(self) -> "PadParams":
+    def validate_in_size(self) -> PadParams:
         """Validate input image size."""
         if self.in_size < 0:
             raise ValueError("Input image size must be non-negative.")
@@ -203,7 +205,7 @@ class ConvParams(SpatialParams):
     bias: bool = Field(True, description="Use bias during convolutional operation")
 
     @model_validator(mode="after")
-    def validate_in_size(self) -> "PadParams":
+    def validate_in_size(self) -> ConvParams:
         """Validate input image size."""
         if self.in_size[0] < 0 or self.in_size[0] < 0:
             raise ValueError("Input image size must be non-negative.")
@@ -223,9 +225,9 @@ class TrainArgsBase(BaseModel):
     """Pydantic base model for training arguments."""
 
     epochs: int = Field(..., description="Number of training epochs")
-    early_acc: float = Field(1.0, description="Early accuracy threshold")
+    early_acc: float = Field(default=1.0, description="Early accuracy threshold")
     out_dir: str = Field(..., description="Output directory for saving checkpoints")
-    batch_size: int = Field(64, description="Batch size for training")
+    batch_size: int = Field(default=64, description="Batch size for training")
     lr: float = Field(default=5e-4, description="Learning rate for the optimizer")
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
     device: DeviceType = Field(..., description="Device for computation ('cpu', 'cuda')")
@@ -241,12 +243,12 @@ class TrainingStats(BaseModel):
     """Pydantic model for tracking training statistics."""
 
     best_loss: float = Field(
-        float("inf"),
+        default=float("inf"),
         description="The lowest validation loss encountered during training.",
     )
-    best_epoch: int = Field(0, description="Epoch with the lowest validation loss.")
-    early_stop_tracker: int = Field(0, description="Counter for early stopping criteria.")
-    cur_epoch: int = Field(0, description="Current epoch during training.")
+    best_epoch: int = Field(default=0, description="Epoch with the lowest validation loss.")
+    early_stop_tracker: int = Field(default=0, description="Counter for early stopping criteria.")
+    cur_epoch: int = Field(default=0, description="Current epoch during training.")
     train_acc: list[float] = Field(default_factory=list, description="List of training accuracies for each epoch.")
     train_loss: list[float] = Field(default_factory=list, description="List of training losses for each epoch.")
     val_acc: list[float] = Field(
@@ -254,8 +256,8 @@ class TrainingStats(BaseModel):
         description="List of validation accuracies for each epoch.",
     )
     val_loss: list[float] = Field(default_factory=list, description="List of validation losses for each epoch.")
-    test_acc: float = Field(0.0, description="List of test accuracies for each epoch.")
-    test_loss: float = Field(0.0, description="List of test losses for each epoch.")
+    test_acc: float = Field(default=0.0, description="List of test accuracies for each epoch.")
+    test_loss: float = Field(default=0.0, description="List of test losses for each epoch.")
 
 
 class DatasetClasses(BaseModel):
@@ -266,7 +268,7 @@ class DatasetClasses(BaseModel):
     neg_class: int = Field(..., description="Negative class for binary classification.")
 
     @model_validator(mode="after")
-    def validate_classes_for_binary_datasets(self) -> "DatasetClasses":
+    def validate_classes_for_binary_datasets(self) -> DatasetClasses:
         """Validate that pos_class and neg_class are provided and valid for the dataset."""
         # If positive or negative class is specified, ensure both are given
         if self.pos_class is None or self.neg_class is None:
@@ -316,10 +318,15 @@ class ClassifierClasses(BaseModel):
     early_stop: int | None = Field(default=None, description="Early stopping criteria (optional)")
     early_acc: float = Field(default=1.0, description="Early accuracy threshold for backpropagation")
     lr: float = Field(default=5e-4, description="Learning rate for the optimizer")
-    nf: int | list[int] = Field(default=2, description="Number of filters or features in the model")
+    nf: int | list[int] | list[list[int]] | None = Field(
+        None,
+        description="Number of filters for cnn/mlp. Can be None for pretrained ensembles.",
+    )
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
-    ensemble_type: EnsembleType | None = Field(None, description="Type of ensemble when applicable")
-    ensemble_output_method: OutputMethod | None = Field(None, description="Output method for ensemble when applicable")
+    ensemble_type: EnsembleType | None = Field(default=None, description="Type of ensemble when applicable")
+    ensemble_output_method: OutputMethod | None = Field(
+        default=None, description="Output method for ensemble when applicable"
+    )
 
 
 class CLTrainArgs(DatasetClasses, ClassifierClasses):
@@ -330,11 +337,11 @@ class CLTrainArgs(DatasetClasses, ClassifierClasses):
         default=f"{os.environ['FILESDIR']}/models",
         description="Path to generated files",
     )
-    device: DeviceType = Field(DeviceType.cpu, description="Device for computation ('cpu' or 'cuda')")
-    n_classes: int = Field(None, description="Number of classes in the dataset")
+    device: DeviceType = Field(default=DeviceType.cpu, description="Device for computation ('cpu' or 'cuda')")
+    n_classes: int | None = Field(default=None, description="Number of classes in the dataset")
 
     @model_validator(mode="after")
-    def set_n_classes_based_on_dataset(self) -> "CLTrainArgs":
+    def set_n_classes_based_on_dataset(self) -> CLTrainArgs:
         """Set the number of classes based on the dataset."""
         dataset_class_mapping = {
             DatasetNames.mnist: len(MnistClasses),
@@ -353,17 +360,19 @@ class CLTrainArgs(DatasetClasses, ClassifierClasses):
 
 
 # Mix-in model that combines both training and classifier arguments
-class TrainClassifierArgs(TrainArgs, ClassifierParams):
+class TrainClassifierArgs(TrainArgs, ClassifierParams, DatasetClasses, ClassifierClasses):
     """Combined model for training arguments and classifier parameters."""
+
+    data_dir: str = Field(default=f"{os.environ['FILESDIR']}/data", description="Path to dataset")
 
 
 class DatasetParams(BaseModel):
     """Parameters for configuring dataset loading."""
 
     dataroot: str = Field(..., description="Directory where the dataset is stored.")
-    train: bool = Field(True, description="Indicates whether to load the training set or the test set.")
+    train: bool = Field(default=True, description="Indicates whether to load the training set or the test set.")
     pytesting: bool = Field(
-        False, description="Indicates whether to load only a fraction of the dataset for pytesting purpose."
+        default=False, description="Indicates whether to load only a fraction of the dataset for pytesting purpose."
     )
 
 
@@ -489,10 +498,10 @@ class ConfigOptimizer(BaseModel):
 class ConfigStep1(BaseModel):
     """Configuration for each training step 1."""
 
-    epochs: int | None = Field(None, description="Number of epochs for training.")
-    checkpoint_every: int | None = Field(None, description="Frequency of checkpointing during training.")
-    batch_size: int | None = Field(None, description="Batch size for training.")
-    disc_iters: int | None = Field(None, description="Number of discriminator iterations per generator iteration.")
+    epochs: int = Field(..., description="Number of epochs for training.")
+    checkpoint_every: int = Field(1, description="Frequency of checkpointing during training.")
+    batch_size: int = Field(..., description="Batch size for training.")
+    disc_iters: int = Field(1, description="Number of discriminator iterations per generator iteration.")
     early_stop: tuple[str, int] | None = Field(None, description="Early stop criteria for GAN training")
 
 
@@ -518,7 +527,7 @@ class ConfigCD(BaseModel):
 class ConfigMGDA(BaseModel):
     """Configuration for ConfusionDistance."""
 
-    norm: list[bool] | None = Field(False, description="Enable normalization for MGDA loss.")
+    norm: list[bool] | None = Field([False], description="Enable normalization for MGDA loss.")
 
 
 class ConfigWeights(BaseModel):
@@ -534,10 +543,10 @@ class ConfigWeights(BaseModel):
 class ConfigStep2(BaseModel):
     """Configuration for training step 2."""
 
-    epochs: int | None = Field(None, description="Number of epochs for training.")
-    checkpoint_every: int | None = Field(None, description="Frequency of checkpointing during training.")
-    batch_size: int | None = Field(None, description="Batch size for training.")
-    disc_iters: int | None = Field(None, description="Number of discriminator iterations per generator iteration.")
+    epochs: int = Field(..., description="Number of epochs for training.")
+    checkpoint_every: int = Field(1, description="Frequency of checkpointing during training.")
+    batch_size: int = Field(..., description="Batch size for training.")
+    disc_iters: int = Field(default=1, description="Number of discriminator iterations per generator iteration.")
     classifier: list[str] = Field(..., description="Paths to classifier checkpoints.")
     weight: list[ConfigWeights] = Field(..., description="Weights for step-2 training.")
     step_1_epochs: list[int | str] | None = Field(None, description="GAN's to use")
@@ -568,22 +577,22 @@ class ConfigGAN(BaseModel):
     name: str = Field(..., description="Run name.")
     out_dir: str = Field(..., description="Path to output directory.")
     data_dir: str = Field(..., description="Path to data directory.")
-    fid_stats_path: str | None = Field(None, description="Path to FID statistics file.")
+    fid_stats_path: str | None = Field(default=None, description="Path to FID statistics file.")
     fixed_noise: str | int = Field(..., description="Path to fixed noise or number of fixed samples.")
-    test_noise: str | None = Field(None, description="Path to test noise file.")
-    compute_fid: bool | None = Field(None, description="Flag to compute FID score.")
-    device: DeviceType = Field(DeviceType.cuda, description="Device to use, e.g., cpu or cuda.")
-    num_workers: int = Field(0, description="Number of workers for data loading.")
-    num_runs: int = Field(1, description="Number of runs.")
-    step_1_seeds: list[int] = Field(None, description="Random seeds for step 1.")
-    step_2_seeds: list[int] | None = Field(None, description="Random seeds for step 2.")
+    test_noise: str | None = Field(default=None, description="Path to test noise file.")
+    compute_fid: bool | None = Field(default=None, description="Flag to compute FID score.")
+    device: DeviceType = Field(default=DeviceType.cuda, description="Device to use, e.g., cpu or cuda.")
+    num_workers: int = Field(default=0, description="Number of workers for data loading.")
+    num_runs: int = Field(default=1, description="Number of runs.")
+    step_1_seeds: list[int] | None = Field(default=None, description="Random seeds for step 1.")
+    step_2_seeds: list[int] | None = Field(default=None, description="Random seeds for step 2.")
     dataset: ConfigDatasetParams = Field(..., description="Dataset parameters.")
     model: ConfigModel = Field(..., description="Model parameters.")
     optimizer: ConfigOptimizer = Field(..., description="Optimizer parameters.")
     train: ConfigTrain = Field(..., description="Training configuration.")
 
     @model_validator(mode="after")
-    def validate_seeds(self) -> dict:
+    def validate_seeds(self) -> ConfigGAN:
         """Validate seed configuration for consistency with the number of runs."""
         num_runs = self.num_runs
         if self.step_1_seeds and len(self.step_1_seeds) != num_runs:
@@ -603,20 +612,20 @@ class FIDMetricsParams(BaseModel):
     """Metrics for calculating FID."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    fid: FID | None = Field(None, description="List of FID values during training stage")
-    focd: FID | None = Field(None, description="List of FOCD values during training stage")
-    conf_dist: LossSecondTerm | None = Field(None, description="List of CD values during training stage")
-    hubris: Hubris | None = Field(None, description="List of Hubris values during training stage")
+    fid: FID | None = Field(default=None, description="List of FID values during training stage")
+    focd: FID | None = Field(default=None, description="List of FOCD values during training stage")
+    conf_dist: LossSecondTerm | None = Field(default=None, description="List of CD values during training stage")
+    hubris: Hubris | None = Field(default=None, description="List of Hubris values during training stage")
 
 
 class MetricsParams(BaseModel):
     """Pydantic model for MetricsLogger initialization parameters."""
 
-    prefix: TrainingStage | None = Field(None, description="Prefix indicating training stage in metric")
-    log_epoch: bool = Field(True, description="Flag indicating if epoc should be logged")
-    g_loss: list[float] | None = Field(None, description="List of generator losses")
-    d_loss: list[float] | None = Field(None, description="List of discriminator losses")
-    fid: list[FIDMetricsParams] | None = Field(None, description="List of FID metrics")
+    prefix: TrainingStage | None = Field(default=None, description="Prefix indicating training stage in metric")
+    log_epoch: bool = Field(default=True, description="Flag indicating if epoc should be logged")
+    g_loss: list[float] | None = Field(default=None, description="List of generator losses")
+    d_loss: list[float] | None = Field(default=None, description="List of discriminator losses")
+    fid: list[FIDMetricsParams] | None = Field(default=None, description="List of FID metrics")
 
 
 class GANTrainArgs(TrainArgsBase):
@@ -633,9 +642,9 @@ class GANTrainArgs(TrainArgsBase):
     d_crit: DiscriminatorLoss
     test_noise: Tensor
     fid_metrics: FIDMetricsParams
-    n_disc_iters: int
+    n_disc_iters: int = 1
     early_stop: tuple[str, int] | None = None
-    start_early_stop_when: tuple[str, int] | None = None
+    start_early_stop_when: tuple[str, tuple | int] | None = None
     checkpoint_dir: str | None = None
     checkpoint_every: int = 10
     fixed_noise: Tensor | None = None
@@ -665,7 +674,7 @@ class Step2TrainingArgs(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    s1_epoch: str | None = None
+    s1_epoch: int | str | None = None
     c_name: str | None = None
     gan_path: str | None = None
     weight: tuple[str, UpdateGenerator] | None = None
@@ -724,7 +733,7 @@ class CLTestNoiseArgs(BaseModel):
     """CLI Test Noise Arguments."""
 
     seed: int | None = Field(None, description="Random seed for reproducibility")
-    nz: int = Field(..., description="Number of sample to be generated")
+    nz: str | int = Field(..., description="Number of sample to be generated")
     z_dim: int = Field(..., description="Latent space dimension")
     out_dir: str = Field(f"{os.environ['FILESDIR']}/data/z", description="Directory to store thes test noise")
 
@@ -740,10 +749,10 @@ class CLFIDStatsArgs(BaseModel):
         default=DatasetNames.mnist, description="Dataset to use (mnist, fashion-mnist, cifar10 or chest x-ray)"
     )
     device: DeviceType = Field(default=DeviceType.cpu, description="Device to use, cuda or cpu")
-    n_classes: int = Field(None, description="Number of classes in the dataset")
+    n_classes: int | None = Field(default=None, description="Number of classes in the dataset")
 
     @model_validator(mode="after")
-    def set_n_classes_based_on_dataset(self) -> "CLFIDStatsArgs":
+    def set_n_classes_based_on_dataset(self) -> CLFIDStatsArgs:
         """Set the number of classes based on the dataset."""
         dataset_class_mapping = {
             DatasetNames.mnist: len(MnistClasses),

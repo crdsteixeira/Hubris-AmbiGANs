@@ -94,6 +94,9 @@ def mock_train_classifier_args() -> TrainClassifierArgs:
         lr=0.0005,
         seed=None,
         early_stop=None,
+        dataset_name=DatasetNames.mnist,
+        pos_class=1,
+        neg_class=7,
     )
 
 

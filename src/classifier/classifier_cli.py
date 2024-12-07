@@ -88,7 +88,7 @@ def main() -> None:
     logger.info(f" > Seed: {args.seed}")
 
     # Setup classifiers list (if applicable for ensemble)
-    classifiers_nf: int | list[int] | list[list[int]] = args.nf
+    classifiers_nf: int | list[int] | list[list[int]] | None = args.nf
     if args.ensemble_type is not None:
         classifiers_nf = generate_cnn_configs(args.nf)
     logger.debug(f"Classifiers Features: {classifiers_nf}")

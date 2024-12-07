@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.10.13-slim
 
 # Install pipx and Poetry
 RUN pip install pipx && \
@@ -17,4 +17,4 @@ RUN poetry config virtualenvs.create false
 # Install libraries
 COPY pyproject.toml /app/pyproject.toml
 WORKDIR /app
-RUN poetry install --no-root --no-cache
+RUN poetry install --no-root --no-cache --with dev
