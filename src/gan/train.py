@@ -234,6 +234,9 @@ def train(params: GANTrainArgs, config: ConfigGAN) -> tuple[TrainingState, str |
         g_iters_per_epoch = int(math.floor(len(dataloader) / params.n_disc_iters))
         iters_per_epoch = g_iters_per_epoch * params.n_disc_iters
 
+        params.G.train()
+        params.D.train()
+
         for i in range(1, iters_per_epoch + 1):
             real_data, _ = next(data_iter)
             real_data = real_data.to(params.device)

@@ -102,8 +102,7 @@ def train_modified_gan(
         logger.error("Failed to train: gan_path must not be None")
         raise ValueError
 
-    G, D, _, _ = construct_gan_from_checkpoint(params.gan_path, device=config.device)
-    g_optim, d_optim = construct_optimizers(config.optimizer, G, D)
+    G, D, g_optim, d_optim = construct_gan_from_checkpoint(params.gan_path, device=config.device)
     g_crit = construct_generator_loss(config.model.loss)
     d_crit = construct_discriminator_loss(config.model.loss, D)
 
