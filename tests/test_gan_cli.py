@@ -195,7 +195,10 @@ def test_train_step2_gan(
     mock_stats.stats["conf_dist"] = [0.10]
     mock_construct_classifier.return_value = (mock_classifier, None, None, None, None)
     mock_construct_weights.return_value = [("test", MagicMock(spec=UpdateGenerator))]
-    mock_construct_gan_from_checkpoint.return_value = (MagicMock(spec=nn.Module), MagicMock(spec=nn.Module), None, None)
+    mock_construct_gan_from_checkpoint.return_value = (MagicMock(spec=nn.Module), 
+                                                       MagicMock(spec=nn.Module), 
+                                                       MagicMock(spec=optim.Optimizer), 
+                                                       MagicMock(spec=optim.Optimizer))
 
     g_opt = MagicMock(spec=optim.Optimizer)
     d_opt = MagicMock(spec=optim.Optimizer)
@@ -213,4 +216,3 @@ def test_train_step2_gan(
 
     mock_construct_classifier.assert_called_once()
     mock_construct_weights.assert_called_once()
-    mock_construct_optimizers.assert_called()
