@@ -63,7 +63,9 @@ class BinaryDataset(Dataset):
             minority_target = 0
 
         # Randomly duplicate samples from the minority class
-        oversampled_data = self.data[minority_indices][torch.randint(len(minority_indices), (num_to_add,))]
+        oversampled_data = self.data[minority_indices][
+            torch.randint(len(minority_indices), (num_to_add,), generator=torch.manual_seed(42))
+        ]
         oversampled_targets = torch.full((num_to_add,), fill_value=minority_target)
 
         # Append the oversampled data to the existing dataset
