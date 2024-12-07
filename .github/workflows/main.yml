@@ -69,6 +69,8 @@ jobs:
     steps:
       - name: Checkout code in container
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # git checkout is not creating a working git folder, it has dubious ownership if not configured
       # The pre-commit hook will not work on this original git folder
