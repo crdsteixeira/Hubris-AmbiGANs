@@ -23,7 +23,8 @@ pillow = "^10.4.0"
 datasets = "^3.0.1"
 jaraco-functools = "^4.1.0"
 transformers = "^4.45.2"
-pydantic = "^2.9.2"
+# pydantic = "^2.9.2"
+pydantic = "<2.9"
 pytest = "^8.3.3"
 torchaudio = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
 torch = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
