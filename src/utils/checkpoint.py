@@ -182,9 +182,9 @@ def checkpoint_gan(
         {"state": params.D.state_dict(), "optimizer": params.d_opt.state_dict()},
         os.path.join(path, "discriminator.pth"),
     )
-    with open(os.path.join(path, "train_state.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(rootdir, "train_state.json"), "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    with open(os.path.join(path, "stats.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(rootdir, "stats.json"), "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2)
     with open(os.path.join(path, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config.model_dump(), f, indent=2)
