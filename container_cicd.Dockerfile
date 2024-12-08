@@ -1,4 +1,4 @@
-FROM python:3.10.13-slim
+FROM python:3.12.8-slim
 
 # Install pipx and Poetry
 RUN pip install pipx && \

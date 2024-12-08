@@ -39,7 +39,13 @@ class MetricsLogger:
 
     def apply_prefix(self, name: str) -> str:
         """Apply a prefix to a metric name, if a prefix is defined."""
-        return f"{self.params.prefix}/{name}" if self.params.prefix is not None else name
+        prefix = self.params.prefix
+        prefix_str: str | None = None
+        if prefix is not None and isinstance(prefix, str):
+            # Assuming prefix is an Enum, convert it to a lowercased string
+            prefix_str = prefix.value.lower()
+
+        return f"{prefix_str}/{name}" if prefix_str else name
 
     def add(self, name: str, iteration_metric: bool = False) -> None:
         """Add a metric to the logger, optionally marking it as an iteration metric."""

@@ -169,11 +169,11 @@ def test_log_plot(mock_wandb_log: MagicMock, mock_logger: MagicMock) -> None:
 @pytest.mark.parametrize(
     "prefix, name, expected",
     [
-        ("test", "metric_name", "test/metric_name"),
+        (TrainingStage.test, "metric_name", "test/metric_name"),
         (None, "metric_name", "metric_name"),
     ],
 )
-def test_apply_prefix(mock_metrics_params: MagicMock, prefix: str, name: str, expected: str) -> None:
+def test_apply_prefix(mock_metrics_params: MagicMock, prefix: TrainingStage, name: str, expected: str) -> None:
     """Test applying a prefix to a metric name."""
     mock_metrics_params.prefix = prefix
     logger = MetricsLogger(params=mock_metrics_params)
