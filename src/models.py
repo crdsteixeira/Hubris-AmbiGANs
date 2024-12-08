@@ -779,3 +779,15 @@ class ConfigMain(ConfigGAN):
     gen_classifiers: bool = Field(..., description="Generate classifiers models.")
     gen_gan: bool = Field(..., description="Generate and train AmbiGAN model.")
     classifiers: list[ClassifierClasses] | None = Field(None, description="List of classifiers to generate.")
+
+
+class CLDatasetArgs(BaseModel):
+    """Dataset CL Arguments."""
+
+    seed: int | None = Field(default=None, description="Random seed for reproducibility")
+    img_size: int | None = Field(default=None, description="Final image size")
+    n_samples: int = Field(..., description="Number of samples to be generated")
+    out_dir: str = Field(..., description="Directory to store the dataset")
+    gan_path: str = Field(..., description="Directory for pre-trained AmbiGAN location")
+    device: DeviceType = Field(default=DeviceType.cpu, description="Device to use, cuda or cpu")
+    fid_stats_path: str | None = Field(default=None, description="Path to FID statistics file.")
