@@ -1,0 +1,96 @@
+# Global definitions
+project: AmbiGAN
+name: fashion-mnist-3v0
+out_dir: out
+data_dir: data
+fixed_noise: 128
+test_noise_seed: 15
+device: cuda
+num_workers: 0
+
+# Number of runs to perform using same parameters but different seeds.
+num_runs: 3
+
+# Configuration
+gen_test_noise: true
+gen_pairwise_inception: true
+gen_classifiers: true
+gen_gan: true
+
+# Dataset parameters, including positive and negative class.
+dataset:
+  name: fashion-mnist
+  binary:
+    pos: 3
+    neg: 0
+
+# Classifier list to be generated.
+classifiers:
+  - name: ensemble_mean_32_fashion_200_3v0_balanced
+    c_type: ensemble
+    batch_size: 800
+    epochs: 200
+    lr: 0.001
+    nf: 50
+    seed: 32
+    ensemble_type: cnn
+    ensemble_output_method: mean
+
+# Seed parameters for each run (step1 and step2).
+step_1_seeds:
+  - 42
+  - 43
+  - 44
+step_2_seeds:
+  - 34
+  - 35
+  - 36
+
+# GAN model parameters
+model:
+  z_dim: 256
+  architecture:
+    name: dcgan
+    g_filter_dim: 512
+    d_filter_dim: 512
+    g_num_blocks: 2
+    d_num_blocks: 2
+  loss:
+    name: ns
+
+# GAN optimizer parameters
+optimizer:
+  lr: 0.0002
+  beta1: 0.00
+  beta2: 0.999
+
+# GAN training parameters
+train:
+  step_1:
+    epochs: 100
+    checkpoint_every: 100
+    disc_iters: 1
+    batch_size: 32
+  step_2:
+    epochs: 50
+    checkpoint_every: 50
+    disc_iters: 1
+    batch_size: 32
+    step_1_epochs:
+      - last
+    classifier:
+      - ensemble_mean_32_fashion_200_3v0_balanced
+    weight:
+      - gaussian:
+          - alpha: 1.50
+            var: 0.01
+          - alpha: 0.50
+            var: 0.01
+          - alpha: 1.00
+            var: 0.01
+          - alpha: 1.50
+            var: 0.10
+          - alpha: 0.50
+            var: 0.10
+          - alpha: 1.00
+            var: 0.10
