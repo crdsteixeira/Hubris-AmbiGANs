@@ -1,9 +1,9 @@
 """Module for Enums."""
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class ClassifierType(str, Enum):
+class ClassifierType(StrEnum):
     """Enumerate different types of classifiers."""
 
     cnn = "cnn"
@@ -11,14 +11,14 @@ class ClassifierType(str, Enum):
     ensemble = "ensemble"
 
 
-class EnsembleType(str, Enum):
+class EnsembleType(StrEnum):
     """Enumerate different types of ensembles of classifiers."""
 
     pretrained = "pretrained"
     cnn = "cnn"
 
 
-class OutputMethod(str, Enum):
+class OutputMethod(StrEnum):
     """Enumerate different types of output methods from classifiers."""
 
     meta_learner = "meta-learner"
@@ -27,14 +27,14 @@ class OutputMethod(str, Enum):
     identity = "identity"
 
 
-class DeviceType(str, Enum):
+class DeviceType(StrEnum):
     """Enumerate different types of devices."""
 
     cpu = "cpu"
     cuda = "cuda"
 
 
-class TrainingStage(str, Enum):
+class TrainingStage(StrEnum):
     """Enumerate different types of training stages."""
 
     train = "train"
@@ -43,7 +43,7 @@ class TrainingStage(str, Enum):
     validation = "validation"
 
 
-class DatasetNames(str, Enum):
+class DatasetNames(StrEnum):
     """Enumeration of supported datasets."""
 
     mnist = "mnist"
@@ -98,7 +98,7 @@ class ChestXrayClasses(int, Enum):
     NORMAL = 1
 
 
-class ArchitectureType(str, Enum):
+class ArchitectureType(StrEnum):
     """Valid names for Architecture types."""
 
     dcgan = "dcgan"
@@ -106,14 +106,14 @@ class ArchitectureType(str, Enum):
     dcgan_deprecated = "dcgan_deprecated"
 
 
-class LossType(str, Enum):
+class LossType(StrEnum):
     """Valid names for Loss types."""
 
     ns = "ns"
     wgan = "wgan-gp"
 
 
-class WeightType(str, Enum):
+class WeightType(StrEnum):
     """Valid weight names."""
 
     kldiv = "kldiv"
