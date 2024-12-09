@@ -75,6 +75,7 @@ def test_main(
 ) -> None:
     """Test the main function in fid_cli.py."""
     mock_load_dataset.return_value = ("mocked_data", None, None)
+    mock_dataloader.return_value = [[torch.zeros((2, 3, 28, 28)), torch.tensor([0, 0])]]
 
     # Mocking FID instance properly with Tensors
     mock_fid_instance = mock_fid.return_value
@@ -151,7 +152,7 @@ def test_fid_statistics_calculation(
     """Test if FID statistics are being calculated and saved properly."""
     # Mock dataset loading and DataLoader
     mock_load_dataset.return_value = ("mocked_data", None, None)
-    mock_dataloader.return_value = [torch.tensor([[[[0.0]]]])] * 5
+    mock_dataloader.return_value = [[torch.zeros((2, 3, 28, 28)), torch.tensor([0, 0])]]
 
     # Properly mock FID instance attributes as Tensors
     mock_fid_instance = mock_fid.return_value

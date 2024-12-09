@@ -12,8 +12,18 @@ import sys
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
 import torch
 import torchvision.utils as vutils
+from pymdma.image.measures.synthesis_val import (
+    GIQA,
+    Coverage,
+    Density,
+    GeometryScore,
+    ImprovedPrecision,
+    ImprovedRecall,
+    MultiScaleIntrinsicDistance,
+)
 from torch import nn
 from torchvision.transforms.functional import resize
 
@@ -336,7 +346,7 @@ def construct_weights(
 def construct_optimizers(
     config: ConfigOptimizer, G: nn.Module, D: nn.Module
 ) -> tuple[torch.optim.Adam, torch.optim.Adam]:
-    """Cunstruct optimizers for GAN."""
+    """Construct optimizers for GAN."""
     g_optim = torch.optim.Adam(G.parameters(), lr=config.lr, betas=(config.beta1, config.beta2))
     d_optim = torch.optim.Adam(D.parameters(), lr=config.lr, betas=(config.beta1, config.beta2))
     return g_optim, d_optim
@@ -349,3 +359,58 @@ def get_epoch_from_state(s1_epoch: int | str, step_1_train_state: TrainingState)
     if s1_epoch == "last":
         return step_1_train_state.epoch
     return s1_epoch
+
+
+def calculate_pymdma_metrics(real_features: np.ndarray, synt_features: np.ndarray) -> pd.DataFrame:
+    """Calculate synthetic validation metrics from pymdma library."""
+    # Improved Precision and Improved Recall
+    logger.info("Calculating Improved Precision and Improved Recall")
+    ip = ImprovedPrecision(k=5)
+    ir = ImprovedRecall(k=5)
+    ip_result = ip.compute(real_features=real_features, fake_features=synt_features)
+    ir_result = ir.compute(real_features=real_features, fake_features=synt_features)
+    precision_dataset, _ = ip_result.value
+    recall_dataset, _ = ir_result.value
+
+    # GIQA
+    logger.info("Calculating GIQA")
+    giqa = GIQA()
+    giqa_result = giqa.compute(real_features=real_features, fake_features=synt_features)
+    giqa_dataset, _ = giqa_result.value
+
+    # Density
+    logger.info("Calculating Density")
+    density = Density()
+    density_result = density.compute(real_features=real_features, fake_features=synt_features)
+    density_dataset, _ = density_result.value
+
+    # Coverage
+    logger.info("Calculating Coverage")
+    coverage = Coverage()
+    coverage_result = coverage.compute(real_features=real_features, fake_features=synt_features)
+    coverage_dataset, _ = coverage_result.value
+
+    # Geometry Score
+    logger.info("Calculating Geometry Score")
+    gs = GeometryScore()
+    gs_result = gs.compute(real_features=real_features, fake_features=synt_features)
+    gs_dataset, _ = gs_result.value
+
+    # Multi-Scale Intrinsic Distance (MSID)
+    logger.info("Calculating Multi-Scale Intrinsic Distance")
+    msid = MultiScaleIntrinsicDistance()
+    msid_result = msid.compute(real_features=real_features, fake_features=synt_features)
+    msid_dataset, _ = msid_result.value
+
+    df = pd.DataFrame().assign(
+        improved_precision=[precision_dataset],
+        improved_recall=[recall_dataset],
+        giqa=[giqa_dataset],
+        density=[density_dataset],
+        coverage=[coverage_dataset],
+        gs=[gs_dataset],
+        msid=[msid_dataset],
+    )
+    logger.info("Finished PyMDMA metrics calculation")
+
+    return df
