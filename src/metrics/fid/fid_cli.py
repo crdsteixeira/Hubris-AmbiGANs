@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from dotenv import load_dotenv
 from pydantic import ValidationError
+from pymdma.image.models.features import ExtractorFactory
 from torch import nn
 from torcheval.metrics import FrechetInceptionDistance
 from tqdm import tqdm
@@ -74,6 +75,10 @@ def main() -> None:
 
     fid = FrechetInceptionDistance(model=get_feature_map_function(config), feature_dim=2048, device=config.device)
 
+    # for pymdma
+    extractor = ExtractorFactory.model_from_name(name="dino_vits8")
+    all_features = []
+
     # Load dataset
     dataset, _, _ = load_dataset(
         LoadDatasetParams(
@@ -106,7 +111,10 @@ def main() -> None:
             images = images.repeat(1, 3, 1, 1)
 
         # Necessary to normalize pixels between 0 and 1
-        fid.update((images + 1.0) / 2.0, is_real=True)
+        images = (images + 1.0) / 2.0
+        fid.update(images, is_real=True)
+        features = extractor(images).detach().cpu().numpy()
+        all_features.append(features)
     m = (fid.real_sum / fid.num_real_images).unsqueeze(0)
     s = fid.real_cov_sum - fid.num_real_images * torch.matmul(m.T, m)
 
@@ -125,6 +133,7 @@ def main() -> None:
             real_sum=fid.real_sum.cpu().numpy(),
             real_cov_sum=fid.real_cov_sum.cpu().numpy(),
             num_real_images=fid.num_real_images.cpu().numpy(),
+            all_features=np.concatenate(all_features, axis=0),
         )
     logger.info(f"FID statistics saved to {stats_filename}.npz")
 
