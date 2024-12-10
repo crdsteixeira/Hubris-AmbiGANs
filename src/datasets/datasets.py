@@ -18,6 +18,7 @@ def get_mnist(params: DatasetParams) -> Dataset:
         train=params.train,
         transform=torchvision.transforms.Compose(
             [
+                torchvision.transforms.Grayscale(num_output_channels=1),
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize((0.5,), (0.5,)),
             ]
@@ -35,6 +36,7 @@ def get_fashion_mnist(params: DatasetParams) -> Dataset:
         train=params.train,
         transform=torchvision.transforms.Compose(
             [
+                torchvision.transforms.Grayscale(num_output_channels=1),
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize((0.5,), (0.5,)),
             ]
