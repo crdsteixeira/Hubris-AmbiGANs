@@ -16,6 +16,7 @@ class MockOriginalDataset(Dataset):
         """Create a simple dataset: ten examples of each class (0 and 1)."""
         self.data = [torch.tensor([[i]], dtype=torch.float32) for i in range(20)]
         self.targets = [1] * 10 + [7] * 10
+        self.transform = None
 
     def __len__(self) -> int:
         """Get number of samples in mock dataset."""
@@ -114,6 +115,7 @@ def test_binary_dataset_balancing() -> None:
             """Initialize with 8 negatives (class 1) and 2 positives (class 7)."""
             self.data = [torch.tensor([[i]], dtype=torch.float32) for i in range(10)]
             self.targets = [1] * 8 + [7] * 2  # Majority class is 1, minority is 7
+            self.transform = None
 
         def __len__(self) -> int:
             """Return the number of samples in the mock dataset."""
