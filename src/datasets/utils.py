@@ -36,6 +36,7 @@ class BinaryDataset(Dataset):
 
         self.data: torch.Tensor = torch.vstack(data)
         self.targets: torch.Tensor = torch.hstack(targets)
+        self.transform = original_dataset.transform
 
         self.balance_dataset()
 

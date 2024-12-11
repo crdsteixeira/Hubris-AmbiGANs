@@ -10,7 +10,7 @@ from src.metrics.metric import Metric
 class Hubris(Metric):
     """Metric to calculate the hubris score for GAN evaluation."""
 
-    def __init__(self, C: ClassifierCache, dataset_size: int) -> None:
+    def __init__(self, C: ClassifierCache | None, dataset_size: int) -> None:
         """Initialize the Hubris metric with a classifier and dataset size."""
         super().__init__()
         self.C = C
@@ -32,12 +32,13 @@ class Hubris(Metric):
         """Update the metric values using the given batch of generated images."""
         start_idx, batch_size = batch
 
-        with torch.no_grad():
-            c_output, c_all_output = self.C.get(images, start_idx, batch_size, output_feature_maps=True)
+        if self.C is not None:
+            with torch.no_grad():
+                c_output, c_all_output = self.C.get(images, start_idx, batch_size, output_feature_maps=True)
 
-        self.preds[start_idx : start_idx + batch_size] = c_output
-        for i in range(self.output_clfs):
-            self.clf_preds[i, start_idx : start_idx + batch_size] = c_all_output[-1][:, i]
+            self.preds[start_idx : start_idx + batch_size] = c_output
+            for i in range(self.output_clfs):
+                self.clf_preds[i, start_idx : start_idx + batch_size] = c_all_output[-1][:, i]
 
     def compute(self, preds: Tensor, ref_preds: Tensor | None = None) -> float:
         """Compute the hubris score based on the given predictions and reference predictions."""

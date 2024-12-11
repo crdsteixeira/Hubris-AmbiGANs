@@ -24,6 +24,7 @@ class MockDataset:
             (size, channels, height, width)
         )  # Creating a tensor of shape [size, channels, height, width]
         self.targets = torch.randint(0, 2, (size,))  # Random binary labels for demonstration purposes
+        self.transform = None
 
     def __len__(self) -> int:
         """Return len of mock dataset."""

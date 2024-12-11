@@ -791,3 +791,19 @@ class CLDatasetArgs(BaseModel):
     gan_path: str = Field(..., description="Directory for pre-trained AmbiGAN location")
     device: DeviceType = Field(default=DeviceType.cpu, description="Device to use, cuda or cpu")
     fid_stats_path: str | None = Field(default=None, description="Path to FID statistics file.")
+
+
+class CLEvaluationArgs(DatasetClasses):
+    """Evaluation CL Arguments."""
+
+    dataroot: str = Field(default=f"{os.environ['FILESDIR']}/data", description="Directory with dataset")
+    companion_dataroot: str = Field(..., description="Directory with companion dataset")
+    batch_size: int = Field(default=64, description="Batch size to use")
+    estimator_path: str | None = Field(
+        default=None, description="Path to estimator. If None, does not calculate relative Hubris"
+    )
+    num_workers: int = Field(default=0, description="Number of worker processes for data loading")
+    device: DeviceType = Field(default=DeviceType.cpu, description="Device to use (cuda, cuda:0, or cpu)")
+    out_dir: str = Field(..., description="Output directory to save evaluation csv file")
+    epochs: int = Field(default=10, description="Number of epochs for re-training.")
+    seed: int | None = Field(default=None, description="Random seed for reproducibility")
