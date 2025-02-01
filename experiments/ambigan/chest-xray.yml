@@ -26,7 +26,7 @@ dataset:
 
 # Classifier list to be generated.
 classifiers:
-  - name: ensemble_mean_32_chestxray_200_balanced
+  - name: ensemble_mean_32_chestxray_200_balanced_128
     c_type: ensemble
     batch_size: 800
     epochs: 200
@@ -48,19 +48,19 @@ step_2_seeds:
 
 # GAN model parameters
 model:
-  z_dim: 256
+  z_dim: 512
   architecture:
     name: dcgan
-    g_filter_dim: 32
-    d_filter_dim: 32
-    g_num_blocks: 6
-    d_num_blocks: 6
+    g_filter_dim: 128
+    d_filter_dim: 128
+    g_num_blocks: 4
+    d_num_blocks: 4
   loss:
     name: ns
 
 # GAN optimizer parameters
 optimizer:
-  lr: 0.0002
+  lr: 0.001
   beta1: 0.00
   beta2: 0.999
 
@@ -79,7 +79,7 @@ train:
     step_1_epochs:
       - last
     classifier:
-      - ensemble_mean_32_chestxray_200_balanced
+      - ensemble_mean_32_chestxray_200_balanced_128
     weight:
       - gaussian:
           - alpha: 1.50

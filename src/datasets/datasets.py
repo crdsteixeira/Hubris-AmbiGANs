@@ -74,7 +74,7 @@ def get_chest_xray(params: DatasetParams) -> Dataset:
     ds = load_dataset("keremberke/chest-xray-classification", name="full", split=split)
     transform = torchvision.transforms.Compose(
         [
-            torchvision.transforms.Resize(256),
+            torchvision.transforms.Resize(128),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ]
