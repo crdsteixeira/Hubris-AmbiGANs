@@ -19,24 +19,24 @@ repos:
         args: ["--branch", "main"]
 
 -   repo: https://gitlab.com/vojko.pribudic.foss/pre-commit-update
-    rev: v0.6.0post1
+    rev: v0.6.1
     hooks:
     -   id: pre-commit-update
 
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.2
+    rev: v0.9.4
     hooks:
     -   id: ruff
         args: ['--fix', '--line-length=120', '--exit-non-zero-on-fix', '--show-fixes']
 
 -   repo: https://github.com/psf/black
-    rev: 24.10.0
+    rev: 25.1.0
     hooks:
     -   id: black
         args: ['--line-length=120']
 
 -   repo: https://github.com/pycqa/pylint
-    rev: v3.3.2
+    rev: v3.3.4
     hooks:
     -   id: pylint
         args:
@@ -73,19 +73,19 @@ repos:
     -   id: seed-isort-config
 
 -   repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+    rev: 6.0.0
     hooks:
     -   id: isort
         args: ['--profile', "black", '-o', 'wandb', '-o', 'datasets']
 
 -   repo: https://github.com/asottile/pyupgrade
-    rev: v3.19.0
+    rev: v3.19.1
     hooks:
     -   id: pyupgrade
         args: ['--py38-plus']
 
 -   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+    rev: v1.14.1
     hooks:
     -   id: mypy
         args: [--disallow-untyped-defs, --disallow-incomplete-defs, --disallow-untyped-calls,
