@@ -16,11 +16,12 @@ from torchvision.datasets import ImageFolder
 from tqdm import tqdm
 
 from src.datasets.load import load_dataset
-from src.enums import DatasetNames
+from src.enums import PretrainedModels
 from src.evaluation.pretrained_models import ConvNext, ViT
+from src.metrics.accuracy import binary_accuracy
 from src.metrics.hubris import Hubris
 from src.models import CLEvaluationArgs, LoadDatasetParams
-from src.utils.checkpoint import construct_classifier_from_checkpoint
+from src.utils.checkpoint import checkpoint, construct_classifier_from_checkpoint
 from src.utils.logging import configure_logging
 from src.utils.utility_functions import setup_reprod
 
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument("--data", dest="dataroot", default=f"{os.environ['FILESDIR']}/data", help="Directory with dataset")
 parser.add_argument("--companion-data", dest="companion_dataroot", help="Directory with companion dataset")
+parser.add_argument("--model", dest="model", help="Pretrained model to be evaluated")
 parser.add_argument("--dataset", dest="dataset_name", default="mnist", help="Dataset (mnist, fashion-mnist, etc.)")
 parser.add_argument("--pos", dest="pos_class", default=3, type=int, help="Positive class for binary classification")
 parser.add_argument("--neg", dest="neg_class", default=0, type=int, help="Negative class for binary classification")
@@ -55,17 +57,22 @@ def evaluate(config: CLEvaluationArgs, model: nn.Module, loader: DataLoader, nam
     """Evaluate model using companion dataset."""
     model.eval()
     preds = []
+    labels = []
     with torch.no_grad():
-        for images, _ in tqdm(loader):
+        for images, label in tqdm(loader):
             preds.append(model(images.to(config.device)).cpu())
+            labels.append(label)
         full_preds = torch.cat(preds)
+        full_labels = torch.cat(labels)
 
+    accuracy = binary_accuracy(full_preds, full_labels, avg=True, threshold=0.50).item()
     hubris = Hubris(C=None, dataset_size=len(full_preds))
     absolute_hubris = hubris.compute(full_preds, ref_preds=None)
 
     df = pd.DataFrame()
     df = df.assign(
         dataset=[name],
+        accuracy=[accuracy],
         absolute_hubris=[absolute_hubris],
         acd=[(0.50 - full_preds).abs().mean().item()],
     )
@@ -140,10 +147,10 @@ def main() -> None:
 
     # Retrain models
     train_dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
-    if config.dataset_name in (DatasetNames.mnist, DatasetNames.fashion_mnist):
+    if config.model == PretrainedModels.convnext:
         model = ConvNext()
         model.retrain(train_dataloader, epochs=config.epochs, device=config.device)
-    elif config.dataset_name in (DatasetNames.chest_xray):
+    elif config.model == PretrainedModels.vit:
         model = ViT()
         model.retrain(train_dataloader, epochs=config.epochs, device=config.device)
 
@@ -158,6 +165,7 @@ def main() -> None:
         index=False,
     )
 
+    checkpoint(model, config.model.value, None, None, None, output_dir=config.out_dir, optimizer=None)
     logger.info(f"Model evaluation saved to {config.out_dir}")
 
 
