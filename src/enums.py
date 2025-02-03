@@ -121,3 +121,10 @@ class WeightType(StrEnum):
     gaussian_v2 = "gaussian_v2"
     cd = "cd"
     mgda = "mgda"
+
+
+class PretrainedModels(StrEnum):
+    """Valid pre-trained models to be used for evaluation."""
+
+    convnext = "convnext"
+    vit = "vit"

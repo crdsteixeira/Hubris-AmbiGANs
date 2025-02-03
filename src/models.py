@@ -23,6 +23,7 @@ from src.enums import (
     LossType,
     MnistClasses,
     OutputMethod,
+    PretrainedModels,
     TrainingStage,
 )
 from src.gan.loss import DiscriminatorLoss, GeneratorLoss
@@ -798,6 +799,7 @@ class CLEvaluationArgs(DatasetClasses):
 
     dataroot: str = Field(default=f"{os.environ['FILESDIR']}/data", description="Directory with dataset")
     companion_dataroot: str = Field(..., description="Directory with companion dataset")
+    model: PretrainedModels = Field(..., description="Pretrained model to be evaluated")
     batch_size: int = Field(default=64, description="Batch size to use")
     estimator_path: str | None = Field(
         default=None, description="Path to estimator. If None, does not calculate relative Hubris"

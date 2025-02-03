@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 def checkpoint(
     model: nn.Module,
     model_name: str,
-    model_params: TrainClassifierArgs,
-    train_stats: TrainingStats,
-    args: CLTrainArgs,
+    model_params: TrainClassifierArgs | None,
+    train_stats: TrainingStats | None,
+    args: CLTrainArgs | None,
     output_dir: str | None = None,
     optimizer: nn.Module | None = None,
 ) -> str:
@@ -41,17 +41,17 @@ def checkpoint(
     save_dict = {
         "name": model_name,
         "state": model.state_dict(),
-        "stats": train_stats.__dict__,
-        "params": model_params,
-        "args": args.__dict__,
+        "stats": train_stats.__dict__ if train_stats else {},
+        "params": model_params if model_params else {},
+        "args": args.__dict__ if args else {},
     }
 
     with open(os.path.join(output_dir, "stats.json"), "w", encoding="utf-8") as f:
         json.dump(
             {
-                "train_stats": train_stats.__dict__,
-                "model_params": model_params.__dict__,
-                "args": args.__dict__,
+                "train_stats": train_stats.__dict__ if train_stats else {},
+                "model_params": model_params.__dict__ if model_params else {},
+                "args": args.__dict__ if args else {},
             },
             f,
             indent=2,
