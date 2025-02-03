@@ -372,11 +372,17 @@ def calculate_pymdma_metrics(real_features: np.ndarray, synt_features: np.ndarra
     precision_dataset, _ = ip_result.value
     recall_dataset, _ = ir_result.value
 
-    # GIQA
-    logger.info("Calculating GIQA")
-    giqa = GIQA()
-    giqa_result = giqa.compute(real_features=real_features, fake_features=synt_features)
-    giqa_dataset, _ = giqa_result.value
+    # GIQA QS
+    logger.info("Calculating GIQA QS")
+    giqa_qs = GIQA()
+    giqa_qs_result = giqa_qs.compute(real_features=real_features, fake_features=synt_features)
+    giqa_qs_dataset, _ = giqa_qs_result.value
+
+    # GIQA DS
+    logger.info("Calculating GIQA DS")
+    giqa_ds = GIQA()
+    giqa_ds_result = giqa_ds.compute(real_features=synt_features, fake_features=real_features)
+    giqa_ds_dataset, _ = giqa_ds_result.value
 
     # Density
     logger.info("Calculating Density")
@@ -405,7 +411,8 @@ def calculate_pymdma_metrics(real_features: np.ndarray, synt_features: np.ndarra
     df = pd.DataFrame().assign(
         improved_precision=[precision_dataset],
         improved_recall=[recall_dataset],
-        giqa=[giqa_dataset],
+        giqa_qs=[giqa_qs_dataset],
+        giqa_ds=[giqa_ds_dataset],
         density=[density_dataset],
         coverage=[coverage_dataset],
         gs=[gs_dataset],
