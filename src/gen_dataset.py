@@ -18,7 +18,7 @@ from src.metrics.fid.fid import FID
 from src.models import CLDatasetArgs
 from src.utils.checkpoint import construct_gan_from_checkpoint
 from src.utils.logging import configure_logging
-from src.utils.utility_functions import calculate_pymdma_metrics, gen_seed, set_seed
+from src.utils.utility_functions import calculate_pymdma_metrics, gen_seed, setup_reprod
 
 load_dotenv()
 
@@ -36,10 +36,11 @@ def main() -> None:
 
     config.seed = gen_seed() if config.seed is None else config.seed
 
-    set_seed(config.seed)
+    setup_reprod(config.seed)
 
     G, _, _, _ = construct_gan_from_checkpoint(config.gan_path, device=config.device)
     G.eval()
+    G.to(config.device)
 
     if config.fid_stats_path is not None:
         fid = FID(fid_stats_file=config.fid_stats_path, dims=2048, n_images=config.n_samples, device=config.device)
