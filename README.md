@@ -5,7 +5,11 @@
 ![CI](https://github.com/crdsteixeira/Paper-Hubris-AmbiGANs/actions/workflows/main.yml/badge.svg)
 
 
-Variation of GANs that, generates realistic data that is classiﬁed with low conﬁdence by an set of classifiers. Results show that the approach is able to generate images that are closer to the frontier when compared to the original ones, but still realistic. Manual inspection conﬁrms that some of those images are confusing even for humans.
+Hubris benchmarking: a methodology to evaluate overconfidence in machine learning models. The benchmark is based on a novel architecture, ambiguous generative adversarial networks (AmbiGANs), which are trained to synthesize realistic yet ambiguous datasets.
+
+We introduce hubris benchmarking, a methodology to evaluate overconfidence in machine learning models. The benchmark is based on a novel architecture, ambiguous generative adversarial networks (AmbiGANs), which are trained to synthesize realistic yet ambiguous datasets. We also propose the hubris metric to quantitatively measure the extent of model overconfidence when faced with these ambiguous images.
+We illustrate the usage of the methodology by estimating the hubris of state-of-the-art pre-trained models (ConvNext and ViT) on binarized versions of public datasets, including MNIST, Fashion-MNIST, and Pneumonia Chest X-ray. We found that, while ConvNext is on average 3\% more accurate than ViT, it often makes excessively confident predictions, on average by 10\% points higher than ViT.
+These results illustrate the usefulness of hubris benchmarking in high-stakes decision processes.
 
 ## Pre-conditions
 
