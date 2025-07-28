@@ -15,7 +15,7 @@ These results illustrate the usefulness of hubris benchmarking in high-stakes de
 
 * You must [install Poetry](https://python-poetry.org/docs/) for dependecy management.
 * You must have a [Weights & Biases account](https://wandb.ai/site) for logging training metrics.
-
+* You must run the project in a CUDA supported OS.
 
 ## Setup environment
 
