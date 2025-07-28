@@ -23,13 +23,13 @@ wandb = "^0.21.0"
 pillow = "^10.4.0"
 datasets = "^3.0.1"
 jaraco-functools = "^4.1.0"
-transformers = "^4.45.2"
+transformers = "^4.50.0"
 # pydantic = "^2.9.2"
 pydantic = "<2.9"
 pytest = "^8.3.3"
 torchaudio = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
-torch = {version = "^2.4.1+cu124", source = "pytorch-gpu"}
-torchvision = {version = "^0.19.1+cu124", source = "pytorch-gpu"}
+torch = {version = "^2.6.0+cu124", source = "pytorch-gpu"}
+torchvision = {version = "^0.21.0+cu124", source = "pytorch-gpu"}
 pre-commit = "^4.0.1"
 pylint = "^3.3.1"
 ruff = "^0.12.5"
