@@ -397,10 +397,10 @@ def calculate_pymdma_metrics(real_features: np.ndarray, synt_features: np.ndarra
     coverage_dataset, _ = coverage_result.value
 
     # Geometry Score
-    logger.info("Calculating Geometry Score")
-    gs = GeometryScore()
-    gs_result = gs.compute(real_features=real_features, fake_features=synt_features)
-    gs_dataset, _ = gs_result.value
+    # logger.info("Calculating Geometry Score")
+    # gs = GeometryScore()
+    # gs_result = gs.compute(real_features=real_features, fake_features=synt_features)
+    # gs_dataset, _ = gs_result.value
 
     # Multi-Scale Intrinsic Distance (MSID)
     logger.info("Calculating Multi-Scale Intrinsic Distance")
@@ -415,7 +415,7 @@ def calculate_pymdma_metrics(real_features: np.ndarray, synt_features: np.ndarra
         giqa_ds=[giqa_ds_dataset],
         density=[density_dataset],
         coverage=[coverage_dataset],
-        gs=[gs_dataset],
+        # gs=[gs_dataset],
         msid=[msid_dataset],
     )
     logger.info("Finished PyMDMA metrics calculation")

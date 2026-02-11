@@ -570,6 +570,13 @@ class ConfigTrain(BaseModel):
     step_1: ConfigStep1 | str = Field(..., description="Configuration for step 1 training.")
     step_2: ConfigStep2 = Field(..., description="Configuration for step 2 training.")
 
+class ConfigEvaluation(BaseModel):
+    """Configuration for each step."""
+
+    n_samples: int = Field(..., description="Number of samples to evaluate.")
+    model: PretrainedModels = Field(..., description="Pretrained model to be evaluated")
+    epochs: int = Field(..., description="Number of epochs for fine tuning model.")
+    batch_size: int = Field(..., description="Batch size for fine tuning model.")
 
 class ConfigGAN(BaseModel):
     """Full configuration for GAN training."""
@@ -779,8 +786,10 @@ class ConfigMain(ConfigGAN):
     gen_test_noise: bool = Field(..., description="Generate test noise files.")
     gen_classifiers: bool = Field(..., description="Generate classifiers models.")
     gen_gan: bool = Field(..., description="Generate and train AmbiGAN model.")
-    classifiers: list[ClassifierClasses] | None = Field(None, description="List of classifiers to generate.")
-
+    gen_dataset: bool = Field(default=False, description="Generate companion dataset for most recent GAN checkpoint.")
+    run_evaluation: bool = Field(default=False, description="Evaluate the most recent companion dataset.")
+    classifiers: list[ClassifierClasses] | None = Field(default=None, description="List of classifiers to generate.")
+    evaluation: ConfigEvaluation | None = Field(default=None, description="Evaluation configuration.")
 
 class CLDatasetArgs(BaseModel):
     """Dataset CL Arguments."""

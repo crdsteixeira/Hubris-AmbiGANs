@@ -167,7 +167,7 @@ class OutputsHistogram(Metric):
 
         # Render and save the picture
         fig.canvas.draw()
-        pil_image = PIL.Image.frombytes("RGB", fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
+        pil_image = PIL.Image.frombytes("RGB", fig.canvas.get_width_height(), fig.canvas.buffer_rgba())
         plt.close()
         return self.to_tensor(pil_image)
 

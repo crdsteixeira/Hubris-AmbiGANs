@@ -154,20 +154,22 @@ def evaluate_and_checkpoint(
         fake = params.G(params.fixed_noise).detach().cpu()
         params.G.train()
 
-    img = group_images(fake, classifier=params.classifier, device=params.device)
-    eval_metrics.log_image("samples", img)
-    plot_img = None
-    if params.c_out_hist is not None:
-        plot_img = params.c_out_hist.plot_clfs()
-        eval_metrics.log_image("plot", plot_img)
+    # before finalizing epoch, log images, if checkpoint state
+    if (train_state.epoch == params.epochs) or (train_state.epoch % params.checkpoint_every == 0):
+        img = group_images(fake, classifier=params.classifier, device=params.device)
+        eval_metrics.log_image("samples", img)
+        plot_img = None
+        if params.c_out_hist is not None:
+            plot_img = params.c_out_hist.plot_clfs()
+            eval_metrics.log_image("plot", plot_img)
 
     train_metrics.finalize_epoch()
-
     # Evaluate GAN
     evaluate(params=params, stats_logger=eval_metrics)
     eval_metrics.finalize_epoch()
 
-    if train_state.epoch == params.epochs or train_state.epoch % params.checkpoint_every == 0:
+    if (train_state.epoch == params.epochs) or (train_state.epoch % params.checkpoint_every == 0):
+        # save to disk
         checkpoint_image(img, train_state.epoch, output_dir=params.checkpoint_dir)
         if plot_img is not None and params.checkpoint_dir is not None:
             checkpoint_image(plot_img, train_state.epoch, output_dir=os.path.join(params.checkpoint_dir, "plots"))

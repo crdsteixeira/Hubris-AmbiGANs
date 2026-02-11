@@ -18,12 +18,27 @@ from src.models import (
     CLTrainArgs,
     ConfigGAN,
     ConfigMain,
+    CLDatasetArgs,
+    CLEvaluationArgs
 )
 from src.utils.logging import configure_logging
 from src.utils.read_config import read_main_config
 
 configure_logging()
 logger = logging.getLogger(__name__)
+
+def find_latest_gan_path(config: ConfigMain) -> str:
+    """Find latest run executed for this specific subset."""
+    gan_root = os.path.join(
+            config.out_dir,
+            "AmbiGAN",
+            f"{config.dataset.name}-{config.dataset.binary.pos}v{config.dataset.binary.neg}",
+    )
+    try:
+        for entry in os.listdir(gan_root):
+            return os.path.join(gan_root, entry)
+    except Exception:
+        return gan_root
 
 
 def gen_test_noise(config: ConfigMain) -> None:
@@ -172,6 +187,120 @@ def gen_gan(config: ConfigMain, fid_stats_path: str, test_noise: str) -> None:
     gan_cli.main(config=params)
 
 
+def gen_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -> None:
+    """Generate dataset using config parameters."""
+    
+    # search for the directory that matches the first classifier, and select the last epoch
+    gan_path = None
+    try:
+        for entry in os.listdir(latest_gan_path):
+            if entry.startswith(config.classifiers[0].name):
+                gan_path = os.path.join(latest_gan_path, entry, str(config.train.step_2.epochs))
+                break
+    except Exception as e:
+        logger.warning(f"Could not find classifier directory: {e}")
+    
+    params = CLDatasetArgs(
+        seed=config.test_noise_seed,
+        #img_size=config.img_size, (default)
+        n_samples=config.evaluation.n_samples,
+        out_dir=os.path.join(latest_gan_path, "companion_dataset", "ambi"),
+        gan_path=gan_path, 
+        device=config.device,
+        fid_stats_path=fid_stats_path,
+    )
+
+    args = [
+        sys.executable,
+        "-m",
+        "src.gen_dataset",
+        "--gan-path",
+        str(params.gan_path),
+        "--seed",
+        str(params.seed),
+        "--n-samples",
+        str(params.n_samples),
+        "--device",
+        str(params.device),
+        "--out-dir",
+        str(params.out_dir),
+        "--fid-stats-path",
+        str(fid_stats_path)
+    ]
+
+    subprocess.run(args, check=True, env=os.environ.copy())
+
+
+def run_evaluation(config: ConfigMain, latest_gan_path: str) -> None:
+    """Run evaluation CLI with parameters from `config` and `latest_gan_path`."""
+
+    # Extract GAN ID from path
+    gan_id = os.path.basename(latest_gan_path.rstrip('/')).split('_')[-1]
+
+    estimator_name = None
+    try:
+        if getattr(config, "train", None) and getattr(config.train, "step_2", None):
+            estimator_name = getattr(config.train.step_2, "classifier")[0]
+    except Exception:
+        estimator_name = None
+
+    estimator_path = os.path.join(
+        config.out_dir,
+        "models",
+        f"{config.dataset.name}.{config.dataset.binary.pos}v{config.dataset.binary.neg}",
+        estimator_name,
+    ) if estimator_name else None
+
+    params = CLEvaluationArgs(
+        device=config.device,
+        seed=config.test_noise_seed,
+        companion_dataroot=os.path.join(latest_gan_path, "companion_dataset"),
+        model=config.evaluation.model,
+        batch_size=config.evaluation.batch_size,
+        epochs=config.evaluation.epochs,
+        out_dir=os.path.join(latest_gan_path, "evaluation"),
+        estimator_path=estimator_path,
+        dataroot=os.path.join(config.out_dir, config.data_dir),
+        dataset_name=config.dataset.name,
+        pos_class=config.dataset.binary.pos,
+        neg_class=config.dataset.binary.neg,
+    )
+
+    args: list[str] = [
+        sys.executable,
+        "-m",
+        "src.evaluation.evaluation_cli",
+        "--device",
+        str(params.device),
+        "--seed",
+        str(params.seed),
+        "--companion-data", 
+        str(params.companion_dataroot),
+        "--model",
+        str(params.model),
+        "--batch-size",
+        str(params.batch_size),
+        "--epochs",
+        str(params.epochs),
+        "--out-dir",
+        str(params.out_dir),
+        "--estimator-path",
+        str(params.estimator_path),
+        "--data",
+        str(params.dataroot),
+        "--dataset",
+        str(params.dataset_name),
+        "--pos",
+        str(params.pos_class),
+        "--neg",
+        str(params.neg_class),
+        "--gan-id",
+        gan_id,
+    ]
+
+    subprocess.run(args, check=True, env=os.environ.copy())
+
+
 def parse_args() -> CLAmbigan:
     """Parse arguments from command line."""
     parser = argparse.ArgumentParser(description="Train AmbiGAN with a config file")
@@ -195,33 +324,40 @@ def parse_args() -> CLAmbigan:
 def main() -> None:
     """Run process of AmbiGAN training."""
     load_dotenv()
-    logger.info("AmbiGANs is starting...")
+    logger.info("Hubris Benchmarking with AmbiGANs is starting...")
 
     args = parse_args()
     config = read_main_config(args.config_path)
     logger.info(f"Loaded experiment configuration from {args.config_path}")
-
+    
+    # test noise
     if config.gen_test_noise:
+        logger.info("Generating test noise...")
         gen_test_noise(config)
-    if config.gen_pairwise_inception:
-        gen_pairwise_inception(config)
-    if config.gen_classifiers and config.classifiers is not None:
-        for classifier in config.classifiers:
-            gen_classifiers(config, classifier)
-    if config.gen_gan:
-        fid_stats_path = os.path.join(
-            config.out_dir,
-            config.data_dir,
-            "fid-stats",
-            f"stats.{config.dataset.name}.{config.dataset.binary.pos}v{config.dataset.binary.neg}.npz",
-        )
-        test_noise = os.path.join(
+    
+    test_noise = os.path.join(
             config.out_dir,
             config.data_dir,
             "z",
             f"z_{config.fixed_noise}_{config.model.z_dim}",
-        )
+    )
 
+    # FID stats
+    if config.gen_pairwise_inception:
+        gen_pairwise_inception(config)
+    fid_stats_path = os.path.join(
+            config.out_dir,
+            config.data_dir,
+            "fid-stats",
+            f"stats.{config.dataset.name}.{config.dataset.binary.pos}v{config.dataset.binary.neg}.npz",
+    )
+
+    # classifiers for step 2
+    if config.gen_classifiers and config.classifiers is not None:
+        for classifier in config.classifiers:
+            gen_classifiers(config, classifier)
+    # train ambiGAN
+    if config.gen_gan:
         if config.train.step_2.classifier:
             config.train.step_2.classifier = [
                 os.path.join(
@@ -233,6 +369,15 @@ def main() -> None:
                 for c_path in config.train.step_2.classifier
             ]
         gen_gan(config, fid_stats_path=fid_stats_path, test_noise=test_noise)
+    gan_path = find_latest_gan_path(config)
+    
+    # generate companion dataset
+    if config.gen_dataset:
+        gen_dataset(config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path)
+    
+    # evaluate classifier
+    if config.run_evaluation:
+        run_evaluation(config, latest_gan_path=gan_path)
 
 
 if __name__ == "__main__":

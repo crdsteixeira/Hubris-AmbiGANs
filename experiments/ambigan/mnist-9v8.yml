@@ -5,17 +5,18 @@ out_dir: out
 data_dir: data
 fixed_noise: 128
 test_noise_seed: 15
-device: cuda
-num_workers: 0
+device: cuda:1
 
 # Number of runs to perform using same parameters but different seeds.
-num_runs: 3
+num_runs: 1
 
-# Configuration
-gen_test_noise: true
-gen_pairwise_inception: true
-gen_classifiers: true
-gen_gan: true
+# Configuration (false if we already have them and don't want to regenerate)
+gen_test_noise: false
+gen_pairwise_inception: false
+gen_classifiers: false
+gen_gan: false
+gen_dataset: false
+run_evaluation: true
 
 # Dataset parameters, including positive and negative class.
 dataset:
@@ -24,14 +25,14 @@ dataset:
     pos: 9
     neg: 8
 
-# Classifier list to be generated.
+# Classifier list to be generated
 classifiers:
   - name: ensemble_mean_32_mnist_200_9v8_balanced
     c_type: ensemble
     batch_size: 800
-    epochs: 200
+    epochs: 40 # old: 200
     lr: 0.001
-    nf: 50
+    nf: 50 # 10, 25, 75, 100
     seed: 32
     ensemble_type: cnn
     ensemble_output_method: mean
@@ -39,12 +40,12 @@ classifiers:
 # Seed parameters for each run (step1 and step2).
 step_1_seeds:
   - 42
-  - 43
-  - 44
+  # - 43
+  # - 44
 step_2_seeds:
   - 34
-  - 35
-  - 36
+  # - 35
+  # - 36
 
 # GAN model parameters
 model:
@@ -67,13 +68,13 @@ optimizer:
 # GAN training parameters
 train:
   step_1:
-    epochs: 100
-    checkpoint_every: 100
+    epochs: 40 # 100
+    checkpoint_every: 40
     disc_iters: 1
     batch_size: 32
   step_2:
     epochs: 50
-    checkpoint_every: 50
+    checkpoint_every: 10
     disc_iters: 1
     batch_size: 32
     step_1_epochs:
@@ -82,15 +83,12 @@ train:
       - ensemble_mean_32_mnist_200_9v8_balanced
     weight:
       - gaussian:
-          - alpha: 1.50
-            var: 0.01
-          - alpha: 0.50
-            var: 0.01
-          - alpha: 1.00
-            var: 0.01
-          - alpha: 1.50
-            var: 0.10
-          - alpha: 0.50
-            var: 0.10
-          - alpha: 1.00
-            var: 0.10
+          - alpha: 0.50 # 1.5, 1.0
+            var: 0.10 # 0.01
+
+# evaluate latest run with first parameter setup
+evaluation:
+  n_samples: 2500
+  model: convnext
+  epochs: 10
+  batch_size: 64

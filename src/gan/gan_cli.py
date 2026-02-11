@@ -123,8 +123,9 @@ def train_modified_gan(
             "id": params.run_id,
             "seed": params.seed,
             "weight": weight_name,
-            "train": config.train.step_2.__dict__,
             "step1_epoch": params.s1_epoch,
+            "n_epochs": config.train.step_2.epochs,
+            "train": config.train.step_2.__dict__,
         },
     )
 
@@ -291,6 +292,7 @@ def train_step1_gan(params: Step1TrainingArgs, config: ConfigGAN) -> tuple[Train
             config={
                 "id": params.run_id,
                 "seed": params.seed,
+                "n_epochs": config.train.step_1.epochs,
                 "gan": config.model,
                 "optim": config.optimizer,
                 "train": config.train.step_1,

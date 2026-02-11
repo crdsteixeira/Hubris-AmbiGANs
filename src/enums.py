@@ -31,7 +31,7 @@ class DeviceType(StrEnum):
     """Enumerate different types of devices."""
 
     cpu = "cpu"
-    cuda = "cuda"
+    cuda = "cuda:1"
 
 
 class TrainingStage(StrEnum):

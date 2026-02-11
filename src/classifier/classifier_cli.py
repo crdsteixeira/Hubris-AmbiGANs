@@ -49,7 +49,7 @@ def parse_args() -> CLTrainArgs:
     parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate for the optimizer")
     parser.add_argument("--nf", type=int, default=2, help="Number of filters or features in the model")
     parser.add_argument("--seed", type=int, help="Random seed for reproducibility")
-    parser.add_argument("--device", type=str, default="cuda", choices=["cpu", "cuda"], help="Device for computation")
+    parser.add_argument("--device", type=str, default="cuda", help="Device for computation")
     parser.add_argument("--dataset_name", type=str, required=True, help="Name of the dataset to use")
     parser.add_argument("--pos_class", type=int, required=True, help="Positive class for binary classification")
     parser.add_argument("--neg_class", type=int, required=True, help="Negative class for binary classification")

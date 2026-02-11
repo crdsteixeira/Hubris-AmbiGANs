@@ -76,6 +76,8 @@ def evaluate(
     if training:
         C.train()
 
+    # TODO: use wandb logging
+
     per_C_accuracy = np.array(per_C_accuracy)
     logger.info(f"per classifier accuracy:  {np.mean(per_C_accuracy, axis=0)}.")
     return acc.item(), loss.item()
