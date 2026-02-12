@@ -1,5 +1,6 @@
 """CL for models evaluation."""
 
+import glob
 import logging
 import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
@@ -96,17 +97,8 @@ def evaluate(config: CLEvaluationArgs, model: nn.Module, loader: DataLoader, nam
     return df
 
 
-def main() -> None:
-    """Calculate and save model statistics based on the provided CLI arguments."""
-
-    logger.info("Model evaluation is starting...")
-
-    args = parser.parse_args()
-    logger.debug(args)
-
-    # Convert parsed arguments to dictionary and validate using Pydantic model
-    args_dict = vars(args)
-
+def setup_config_and_wandb(args_dict: dict) -> CLEvaluationArgs:
+    """Initialize configuration and wandb with the provided arguments."""
     try:
         config = CLEvaluationArgs(**args_dict)
     except ValidationError as e:
@@ -117,31 +109,30 @@ def main() -> None:
     logger.info(config)
 
     # Initialize wandb with GAN ID for experiment tracking
+    gan_id = args_dict.get("gan_id") or "unknown"
+    timestamp = datetime.now().strftime("%b%d_%H%M%S")
     wandb.init(
         project="AmbiGAN-Evaluation",
-        name=f"{config.dataset_name}.{config.pos_class}v{config.neg_class}-{config.model.value}",
-        id=args.gan_id,
+        name=f"{gan_id}-{config.model.value}-{timestamp}",
+        id=gan_id,
         resume="allow",
         config={
+            "gan_id": gan_id,
             "model": config.model.value,
             "dataset": config.dataset_name,
             "pos_class": config.pos_class,
             "neg_class": config.neg_class,
             "batch_size": config.batch_size,
             "epochs": config.epochs,
+            "estimator_path": config.estimator_path,
         },
     )
 
-    # Set random seed
-    config.seed = np.random.randint(100000) if config.seed is None else config.seed
-    setup_reprod(config.seed)
-    logger.info(f" > Seed: {config.seed}")
-    wandb.config.update({"seed": config.seed})
+    return config
 
-    # create evaluation folder, if it doesn't exist
-    os.makedirs(config.out_dir, exist_ok=True)
 
-    # Load original train dataset for retrain
+def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, DataLoader]:
+    """Load training, test, and companion datasets."""
     dataset, _, _ = load_dataset(
         LoadDatasetParams(
             dataroot=config.dataroot,
@@ -153,7 +144,6 @@ def main() -> None:
         )
     )
 
-    # Load test dataset
     test_dataset, _, _ = load_dataset(
         LoadDatasetParams(
             dataroot=config.dataroot,
@@ -165,12 +155,18 @@ def main() -> None:
         )
     )
 
-    # Load companion dataset
     ambi_dataset = ImageFolder(root=config.companion_dataroot, transform=test_dataset.transform)
 
-    # TODO: Check if retrained model already exists and load it, otherwise retrain
-    logger.info(f"Retraining {config.model.value} model...")
     train_dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
+    ambi_dataloader = DataLoader(ambi_dataset, batch_size=config.batch_size, shuffle=False)
+
+    return train_dataloader, test_dataloader, ambi_dataloader
+
+
+def train_model(config: CLEvaluationArgs, train_dataloader: DataLoader) -> nn.Module:
+    """Train or load pretrained model."""
+    logger.info(f"Retraining {config.model.value} model...")
     if config.model == PretrainedModels.convnext:
         model = ConvNext()
         model.retrain(train_dataloader, epochs=config.epochs, device=config.device)
@@ -179,9 +175,36 @@ def main() -> None:
         model.retrain(train_dataloader, epochs=config.epochs, device=config.device)
     else:
         raise ValueError(f"Unknown model type: {config.model}")
+    return model
 
-    test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
-    ambi_dataloader = DataLoader(ambi_dataset, batch_size=config.batch_size, shuffle=False)
+
+def main() -> None:
+    """Calculate and save model statistics based on the provided CLI arguments."""
+    logger.info("Model evaluation is starting...")
+
+    args = parser.parse_args()
+    logger.debug(args)
+
+    # Convert parsed arguments to dictionary and validate using Pydantic model
+    args_dict = vars(args)
+
+    # Setup config and wandb
+    config = setup_config_and_wandb(args_dict)
+
+    # Set random seed
+    config.seed = np.random.randint(100000) if config.seed is None else config.seed
+    setup_reprod(config.seed)
+    logger.info(f" > Seed: {config.seed}")
+    wandb.config.update({"seed": config.seed})  # type: ignore
+
+    # create evaluation folder, if it doesn't exist
+    os.makedirs(config.out_dir, exist_ok=True)
+
+    # Load datasets
+    train_dataloader, test_dataloader, ambi_dataloader = load_datasets(config)
+
+    # Train model
+    model = train_model(config, train_dataloader)
 
     df = pd.DataFrame()
     df = pd.concat((df, evaluate(config, model, test_dataloader, name=f"{config.dataset_name} Original")))
@@ -193,18 +216,49 @@ def main() -> None:
     logger.info(f"Evaluation results saved to CSV: {csv_path}")
 
     # log results to wandb
-    wandb.log({"hubris_a_original": df[df["dataset"] == f"{config.dataset_name} Original"]["absolute_hubris"].values[0],
-               "hubris_a_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["absolute_hubris"].values[0],
-               "hubris_r_original": df[df["dataset"] == f"{config.dataset_name} Original"]["relative_hubris"].values[0] if "relative_hubris" in df.columns else None,
-               "hubris_r_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["relative_hubris"].values[0] if "relative_hubris" in df.columns else None,
-               "acd_original": df[df["dataset"] == f"{config.dataset_name} Original"]["acd"].values[0],
-               "acd_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["acd"].values[0],
-               "accuracy": df[df["dataset"] == f"{config.dataset_name} Original"]["accuracy"].values[0],
-               })
-    # wandb.save(csv_path)
+    wandb.log(
+        {
+            "hubris_a_original": df[df["dataset"] == f"{config.dataset_name} Original"]["absolute_hubris"].values[0],
+            "hubris_a_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["absolute_hubris"].values[0],
+            "hubris_r_original": (
+                df[df["dataset"] == f"{config.dataset_name} Original"]["relative_hubris"].values[0]
+                if "relative_hubris" in df.columns
+                else None
+            ),
+            "hubris_r_companion": (
+                df[df["dataset"] == f"{config.dataset_name} Companion"]["relative_hubris"].values[0]
+                if "relative_hubris" in df.columns
+                else None
+            ),
+            "acd_original": df[df["dataset"] == f"{config.dataset_name} Original"]["acd"].values[0],
+            "acd_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["acd"].values[0],
+            "accuracy": df[df["dataset"] == f"{config.dataset_name} Original"]["accuracy"].values[0],
+        }
+    )
+
+    # Try to read existing metrics CSV from companion_dataset folder
+    metrics_csv_pattern = os.path.join(config.companion_dataroot, "ambi", "*_metrics.csv")
+    metrics_csv_files = glob.glob(metrics_csv_pattern)
+
+    if metrics_csv_files:
+        # Read the most recent metrics CSV
+        metrics_csv = sorted(metrics_csv_files)[-1]
+        logger.info(f"Reading metrics from: {metrics_csv}")
+        try:
+            metrics_df = pd.read_csv(metrics_csv)
+            # Log all metrics from CSV to wandb
+            for col in metrics_df.columns:
+                value = metrics_df[col].iloc[0]
+                if pd.notna(value):  # Only log non-null values
+                    wandb.log({f"{col}_companion": value})
+            logger.info("Dataset metrics logged to wandb")
+        except (FileNotFoundError, pd.errors.ParserError, ValueError) as e:
+            logger.warning(f"Could not read metrics CSV: {e}")
+    else:
+        logger.info("No metrics CSV found in companion_dataset folder")
 
     checkpoint(model, config.model.value, None, None, None, output_dir=config.out_dir, optimizer=None)
-    logger.info(f"Model evaluation completed")
+    logger.info("Model evaluation completed")
     wandb.finish()
 
 

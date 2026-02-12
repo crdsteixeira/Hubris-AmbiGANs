@@ -4,7 +4,7 @@ out_dir: out
 data_dir: data
 fixed_noise: 128
 test_noise_seed: 15
-device: cuda
+device: cuda:1
 
 num_runs: 1
 
@@ -67,7 +67,7 @@ train:
     step_1_epochs:
       - last
     classifier:
-      - ensemble_mean_32_mnist_200_0v1_balanced # <<<<<<
+      - ensemble_mean_32_mnist_50_1v5_balanced # <<<<<<
     weight:
       - gaussian:
           - alpha: 0.50 

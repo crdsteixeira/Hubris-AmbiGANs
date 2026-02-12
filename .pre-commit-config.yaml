@@ -1,12 +1,12 @@
 default_language_version:
-  python: python3.12
+  python: python3.11
 
 
 exclude: 'src/gan/architectures/deprecated/.*|.*_deprecated.*\.py|tests/.*$'
 
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
     -   id: check-case-conflict
     -   id: check-toml
@@ -19,24 +19,24 @@ repos:
         args: ["--branch", "main"]
 
 -   repo: https://gitlab.com/vojko.pribudic.foss/pre-commit-update
-    rev: v0.8.0
+    rev: v0.9.0
     hooks:
     -   id: pre-commit-update
 
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.5
+    rev: v0.15.0
     hooks:
     -   id: ruff
         args: ['--fix', '--line-length=120', '--exit-non-zero-on-fix', '--show-fixes']
 
 -   repo: https://github.com/psf/black
-    rev: 25.1.0
+    rev: 26.1.0
     hooks:
     -   id: black
         args: ['--line-length=120']
 
 -   repo: https://github.com/pycqa/pylint
-    rev: v3.3.7
+    rev: v4.0.4
     hooks:
     -   id: pylint
         args:
@@ -47,7 +47,7 @@ repos:
         -   '--extension-pkg-allow-list=wandb'
 
 -   repo: https://github.com/asottile/blacken-docs
-    rev: 1.19.1
+    rev: 1.20.0
     hooks:
     -   id: blacken-docs
         additional_dependencies: [black==24.2.0]
@@ -73,22 +73,22 @@ repos:
     -   id: seed-isort-config
 
 -   repo: https://github.com/pycqa/isort
-    rev: 6.0.1
+    rev: 7.0.0
     hooks:
     -   id: isort
         args: ['--profile', "black", '-o', 'wandb', '-o', 'datasets']
 
 -   repo: https://github.com/asottile/pyupgrade
-    rev: v3.20.0
+    rev: v3.21.2
     hooks:
     -   id: pyupgrade
         args: ['--py38-plus']
 
 -   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.0
+    rev: v1.19.1
     hooks:
     -   id: mypy
-        args: [--disallow-untyped-defs, --disallow-incomplete-defs, --disallow-untyped-calls,
-          --follow-imports, 'normal']
-        additional_dependencies: [types-python-dateutil, types-requests, types-toml,
-          types-pytz, types-PyYAML, wandb]
+        args: [--disallow-untyped-defs, --disallow-incomplete-defs,
+              --disallow-untyped-calls, --follow-imports, 'normal']
+        additional_dependencies: [types-python-dateutil, types-requests,
+              types-toml, types-pytz, types-PyYAML, wandb]

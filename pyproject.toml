@@ -78,7 +78,6 @@ docstring-code-format = true
 max-doc-length = 120
 
 [tool.pylint.main]
-suggestion-mode = true
 
 [tool-pylint.basic]
 class-cont-naming-style = "UPPER_CASE"

@@ -19,7 +19,6 @@ from pymdma.image.measures.synthesis_val import (
     GIQA,
     Coverage,
     Density,
-    GeometryScore,
     ImprovedPrecision,
     ImprovedRecall,
     MultiScaleIntrinsicDistance,
