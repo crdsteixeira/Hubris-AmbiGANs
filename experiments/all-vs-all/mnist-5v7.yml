@@ -13,7 +13,7 @@ gen_pairwise_inception: true
 gen_classifiers: true
 gen_gan: true
 gen_dataset: true
-run_evaluation: true
+run_evaluation: false
 
 dataset:
   name: mnist

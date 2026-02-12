@@ -423,6 +423,7 @@ def main(config: ConfigGAN | None = None) -> None:
         train_step2_gan(
             params=step_2_params, config=config, original_fid=original_fid, step_1_train_state=step_1_train_state
         )
+    torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":

@@ -94,6 +94,8 @@ def evaluate(config: CLEvaluationArgs, model: nn.Module, loader: DataLoader, nam
             relative_hubris=[relative_hubris],
         )
 
+    torch.cuda.empty_cache()
+
     return df
 
 
@@ -115,6 +117,7 @@ def setup_config_and_wandb(args_dict: dict) -> CLEvaluationArgs:
         project="AmbiGAN-Evaluation",
         name=f"{gan_id}-{config.model.value}-{timestamp}",
         id=gan_id,
+        group=f"{config.dataset_name}.{config.pos_class}v{config.neg_class}",
         resume="allow",
         config={
             "gan_id": gan_id,

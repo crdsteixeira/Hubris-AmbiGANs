@@ -70,6 +70,8 @@ def main() -> None:
                 gen_image = resize(gen_image, config.img_size, interpolation=InterpolationMode.BICUBIC, antialias=True)
             save_image(gen_image, os.path.join(config.out_dir, f"image_{i:06d}.png"))
 
+    torch.cuda.empty_cache()
+
     logger.info(f"Generated test noise, stored in {config.out_dir}")
     if config.fid_stats_path is not None:
         dataset_fid = fid.finalize()
