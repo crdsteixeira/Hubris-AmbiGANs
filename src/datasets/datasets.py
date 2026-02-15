@@ -133,6 +133,8 @@ def get_ambiguous_mnist(params: DatasetParams) -> Dataset:
 def get_ambiguess_mnist(params: DatasetParams) -> Dataset:
     """Retrieve the Ambiguess MNIST dataset."""
     # TODO
+    # from datasets import load_dataset
+    # ds = load_dataset("mweiss/mnist_ambiguous")
     raise NotImplementedError(
         "Ambiguess MNIST loading is not implemented yet. " f"Requested dataroot: {params.dataroot}"
     )
@@ -165,7 +167,7 @@ class CompanionDataset(Dataset):
         """Return the number of images in the dataset."""
         return len(self.image_paths)
 
-    def __getitem__(self, idx: int) -> torch.Tensor:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         """
         Load and return the image at the given index.
 
@@ -173,7 +175,7 @@ class CompanionDataset(Dataset):
             idx: Index of the image to load.
 
         Returns:
-            Transformed image tensor.
+            Tuple of (image tensor, dummy label).
 
         """
         image = Image.open(self.image_paths[idx]).convert("RGB")
@@ -181,7 +183,7 @@ class CompanionDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        return image
+        return image, 0
 
     @property
     def data(self) -> torch.Tensor:
@@ -200,17 +202,17 @@ class CompanionDataset(Dataset):
         return torch.zeros(len(self.image_paths), dtype=torch.long)
 
 
-def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples: int = 200) -> list[str]:
+def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples_per_subset: int = 200) -> list[str]:
     """
     Find and collect companion dataset images from all GAN subsets of a dataset.
 
     Args:
         dataroot: Root directory containing the dataset and AmbiGAN outputs.
         dataset_name: Name of the dataset (e.g., 'mnist', 'fashion_mnist', 'chest_xray').
-        n_samples: Number of random images to select (default: 200).
+        n_samples_per_subset: Number of random images to select per class subset (default: 200).
 
     Returns:
-        List of paths to randomly selected companion dataset images.
+        List of paths to randomly selected companion dataset images (200 per subset).
 
     Raises:
         ValueError: If no companion datasets are found.
@@ -266,8 +268,18 @@ def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples: 
                 ]
             )
 
-            all_images.extend(image_files)
             logger.info(f"Found {len(image_files)} images in {companion_dir}")
+
+            # Randomly select n_samples_per_subset images from this subset
+            if len(image_files) < n_samples_per_subset:
+                logger.warning(
+                    f"Requested {n_samples_per_subset} samples from {entry} but only {len(image_files)} available. Using all available."
+                )
+                selected_from_subset = image_files
+            else:
+                selected_from_subset = list(np.random.choice(image_files, size=n_samples_per_subset, replace=False))
+
+            all_images.extend(selected_from_subset)
 
         except (OSError, ValueError) as e:
             logger.warning(f"Error processing subset {entry}: {e}")
@@ -276,16 +288,9 @@ def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples: 
     if not all_images:
         raise ValueError(f"No companion dataset images found for dataset '{dataset_name}' in {gan_root}")
 
-    logger.info(f"Total companion images found: {len(all_images)}")
+    logger.info(f"Total companion images collected: {len(all_images)}")
 
-    # Randomly select n_samples images
-    if len(all_images) < n_samples:
-        logger.warning(f"Requested {n_samples} samples but only {len(all_images)} available. Using all available.")
-        selected_images = all_images
-    else:
-        selected_images = list(np.random.choice(all_images, size=n_samples, replace=False))
-
-    return selected_images
+    return all_images
 
 
 def get_companion_mnist(params: DatasetParams) -> Dataset:

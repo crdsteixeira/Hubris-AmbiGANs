@@ -181,5 +181,5 @@ This work started with the framework from previous developments of GASTeN from [
 TODO: finish this
 
 ```bash
-python -m src.evaluation.evaluation_ambiguity_cli experiments/ambiguity-evaluation/advanced_mnist_config.yaml
+python -m src.evaluation.evaluation_ambiguity_cli experiments/ambiguity-evaluation/mnist.yaml
 ```

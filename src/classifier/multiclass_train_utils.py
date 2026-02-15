@@ -154,7 +154,6 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
             "lr": lr,
             "seed": seed,
         },
-        reinit=True,
     )
 
     try:

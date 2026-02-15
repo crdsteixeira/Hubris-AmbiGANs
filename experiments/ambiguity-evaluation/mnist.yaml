@@ -10,8 +10,8 @@ seed: 42
 datasets:
   training: mnist
   evaluation:
-    - ambiguous-mnist
-    - ambiguess-mnist
+    #- ambiguous-mnist
+    #- ambiguess-mnist
     - companion-mnist
 
 classifiers:

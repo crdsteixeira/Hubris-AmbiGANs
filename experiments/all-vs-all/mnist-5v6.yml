@@ -10,7 +10,7 @@ num_runs: 1
 
 gen_test_noise: false
 gen_pairwise_inception: true
-gen_classifiers: true
+gen_classifiers: false
 gen_gan: true
 gen_dataset: true
 run_hubris_evaluation: false

@@ -673,6 +673,10 @@ class CLAmbiguityArgs(BaseModel):
     device: DeviceType = Field(default=DeviceType.cpu, description="Device to use")
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
     training_dataset: str = Field(..., description="Dataset used for training models")
+    eval_sample_size: int | None = Field(
+        default=None,
+        description="Limit evaluation dataset size for faster metrics computation (optional, None means use full dataset)",
+    )
 
 
 class ConfigGAN(BaseModel):
