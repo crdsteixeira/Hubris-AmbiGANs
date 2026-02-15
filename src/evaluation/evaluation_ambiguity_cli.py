@@ -43,11 +43,6 @@ def _enum_to_str(value: Any) -> str:
     return value.value if hasattr(value, "value") else str(value)
 
 
-def _str_to_device(device: DeviceType | str) -> str:
-    """Convert DeviceType enum to string, handling both enum and string inputs."""
-    return device.value if hasattr(device, "value") else str(device)
-
-
 def parse_args() -> CLAmbiguityArgs:
     """Parse and validate command-line arguments from config file."""
     parser = argparse.ArgumentParser(description="Run ambiguity evaluation")
@@ -787,12 +782,10 @@ def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-stateme
     return fid_score, pymdma_metrics
 
 
-def evaluate_single_model(  # pylint: disable=too-many-locals,unused-argument,too-many-statements  # noqa: C901
+def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statements  # noqa: C901
     config: "CLAmbiguityArgs",
     classifier: ClassifierType,
     dataset: DatasetNames,
-    real_features: np.ndarray | None,
-    extractor: Any = None,
     dataset_fid: float | None = None,
     dataset_pymdma: dict | None = None,
 ) -> bool:
@@ -806,8 +799,6 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,unused-argument,to
         config: Configuration with models and dataset info
         classifier: Classifier type to evaluate
         dataset: Dataset to evaluate on
-        real_features: Optional reference features (kept for backward compatibility)
-        extractor: Optional cached feature extractor (kept for backward compatibility)
         dataset_fid: Pre-computed FID score for this dataset (dataset-level metric, same for all classifiers)
         dataset_pymdma: Pre-computed pymdma metrics for this dataset (dataset-level metrics, same for all classifiers)
 
@@ -958,7 +949,7 @@ def run_evaluation_loop(
             current_step += 1
             classifier_str = _enum_to_str(classifier)
             logger.info(f"\n[{current_step}/{total_steps}] Evaluating {classifier_str} on {dataset_str}")
-            evaluate_single_model(config, classifier, dataset, real_features, extractor, dataset_fid, dataset_pymdma)
+            evaluate_single_model(config, classifier, dataset, dataset_fid, dataset_pymdma)
 
 
 def main() -> None:  # pylint: disable=too-many-statements
