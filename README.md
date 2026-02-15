@@ -176,12 +176,10 @@ poetry run python -m src --config experiments/ambigan_upscaling/chest-xray-initi
 
 This work started with the framework from previous developments of GASTeN from [luispcunha](https://github.com/luispcunha), published as [GASTeN: Generative Adversarial Stress Test Networks](https://link.springer.com/epdf/10.1007/978-3-031-30047-9_8?sharing_token=XGbq9zmVBDFAEaM4r1AAp_e4RwlQNchNByi7wbcMAY55SAL6inraGCkI72KOuzssTzewKWv51v_1pft7j7WJRbiAzL0vaTmG2vf4gs1QhnZ3lV72H7zSKLWQESXZjq5-1pg77WEnt2EHZaN2b51chvHsO6TW3tiGXSVhUgy87Ts%3D)
 
-# Hubris Benchmarking
+# Ambiguity Evaluation
 
 TODO: finish this
 
-## Train multiclass
-
 ```bash
-python -m src.classifier.multiclass_cli --config experiments/train-classifiers/advanced_mnist_config.yaml
+python -m src.evaluation.evaluation_ambiguity_cli experiments/ambiguity-evaluation/advanced_mnist_config.yaml
 ```

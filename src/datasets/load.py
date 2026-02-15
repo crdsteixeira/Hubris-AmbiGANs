@@ -10,6 +10,9 @@ from torch.utils.data import Dataset
 from src.datasets.datasets import (
     get_chest_xray,
     get_cifar10,
+    get_companion_chest_xray,
+    get_companion_fmnist,
+    get_companion_mnist,
     get_fashion_mnist,
     get_mnist,
 )
@@ -27,6 +30,9 @@ def get_function(dataset_name: DatasetNames) -> Callable[[DatasetParams], Any]:
         DatasetNames.fashion_mnist: get_fashion_mnist,
         DatasetNames.cifar10: get_cifar10,
         DatasetNames.chest_xray: get_chest_xray,
+        DatasetNames.companion_mnist: get_companion_mnist,
+        DatasetNames.companion_fmnist: get_companion_fmnist,
+        DatasetNames.companion_chest_xray: get_companion_chest_xray,
     }
     return mapping[dataset_name]
 

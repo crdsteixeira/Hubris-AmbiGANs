@@ -651,7 +651,6 @@ class ConfigEvaluation(BaseModel):
 
     companion_n_samples: int = Field(..., description="Number of samples to evaluate.")
     hubris: ConfigHubrisEvaluation = Field(..., description="Configuration for Hubris evaluation.")
-    ambiguity: ConfigAmbiguityEvaluation = Field(..., description="Configuration for Ambiguity evaluation.")
 
 
 class ConfigHubrisEvaluation(BaseModel):
@@ -662,11 +661,18 @@ class ConfigHubrisEvaluation(BaseModel):
     batch_size: int = Field(..., description="Batch size for fine tuning model.")
 
 
-class ConfigAmbiguityEvaluation(BaseModel):
-    """Configuration for Ambiguity evaluation."""
+class CLAmbiguityArgs(BaseModel):
+    """CLI arguments for ambiguity evaluation."""
 
-    models: list[ClassifierType] = Field(..., description="Pretrained models to be evaluated")
-    datasets: list[DatasetNames] = Field(..., description="Datasets to be evaluated on")
+    dataroot: str = Field(..., description="Directory with dataset")
+    out_dir: str = Field(..., description="Output directory for ambiguity evaluation")
+    models: list[ClassifierType] = Field(..., description="Models to evaluate")
+    datasets: list[DatasetNames] = Field(
+        default=[], description="Datasets to evaluate on (optional, defaults to training dataset)"
+    )
+    device: DeviceType = Field(default=DeviceType.cpu, description="Device to use")
+    seed: int | None = Field(default=None, description="Random seed for reproducibility")
+    training_dataset: str = Field(..., description="Dataset used for training models")
 
 
 class ConfigGAN(BaseModel):
@@ -878,7 +884,6 @@ class ConfigMain(ConfigGAN):
     gen_classifiers: bool = Field(..., description="Generate classifiers models.")
     gen_gan: bool = Field(..., description="Generate and train AmbiGAN model.")
     gen_dataset: bool = Field(default=False, description="Generate companion dataset for most recent GAN checkpoint.")
-    run_ambiguity_evaluation: bool = Field(default=False, description="Evaluate the most recent companion dataset.")
     run_hubris_evaluation: bool = Field(default=False, description="Evaluate the pair <companion dataset, classifier>.")
     classifiers: list[ClassifierClasses] | None = Field(default=None, description="List of classifiers to generate.")
     evaluation: ConfigEvaluation | None = Field(default=None, description="Evaluation configuration.")

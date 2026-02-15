@@ -1,5 +1,6 @@
 """Module to generate a dataset from a pre-trained generator."""
 
+import gc
 import logging
 import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
@@ -86,6 +87,16 @@ def main() -> None:
             index=False,
         )
         logger.info(f"Calculated sythetic images metrics, stored in {config.out_dir}")
+        # Clean up large objects to free CUDA memory
+        del fid
+        del all_synt_features
+        del all_real_features
+        del extractor
+
+    # Delete generator and collect garbage
+    del G
+    torch.cuda.empty_cache()
+    gc.collect()
 
 
 def parse_args() -> CLDatasetArgs:

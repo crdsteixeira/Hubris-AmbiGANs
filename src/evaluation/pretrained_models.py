@@ -1,5 +1,7 @@
 """Module for pre-trained evaluation."""
 
+import gc
+
 import torch
 from torch import nn
 from torch.nn import BCELoss
@@ -23,14 +25,16 @@ class HuggingFaceModel(nn.Module):
     """HuggingFace model class."""
 
     def retrain(self, dataloader: DataLoader, epochs: int = 10, device: DeviceType = DeviceType.cpu) -> None:
-        """Retrain pre-trained model."""
+        """Retrain pre-trained model with memory-efficient training."""
         self.model.to(device)
         optimizer = Adam(self.model.parameters())
         criterion = BCELoss()
         pbar = tqdm(range(epochs))
+
         for _ in pbar:
             self.model.train()
             batch_loss = 0
+            num_batches = 0
             for images, labels in dataloader:
                 images = images.to(device)
                 labels = labels.to(device)
@@ -45,8 +49,19 @@ class HuggingFaceModel(nn.Module):
                 optimizer.step()
 
                 batch_loss += loss.item()
+                num_batches += 1
 
-            pbar.set_postfix(BatchLoss=batch_loss)
+                # Clean up memory after each batch to prevent accumulation
+                del images, labels, preds, loss
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+            # Additional cleanup after each epoch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+
+            pbar.set_postfix(BatchLoss=batch_loss / max(num_batches, 1))
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """Forward method for ConvNext wrapper."""

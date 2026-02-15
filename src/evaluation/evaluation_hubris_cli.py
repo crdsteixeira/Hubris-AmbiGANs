@@ -1,5 +1,6 @@
 """CL for models evaluation."""
 
+import gc
 import glob
 import logging
 import os
@@ -58,15 +59,79 @@ parser.add_argument("--seed", type=int, help="Random seed for reproducibility")
 parser.add_argument("--gan-id", dest="gan_id", default=None, help="GAN experiment ID for wandb tracking")
 
 
+def process_inference_batch(
+    images: torch.Tensor,
+    model: nn.Module,
+    estimator: nn.Module | None,
+    device: str,
+    inference_batch_size: int,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """
+    Process a batch of images through the model and estimator.
+
+    Args:
+        images: Batch of images
+        model: Model to evaluate
+        estimator: Optional estimator model
+        device: Device for computation
+        inference_batch_size: Batch size for inference
+
+    Returns:
+        Tuple of (predictions, estimator_predictions)
+
+    """
+    batch_preds = []
+    batch_ref_preds = []
+
+    if images.shape[0] > inference_batch_size:
+        for i in range(0, images.shape[0], inference_batch_size):
+            batch_images = images[i : i + inference_batch_size].to(device)
+            batch_preds.append(model(batch_images).cpu())
+            if estimator is not None:
+                batch_ref_preds.append(estimator(batch_images).cpu())
+            del batch_images
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        preds = torch.cat(batch_preds)
+        ref_preds = torch.cat(batch_ref_preds) if estimator is not None else None
+    else:
+        preds = model(images.to(device)).cpu()
+        ref_preds = estimator(images.to(device)).cpu() if estimator is not None else None
+
+    return preds, ref_preds
+
+
 def evaluate(config: CLEvaluationArgs, model: nn.Module, loader: DataLoader, name: str) -> pd.DataFrame:
-    """Evaluate model using companion dataset."""
+    """Evaluate model using companion dataset with memory-efficient inference."""
     model.eval()
     preds = []
+    ref_preds = []
     labels = []
+
+    # Use smaller inference batch size to save memory (split large batches)
+    inference_batch_size = max(1, config.batch_size // 2) if config.batch_size > 16 else config.batch_size
+
+    # Load estimator if needed
+    estimator = None
+    if config.estimator_path is not None:
+        estimator, _, _, _, _ = construct_classifier_from_checkpoint(config.estimator_path, device=config.device)
+        estimator.eval()
+
     with torch.no_grad():
         for images, label in tqdm(loader):
-            preds.append(model(images.to(config.device)).cpu())
+            batch_preds, batch_ref_preds = process_inference_batch(
+                images, model, estimator, config.device, inference_batch_size
+            )
+            preds.append(batch_preds)
+            if batch_ref_preds is not None:
+                ref_preds.append(batch_ref_preds)
             labels.append(label)
+
+            # Cleanup memory after each batch
+            del images, label
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
         full_preds = torch.cat(preds)
         full_labels = torch.cat(labels)
 
@@ -82,21 +147,21 @@ def evaluate(config: CLEvaluationArgs, model: nn.Module, loader: DataLoader, nam
         acd=[(0.50 - full_preds).abs().mean().item()],
     )
 
-    # Load estimator if needed, for relative Hubris
-    if config.estimator_path is not None:
-        C, _, _, _, _ = construct_classifier_from_checkpoint(config.estimator_path, device=config.device)
-        preds = []
-        with torch.no_grad():
-            for images, _ in tqdm(loader):
-                preds.append(C(images.to(config.device)).cpu())
-            ref_preds = torch.cat(preds)
-
-        relative_hubris = hubris.compute(full_preds, ref_preds=ref_preds)
+    # Compute relative Hubris if estimator was used
+    if estimator is not None and len(ref_preds) > 0:
+        full_ref_preds = torch.cat(ref_preds)
+        relative_hubris = hubris.compute(full_preds, ref_preds=full_ref_preds)
         df = df.assign(
             relative_hubris=[relative_hubris],
         )
 
+        # Clean up estimator model
+        del estimator, full_ref_preds
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
     torch.cuda.empty_cache()
+    gc.collect()
 
     return df
 
@@ -121,7 +186,6 @@ def setup_wandb_for_model(config: CLEvaluationArgs, model: PretrainedModels, gan
         project="AmbiGAN-Evaluation",
         name=f"{gan_id}-{model.value}-{timestamp}",
         group=f"{config.dataset_name}.{config.pos_class}v{config.neg_class}",
-        id=gan_id,
         resume="allow",
         config={
             "gan_id": gan_id,
@@ -289,6 +353,12 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
 
         checkpoint(model, model_enum.value, None, None, None, output_dir=config.out_dir, optimizer=None)
         logger.info("Model %s evaluation completed", model_enum.value)
+
+        # Cleanup: Delete model and clear CUDA memory before next iteration
+        del model
+        torch.cuda.empty_cache()
+        gc.collect()
+
         wandb.finish()
 
     logger.info("%s", "\n" + "=" * 60)

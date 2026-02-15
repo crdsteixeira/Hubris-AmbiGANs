@@ -7,9 +7,16 @@ out_dir: models
 device: cuda:1
 seed: 42
 
-dataset: mnist
+datasets:
+  training: mnist
+  evaluation:
+    - ambiguous-mnist
+    - ambiguess-mnist
+    - companion-mnist
 
 classifiers:
+  - cnn
+  - vgg16
   - densenet
   - resnet50
   - vit
@@ -28,6 +35,18 @@ training:
 
 # Per-classifier hyperparameters optimized for MNIST
 per_classifier_training:
+  # CNN: Simplest architecture, minimal regularization needed
+  cnn:
+    dropout: 0.2
+    weight_decay: 0.000001
+    lr: 0.002
+
+  # VGG16: Deep but simple patterns, moderate regularization
+  vgg16:
+    dropout: 0.4
+    weight_decay: 0.00001
+    lr: 0.0003
+
   # DenseNet: Very deep, dense connections help, light regularization
   densenet:
     dropout: 0.2
