@@ -114,3 +114,17 @@ def get_chest_xray(params: DatasetParams) -> Dataset:
             return torch.tensor([sample["labels"] for sample in self.hf_dataset])
 
     return ChestXrayDataset(ds, transform=transform)
+
+
+def get_ambiguous_mnist(params: DatasetParams) -> Dataset:
+    """Retrieve the AmbiguousMNIST dataset."""
+    raise NotImplementedError(
+        "AmbiguousMNIST loading is not implemented yet. " f"Requested dataroot: {params.dataroot}"
+    )
+
+
+def get_ambiguess_mnist(params: DatasetParams) -> Dataset:
+    """Retrieve the Ambiguess MNIST dataset."""
+    raise NotImplementedError(
+        "Ambiguess MNIST loading is not implemented yet. " f"Requested dataroot: {params.dataroot}"
+    )

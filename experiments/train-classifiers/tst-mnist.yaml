@@ -1,0 +1,49 @@
+# Advanced MNIST Configuration - Per-Classifier Hyperparameters
+# MNIST is a simple dataset, so most models converge quickly
+# Different architectures benefit from different settings
+
+data_dir: data
+out_dir: models
+device: cuda:1
+seed: 42
+
+dataset: mnist
+
+classifiers:
+  - densenet
+  - resnet50
+  - vit
+
+# Default training parameters (for MNIST)
+training:
+  batch_size: 32
+  epochs: 20
+  lr: 0.001
+  optimizer: adam
+  momentum: 0.9
+  weight_decay: 0.0001
+  lr_schedule: cosine
+  warmup_epochs: 0
+  dropout: 0.3
+
+# Per-classifier hyperparameters optimized for MNIST
+per_classifier_training:
+  # DenseNet: Very deep, dense connections help, light regularization
+  densenet:
+    dropout: 0.2
+    weight_decay: 0.00001
+    lr: 0.0003
+
+  # ResNet50: Skip connections stabilize training
+  resnet50:
+    dropout: 0.3
+    weight_decay: 0.00001
+    lr: 0.0003
+
+  # ViT: Transformer needs careful training with warmup
+  vit:
+    lr: 0.0002
+    warmup_epochs: 2
+    lr_schedule: cosine
+    dropout: 0.1
+    weight_decay: 0.0001

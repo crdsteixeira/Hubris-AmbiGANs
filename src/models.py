@@ -111,11 +111,17 @@ class ClassifierParams(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_nf(self) -> ClassifierParams:
+    def check_nf(self) -> ClassifierParams:  # noqa: C901
         """Validate nf based on classifier type and ensemble type."""
         if self.type == ClassifierType.cnn:
-            if not isinstance(self.nf, list) or any(not isinstance(n, int) for n in self.nf):
-                raise ValueError("For cnn type, nf must be a list of integers.")
+            if isinstance(self.nf, int):
+                # Single integer is fine - will be converted to filter progression
+                pass
+            elif isinstance(self.nf, list) and all(isinstance(n, int) for n in self.nf):
+                # List of integers is also fine (for custom filter sizes)
+                pass
+            else:
+                raise ValueError("For cnn type, nf must be an integer or a list of integers.")
         elif self.type == ClassifierType.mlp:
             if not isinstance(self.nf, int):
                 raise ValueError("For mlp type, nf must be a single integer.")
@@ -261,22 +267,89 @@ class TrainingStats(BaseModel):
     test_loss: float = Field(default=0.0, description="List of test losses for each epoch.")
 
 
+class CLMulticlassTrain(BaseModel):
+    """Command-line arguments for multiclass classifier training."""
+
+    config_path: str = Field(..., description="Path to YAML configuration file")
+
+
+class ConfigTrainingParams(BaseModel):
+    """Configuration for training hyperparameters."""
+
+    batch_size: int = Field(default=64, description="Batch size for training")
+    epochs: int = Field(default=30, description="Number of training epochs")
+    lr: float = Field(default=0.001, description="Learning rate")
+    optimizer: str = Field(default="adam", description="Optimizer type (adam or sgd)")
+    momentum: float = Field(default=0.9, description="Momentum for SGD optimizer")
+    weight_decay: float = Field(default=0.0, description="L2 regularization (weight decay)")
+    lr_schedule: str = Field(default="none", description="Learning rate schedule (none, cosine, step)")
+    warmup_epochs: int = Field(default=0, description="Number of warmup epochs")
+    dropout: float = Field(default=0.3, description="Dropout rate for regularization")
+
+
+class ConfigPerClassifierTraining(BaseModel):
+    """Per-classifier training parameter overrides."""
+
+    batch_size: int | None = Field(default=None, description="Override batch size for this classifier")
+    epochs: int | None = Field(default=None, description="Override epochs for this classifier")
+    lr: float | None = Field(default=None, description="Override learning rate for this classifier")
+    optimizer: str | None = Field(default=None, description="Override optimizer for this classifier")
+    momentum: float | None = Field(default=None, description="Override momentum for this classifier")
+    weight_decay: float | None = Field(default=None, description="Override weight decay for this classifier")
+    lr_schedule: str | None = Field(default=None, description="Override LR schedule for this classifier")
+    warmup_epochs: int | None = Field(default=None, description="Override warmup epochs for this classifier")
+    dropout: float | None = Field(default=None, description="Override dropout for this classifier")
+
+
+class ConfigMulticlassTrain(BaseModel):
+    """Configuration for multiclass classifier training from YAML."""
+
+    dataset: str = Field(..., description="Name of the dataset to train on")
+    classifiers: list[str] = Field(
+        ..., description="List of classifier types to train (e.g., 'cnn', 'vgg16', 'resnet50')"
+    )
+    training: ConfigTrainingParams = Field(..., description="Default training hyperparameters")
+    per_classifier_training: dict[str, ConfigPerClassifierTraining] | None = Field(
+        default=None, description="Per-classifier hyperparameter overrides"
+    )
+    data_dir: str = Field(
+        default=f"{os.environ.get('FILESDIR', '/tmp')}/data",
+        description="Path to datasets",
+    )
+    out_dir: str = Field(
+        default=f"{os.environ.get('FILESDIR', '/tmp')}/models",
+        description="Output directory for models",
+    )
+    device: DeviceType = Field(default=DeviceType.cuda, description="Device for computation ('cpu' or 'cuda')")
+    seed: int | None = Field(default=None, description="Random seed for reproducibility")
+    entity: str | None = Field(default=None, description="WandB entity name")
+    project: str = Field(default="multiclass-classifiers", description="WandB project name")
+
+
 class DatasetClasses(BaseModel):
     """Arguments for Dataset Classes."""
 
     dataset_name: DatasetNames = Field(..., description="Name of the dataset.")
-    pos_class: int = Field(..., description="Positive class for binary classification.")
-    neg_class: int = Field(..., description="Negative class for binary classification.")
+    pos_class: int | None = Field(
+        None, description="Positive class for binary classification (optional for multiclass)."
+    )
+    neg_class: int | None = Field(
+        None, description="Negative class for binary classification (optional for multiclass)."
+    )
 
     @model_validator(mode="after")
     def validate_classes_for_binary_datasets(self) -> DatasetClasses:
         """Validate that pos_class and neg_class are provided and valid for the dataset."""
-        # If positive or negative class is specified, ensure both are given
-        if self.pos_class is None or self.neg_class is None:
+        # If one is specified, ensure both are given (for binary classification)
+        if (self.pos_class is None) != (self.neg_class is None):
             raise ValueError(
-                f"""Both pos_class and neg_class must be provided for"""
-                f"""binary classification with dataset {self.dataset_name}."""
+                "Both pos_class and neg_class must be provided together for "
+                "binary classification, or both should be None for multiclass."
             )
+
+        # If neither is specified, we're doing multiclass classification
+        if self.pos_class is None or self.neg_class is None:
+            return self  # Skip validation for multiclass
 
         # Define valid classes for each dataset
         dataset_class_mapping = {
@@ -328,6 +401,8 @@ class ClassifierClasses(BaseModel):
     ensemble_output_method: OutputMethod | None = Field(
         default=None, description="Output method for ensemble when applicable"
     )
+    entity: str | None = Field(default=None, description="WandB entity name")
+    project: str = Field(default="binary-classifiers", description="WandB project name")
 
 
 class CLTrainArgs(DatasetClasses, ClassifierClasses):
@@ -574,10 +649,24 @@ class ConfigTrain(BaseModel):
 class ConfigEvaluation(BaseModel):
     """Configuration for each step."""
 
-    n_samples: int = Field(..., description="Number of samples to evaluate.")
-    model: PretrainedModels = Field(..., description="Pretrained model to be evaluated")
+    companion_n_samples: int = Field(..., description="Number of samples to evaluate.")
+    hubris: ConfigHubrisEvaluation = Field(..., description="Configuration for Hubris evaluation.")
+    ambiguity: ConfigAmbiguityEvaluation = Field(..., description="Configuration for Ambiguity evaluation.")
+
+
+class ConfigHubrisEvaluation(BaseModel):
+    """Configuration for Hubris evaluation."""
+
+    models: list[PretrainedModels] = Field(..., description="Pretrained models to be evaluated")
     epochs: int = Field(..., description="Number of epochs for fine tuning model.")
     batch_size: int = Field(..., description="Batch size for fine tuning model.")
+
+
+class ConfigAmbiguityEvaluation(BaseModel):
+    """Configuration for Ambiguity evaluation."""
+
+    models: list[ClassifierType] = Field(..., description="Pretrained models to be evaluated")
+    datasets: list[DatasetNames] = Field(..., description="Datasets to be evaluated on")
 
 
 class ConfigGAN(BaseModel):
@@ -789,7 +878,8 @@ class ConfigMain(ConfigGAN):
     gen_classifiers: bool = Field(..., description="Generate classifiers models.")
     gen_gan: bool = Field(..., description="Generate and train AmbiGAN model.")
     gen_dataset: bool = Field(default=False, description="Generate companion dataset for most recent GAN checkpoint.")
-    run_evaluation: bool = Field(default=False, description="Evaluate the most recent companion dataset.")
+    run_ambiguity_evaluation: bool = Field(default=False, description="Evaluate the most recent companion dataset.")
+    run_hubris_evaluation: bool = Field(default=False, description="Evaluate the pair <companion dataset, classifier>.")
     classifiers: list[ClassifierClasses] | None = Field(default=None, description="List of classifiers to generate.")
     evaluation: ConfigEvaluation | None = Field(default=None, description="Evaluation configuration.")
 
@@ -811,7 +901,7 @@ class CLEvaluationArgs(DatasetClasses):
 
     dataroot: str = Field(default=f"{os.environ['FILESDIR']}/data", description="Directory with dataset")
     companion_dataroot: str = Field(..., description="Directory with companion dataset")
-    model: PretrainedModels = Field(..., description="Pretrained model to be evaluated")
+    models: list[PretrainedModels] = Field(..., description="Pretrained models to be evaluated")
     batch_size: int = Field(default=64, description="Batch size to use")
     estimator_path: str | None = Field(
         default=None, description="Path to estimator. If None, does not calculate relative Hubris"

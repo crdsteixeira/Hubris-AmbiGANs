@@ -1,0 +1,76 @@
+# Advanced Chest X-Ray Configuration - Per-Classifier Hyperparameters
+# Medical imaging is complex, requires strong regularization and careful training
+# All architectures benefit from longer training
+
+dataset: chest-xray
+
+classifiers:
+  - cnn
+  - vgg16
+  - densenet
+  - resnet50
+  - vit
+
+# Default training parameters (for Chest X-Ray)
+training:
+  batch_size: 32
+  epochs: 100
+  lr: 0.0001
+  optimizer: adam
+  momentum: 0.9
+  weight_decay: 0.0001
+  lr_schedule: cosine
+  warmup_epochs: 2
+  dropout: 0.7
+
+# Per-classifier hyperparameters optimized for Chest X-Ray
+per_classifier_training:
+  # CNN: Simpler for medical imaging, needs regularization
+  cnn:
+    dropout: 0.5
+    weight_decay: 0.0001
+    batch_size: 32
+    epochs: 80
+    lr: 0.0002
+    warmup_epochs: 1
+
+  # VGG16: Deep, needs strong regularization for medical data
+  vgg16:
+    dropout: 0.6
+    weight_decay: 0.0001
+    batch_size: 24
+    epochs: 100
+    lr: 0.0001
+    warmup_epochs: 2
+    lr_schedule: cosine
+
+  # DenseNet: Efficient for medical images, dense connections help feature propagation
+  densenet:
+    dropout: 0.6
+    weight_decay: 0.0001
+    batch_size: 32
+    epochs: 120
+    lr: 0.00015
+    warmup_epochs: 3
+    lr_schedule: cosine
+
+  # ResNet50: Stable baseline for medical imaging
+  resnet50:
+    dropout: 0.7
+    weight_decay: 0.0001
+    batch_size: 24
+    epochs: 100
+    lr: 0.0001
+    warmup_epochs: 2
+    lr_schedule: cosine
+
+  # ViT: Transformer for medical imaging, needs careful setup
+  vit:
+    batch_size: 16
+    epochs: 150
+    lr: 0.00008
+    warmup_epochs: 5
+    lr_schedule: cosine
+    dropout: 0.5
+    weight_decay: 0.0001
+    momentum: 0.95

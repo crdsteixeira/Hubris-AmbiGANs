@@ -9,6 +9,10 @@ class ClassifierType(StrEnum):
     cnn = "cnn"
     mlp = "mlp"
     ensemble = "ensemble"
+    vgg16 = "vgg16"
+    densenet = "densenet"
+    resnet50 = "resnet50"
+    vit = "vit"
 
 
 class EnsembleType(StrEnum):
@@ -50,6 +54,12 @@ class DatasetNames(StrEnum):
     fashion_mnist = "fashion-mnist"
     cifar10 = "cifar10"
     chest_xray = "chest-xray"
+    ambiguous_mnist = "ambiguous-mnist"
+    ambiguess_mnist = "ambiguess-mnist"
+    ambiguess_fmnist = "ambiguess-fashion-mnist"
+    companion_mnist = "companion-mnist"
+    companion_fmnist = "companion-fashion-mnist"
+    companion_chest_xray = "companion-chest-xray"
 
     @classmethod
     def valid_dataset(cls, name: str) -> bool:

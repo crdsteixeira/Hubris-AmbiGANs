@@ -213,7 +213,7 @@ def gen_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -
     params = CLDatasetArgs(
         seed=config.test_noise_seed,
         # img_size=config.img_size, (default)
-        n_samples=config.evaluation.n_samples,
+        n_samples=config.evaluation.companion_n_samples,
         out_dir=os.path.join(latest_gan_path, "companion_dataset", "ambi"),
         gan_path=gan_path,
         device=config.device,
@@ -241,13 +241,53 @@ def gen_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -
     subprocess.run(args, check=True, env=os.environ.copy())
 
 
-def run_evaluation(config: ConfigMain, latest_gan_path: str) -> None:
+def run_ambiguity_evaluation(config: ConfigMain, latest_gan_path: str) -> None:
+    """Run ambiguity evaluation CLI with parameters from `config` and `latest_gan_path`."""
+    if config.evaluation is None or config.evaluation.ambiguity is None:
+        raise ValueError("evaluation config is required for run_ambiguity_evaluation")
+
+    gan_id = os.path.basename(latest_gan_path.rstrip("/")).split("_")[-1]
+    config_ambiguity = config.evaluation.ambiguity
+    model_args = [model.value if hasattr(model, "value") else str(model) for model in config_ambiguity.models]
+    dataset_args = [
+        dataset.value if hasattr(dataset, "value") else str(dataset) for dataset in config_ambiguity.datasets
+    ]
+
+    args: list[str] = [
+        sys.executable,
+        "-m",
+        "src.evaluation.evaluation_ambiguity_cli",
+        "--device",
+        str(config.device),
+        "--seed",
+        str(config.test_noise_seed),
+        "--out-dir",
+        os.path.join(latest_gan_path, "evaluation", "ambiguity"),
+        "--data",
+        os.path.join(config.out_dir, config.data_dir),
+        "--models",
+        *model_args,
+        "--datasets",
+        *dataset_args,
+        "--gan-id",
+        gan_id,
+    ]
+
+    subprocess.run(args, check=True, env=os.environ.copy())
+
+
+def run_hubris_evaluation(config: ConfigMain, latest_gan_path: str) -> None:
     """Run evaluation CLI with parameters from `config` and `latest_gan_path`."""
     # Extract GAN ID from path
     gan_id = os.path.basename(latest_gan_path.rstrip("/")).split("_")[-1]
 
-    if not config.evaluation:
-        raise ValueError("evaluation config is required for run_evaluation")
+    if config.evaluation is None:
+        raise ValueError("evaluation config is required for run_hubris_evaluation")
+
+    config_hubris = config.evaluation.hubris
+
+    if not config_hubris:
+        raise ValueError("evaluation config is required for run_hubris_evaluation")
 
     estimator_name = None
     try:
@@ -273,9 +313,9 @@ def run_evaluation(config: ConfigMain, latest_gan_path: str) -> None:
         device=config.device,
         seed=config.test_noise_seed,
         companion_dataroot=os.path.join(latest_gan_path, "companion_dataset"),
-        model=config.evaluation.model,
-        batch_size=config.evaluation.batch_size,
-        epochs=config.evaluation.epochs,
+        models=config_hubris.models,
+        batch_size=config_hubris.batch_size,
+        epochs=config_hubris.epochs,
         out_dir=os.path.join(latest_gan_path, "evaluation"),
         estimator_path=estimator_path,
         dataroot=os.path.join(config.out_dir, config.data_dir),
@@ -284,18 +324,19 @@ def run_evaluation(config: ConfigMain, latest_gan_path: str) -> None:
         neg_class=config.dataset.binary.neg,
     )
 
+    model_args = [model.value if hasattr(model, "value") else str(model) for model in params.models]
     args: list[str] = [
         sys.executable,
         "-m",
-        "src.evaluation.evaluation_cli",
+        "src.evaluation.evaluation_hubris_cli",
         "--device",
         str(params.device),
         "--seed",
         str(params.seed),
         "--companion-data",
         str(params.companion_dataroot),
-        "--model",
-        str(params.model),
+        "--models",
+        *model_args,
         "--batch-size",
         str(params.batch_size),
         "--epochs",
@@ -393,9 +434,13 @@ def main() -> None:
     if config.gen_dataset:
         gen_dataset(config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path)
 
-    # evaluate classifier
-    if config.run_evaluation:
-        run_evaluation(config, latest_gan_path=gan_path)
+    # evaluate companion dataset + SOTA on multiclass image classifiers
+    if config.run_ambiguity_evaluation:
+        run_ambiguity_evaluation(config, latest_gan_path=gan_path)
+
+    # evaluate binary classifier
+    if config.run_hubris_evaluation:
+        run_hubris_evaluation(config, latest_gan_path=gan_path)
 
 
 if __name__ == "__main__":

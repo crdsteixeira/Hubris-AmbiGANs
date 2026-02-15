@@ -13,7 +13,8 @@ gen_pairwise_inception: true
 gen_classifiers: true
 gen_gan: true
 gen_dataset: true
-run_evaluation: false
+run_ambiguity_evaluation: false
+run_hubris_evaluation: false
 
 dataset:
   name: mnist
@@ -74,8 +75,20 @@ train:
             var: 0.10
 
 evaluation:
-  n_samples: 2500
-  model: convnext
-  epochs: 5
-  batch_size: 64
-  
+  companion_n_samples: 2500
+  ambiguity:
+    models:
+      - cnn
+      - vgg16
+      - densenet
+      - resnet50
+      - vit
+    datasets:
+      - ambiguous-mnist
+      - ambiguess-mnist
+      - companion-mnist
+  hubris:
+    models: 
+      - convnext
+    epochs: 10
+    batch_size: 64

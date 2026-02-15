@@ -62,7 +62,7 @@ def load_dataset(params: LoadDatasetParams) -> tuple[Dataset, int, ImageParams]:
         image_size = (image_size[2], image_size[0], image_size[1])
 
     targets = dataset.targets if torch.is_tensor(dataset.targets) else torch.tensor(dataset.targets)
-    num_classes = targets.unique().size()
+    num_classes = targets.unique().size(0)
 
     if params.pos_class is not None and params.neg_class is not None:
         num_classes = 2

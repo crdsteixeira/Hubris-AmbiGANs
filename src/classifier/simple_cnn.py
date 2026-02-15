@@ -2,6 +2,7 @@
 
 import logging
 import math
+from typing import cast
 
 import torch
 from torch import nn
@@ -31,27 +32,33 @@ class Classifier(nn.Module):
         self.blocks = nn.ModuleList()
 
         n_in = nc
-        if isinstance(params.nf, list):
-            for nf in params.nf:
-                # Ensure nf is an int for type safety.
-                assert isinstance(nf, int), f"Expected nf to be an int, got {type(nf)}"
-                self.blocks.append(
-                    nn.Sequential(
-                        nn.Conv2d(n_in, nf, 3, padding="same"),
-                        nn.BatchNorm2d(nf),
-                        nn.ReLU(),
-                        nn.MaxPool2d(2),
-                    )
-                )
-                pool_params = PoolParams(in_size=nh, kernel=2)
-                nh = pool_out(pool_params)
-                nw = pool_out(pool_params)
-                n_in = nf
 
+        # Handle both single integer and list of integers for nf
+        if isinstance(params.nf, int):
+            # Generate filter progression: nf, nf*2, nf*4, etc.
+            filter_sizes = [params.nf, params.nf * 2, params.nf * 4]
+        elif isinstance(params.nf, list) and all(isinstance(n, int) for n in params.nf):
+            filter_sizes = cast(list[int], params.nf)
         else:
-            error = f"Expected params.nf to be a list, got type: {type(params.nf)}"
+            error = f"Expected params.nf to be an int or list, got type: {type(params.nf)}"
             logger.error(error)
             raise TypeError(error)
+
+        for nf in filter_sizes:
+            # Ensure nf is an int for type safety.
+            assert isinstance(nf, int), f"Expected nf to be an int, got {type(nf)}"
+            self.blocks.append(
+                nn.Sequential(
+                    nn.Conv2d(n_in, nf, 3, padding="same"),
+                    nn.BatchNorm2d(nf),
+                    nn.ReLU(),
+                    nn.MaxPool2d(2),
+                )
+            )
+            pool_params = PoolParams(in_size=nh, kernel=2)
+            nh = pool_out(pool_params)
+            nw = pool_out(pool_params)
+            n_in = nf
 
         self.blocks.append(
             nn.Sequential(

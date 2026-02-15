@@ -1,0 +1,29 @@
+# Fashion MNIST Configuration
+# Moderate complexity - balanced learning rate and epochs
+
+dataset: fashion-mnist
+
+classifiers:
+  - cnn
+  - vgg16
+  - densenet
+  - resnet50
+  - vit
+
+training:
+  # Training schedule
+  batch_size: 64
+  epochs: 50
+  
+  # Learning
+  lr: 0.0005
+  optimizer: adam              # adam or sgd
+  momentum: 0.9                # For SGD optimizer
+  weight_decay: 0.00001        # Light L2 regularization
+  
+  # Learning rate schedule
+  lr_schedule: none            # none, cosine, step
+  warmup_epochs: 0             # Optional warmup
+  
+  # Regularization
+  dropout: 0.5                 # Standard dropout

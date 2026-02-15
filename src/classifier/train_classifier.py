@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
+import wandb
 from dotenv import load_dotenv
 from torch import Tensor, nn, optim
 from torch.utils.data import DataLoader
@@ -48,25 +49,33 @@ def evaluate(
 
         with torch.no_grad():
             accuracies = []
-            if C.params.output_method == "identity":
+            if hasattr(C, "params") and C.params.output_method == "identity":
+                # Ensemble with identity output method - evaluate each model
                 for m in C.models:
                     y_hat = m(X, output_feature_maps=False)
                     loss = criterion(y_hat, y)
                     running_accuracy += acc_fun(y_hat, y, avg=False).cpu()
                     running_loss += loss.item() * X.shape[0]
                     accuracies.append(acc_fun(y_hat, y, avg=True).cpu())
-            else:
+            elif hasattr(C, "params"):
+                # Ensemble with other output methods (mean, linear, meta_learner)
                 y_total = C(X, output_feature_maps=True)
                 y_hat = y_total[0]
                 y_c_hat = y_total[-1][-1]  # Get features before last layer
 
                 loss = criterion(y_hat, y)
-
                 running_accuracy += acc_fun(y_hat, y, avg=False).cpu()
                 running_loss += loss.item() * X.shape[0]
 
                 for j in range(y_c_hat.size(-1)):
                     accuracies.append(acc_fun(y_c_hat[:, j], y, avg=True).cpu())
+            else:
+                # Regular classifier (CNN, VGG, DenseNet, ResNet, ViT, etc.)
+                y_hat = C(X)
+                loss = criterion(y_hat, y)
+                running_accuracy += acc_fun(y_hat, y, avg=False).cpu()
+                running_loss += loss.item() * X.shape[0]
+                accuracies.append(acc_fun(y_hat, y, avg=True).cpu())
 
         per_C_accuracy.append(accuracies)
 
@@ -169,6 +178,18 @@ def train(
 
             logger.info(f"{stage.value.capitalize()}: Loss: {val_loss}")
             logger.info(f"{stage.value.capitalize()}: Accuracy: {val_acc}")
+
+            # Log metrics to WandB in real-time
+            wandb.log(
+                {
+                    "epoch": epoch,
+                    "train_loss": train_loss,
+                    "train_accuracy": train_acc,
+                    "val_loss": val_loss,
+                    "val_accuracy": val_acc,
+                }
+            )
+
             # Early stopping and checkpointing logic
             cp_path = handle_checkpointing(
                 C=C,

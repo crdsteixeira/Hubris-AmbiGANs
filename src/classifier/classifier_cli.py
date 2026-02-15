@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 import numpy as np
 import torch
+import wandb
 from dotenv import load_dotenv
 from pydantic import ValidationError
 from torch import nn
@@ -57,6 +58,8 @@ def parse_args() -> CLTrainArgs:
     parser.add_argument(
         "--ensemble_output_method", type=str, required=False, help="Output method for ensemble when applicable"
     )
+    parser.add_argument("--entity", type=str, help="WandB entity name")
+    parser.add_argument("--project", type=str, default="binary-classifiers", help="WandB project name")
 
     # Parse the arguments from command line
     args = parser.parse_args()
@@ -75,7 +78,7 @@ def parse_args() -> CLTrainArgs:
         raise ValidationError(e) from e
 
 
-def main() -> None:
+def main() -> None:  # pylint: disable=too-many-statements
     """Run process to train classifier and ensembles."""
     load_dotenv()
 
@@ -86,6 +89,28 @@ def main() -> None:
     args.seed = np.random.randint(100000) if args.seed is None else args.seed
     setup_reprod(args.seed)
     logger.info(f" > Seed: {args.seed}")
+
+    # Initialize WandB
+    binary_dataset_name = f"{args.dataset_name}.{args.pos_class}v{args.neg_class}"
+    wandb.init(
+        project=args.project,
+        entity=args.entity,
+        name=f"{binary_dataset_name}-{args.c_type}-{args.seed}",
+        config={
+            "dataset": args.dataset_name,
+            "pos_class": args.pos_class,
+            "neg_class": args.neg_class,
+            "classifier": args.c_type,
+            "batch_size": args.batch_size,
+            "epochs": args.epochs,
+            "lr": args.lr,
+            "seed": args.seed,
+            "nf": args.nf,
+            "early_stop": args.early_stop,
+            "early_acc": args.early_acc,
+        },
+        reinit=True,
+    )
 
     # Setup classifiers list (if applicable for ensemble)
     classifiers_nf: int | list[int] | list[list[int]] | None = args.nf
@@ -109,14 +134,14 @@ def main() -> None:
     )
     logger.info(f" > Using dataset: {args.dataset_name}")
 
-    # Determine if binary classification
+    # Determine if binary classification and set dataset directory name
     binary_classification = num_classes == 2
+    binary_dataset_name = f"{args.dataset_name}.{args.pos_class}v{args.neg_class}"
     if binary_classification:
         logger.info(f"\t> Binary classification between {args.pos_class} and {args.neg_class}")
-        binary_dataset_dir = f"{args.dataset_name}.{args.pos_class}v{args.neg_class}"
 
     # Prepare output directory
-    out_dir = os.path.join(args.out_dir, binary_dataset_dir)
+    out_dir = os.path.join(args.out_dir, binary_dataset_name)
 
     # Split dataset into training and validation sets
     train_set, val_set = torch.utils.data.random_split(
@@ -211,6 +236,14 @@ def main() -> None:
     logger.info(f"Test Accuracy: {test_acc}")
     logger.info(f"Test Loss: {test_loss}")
 
+    # Log test metrics to WandB
+    wandb.log(
+        {
+            "test_accuracy": test_acc,
+            "test_loss": test_loss,
+        }
+    )
+
     # Save checkpoint
     cp_path = checkpoint(
         model=best_C,
@@ -239,6 +272,9 @@ def main() -> None:
     logger.info(f"\n > Saved checkpoint to {cp_path}")
     logger.info(f" > Test Accuracy: {test_acc}")
     logger.info(f" > Test Loss: {test_loss}")
+
+    # Finish WandB run
+    wandb.finish()
 
 
 if __name__ == "__main__":
