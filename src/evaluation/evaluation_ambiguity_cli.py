@@ -259,7 +259,7 @@ def compute_top_pairs(_: torch.Tensor, __: torch.Tensor) -> float:
     return 0
 
 
-def generate_fid_stats(
+def generate_fid_stats(  # pylint: disable=too-many-statements
     dataroot: str,
     dataset_name: str,
     batch_size: int = 64,
@@ -321,6 +321,8 @@ def generate_fid_stats(
     if n_samples is not None and len(dataset) > n_samples:
         logger.info(f"Sampling {n_samples} images from {len(dataset)} total")
         indices = np.random.choice(len(dataset), size=n_samples, replace=False)
+        # Convert numpy indices to Python ints (HuggingFace datasets don't accept numpy.int64)
+        indices = indices.tolist()
         dataset = torch.utils.data.Subset(dataset, indices)
     else:
         if n_samples is not None:
@@ -363,12 +365,11 @@ def generate_fid_stats(
             if images.shape[1] != 3:
                 images = images.repeat(1, 3, 1, 1)
 
-            # Images are in [-1, 1] range. FID.update() normalizes them to [0, 1]
             images = images.to(device_str)
 
             # NOTE: Directly update fid.fid with is_real=True to accumulate reference statistics
             # We bypass FID.update() because it always uses is_real=False
-            # Normalize to [0, 1] for InceptionV3
+            # Convert from [-1, 1] to [0, 1] for InceptionV3
             images_normalized = (images + 1.0) / 2.0
             fid.fid.update(images_normalized, is_real=True)
 
@@ -830,10 +831,18 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
         logger.info("  Loading %s model...", classifier_str)
         model = load_model_for_evaluation(config, classifier_str, config.training_dataset)
         model.eval()
+        logger.info("  ✓ Model loaded - checking device placement")
+
+        # Verify model is on correct device
+        device_str = config.device.value if isinstance(config.device, DeviceType) else str(config.device)
+        first_param = next(model.parameters())
+        logger.info(f"    Model parameters are on: {first_param.device}")
+        logger.info(f"    Expected device: {device_str}")
 
         # Load dataset for entropy computation
-        logger.info("  Loading %s dataset...", dataset_str)
+        logger.info("  Loading %s dataset (different from training for varied entropy)...", dataset_str)
         test_dataloader = load_datasets_for_evaluation(config, dataset, batch_size=32)
+        logger.info(f"  ✓ Dataset {dataset_str} loaded - {len(test_dataloader.dataset)} samples")
 
         # Compute classifier-specific metrics (entropy - depends on model predictions)
         logger.info("  Computing classifier-specific metrics...")
@@ -849,8 +858,19 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
                 all_preds.append(outputs.cpu())
 
         all_preds = torch.cat(all_preds)
+        logger.info(
+            f"    Model outputs shape: {all_preds.shape}, min: {all_preds.min():.4f}, max: {all_preds.max():.4f}"
+        )
+
         softmax_preds = torch.softmax(all_preds, dim=1)
+        logger.info(
+            f"    Softmax probs shape: {softmax_preds.shape}, min: {softmax_preds.min():.4f}, max: {softmax_preds.max():.4f}"
+        )
+
+        # IMPORTANT: Entropy MUST be computed fresh for each classifier-dataset pair
+        # Do NOT reuse entropy from previous evaluations
         entropy = compute_entropy(softmax_preds)
+        logger.info(f"    ✓ Computed entropy for {classifier_str} on {dataset_str}: {entropy:.6f}")
 
         # Combine metrics: classifier-specific entropy + dataset-level FID/pymdma
         metrics = {
@@ -875,7 +895,6 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
         # Log metrics to wandb
         log_data = {
             "classifier": classifier_str,
-            "dataset": dataset_str,
             "entropy": metrics["entropy"],
         }
         if "fid" in metrics:
@@ -935,14 +954,20 @@ def run_evaluation_loop(
     for dataset in eval_datasets:
         dataset_str = _enum_to_str(dataset)
 
-        # Step 1: Compute dataset-level metrics once (FID + pymdma)
-        current_step += 1
-        logger.info(f"\n[{current_step}/{total_steps}] Computing dataset-level metrics for {dataset_str}")
+        # Skip computing FID/pymdma metrics if evaluating on training dataset
+        if dataset_str == config.training_dataset:
+            logger.info(f"\nEvaluating on training dataset {dataset_str} (skipping FID/pymdma metrics)")
+            dataset_fid = None
+            dataset_pymdma: dict[str, Any] = {}
+        else:
+            # Step 1: Compute dataset-level metrics once (FID + pymdma)
+            current_step += 1
+            logger.info(f"\n[{current_step}/{total_steps}] Computing dataset-level metrics for {dataset_str}")
 
-        fid_stats_path = find_fid_stats(config.dataroot, dataset_str)
-        dataset_fid, dataset_pymdma = compute_dataset_metrics(
-            config, dataset, fid_stats_path=fid_stats_path, real_features=real_features, extractor=extractor
-        )
+            fid_stats_path = find_fid_stats(config.dataroot, dataset_str)
+            dataset_fid, dataset_pymdma = compute_dataset_metrics(
+                config, dataset, fid_stats_path=fid_stats_path, real_features=real_features, extractor=extractor
+            )
 
         # Step 2: Evaluate each classifier on this dataset using cached metrics
         for classifier in config.models:
@@ -981,6 +1006,12 @@ def main() -> None:  # pylint: disable=too-many-statements
 
     for dataset in eval_datasets:
         dataset_str = _enum_to_str(dataset)
+
+        # Skip FID stats generation if evaluating on training dataset
+        if dataset_str == config.training_dataset:
+            logger.info(f"Skipping FID statistics for {dataset_str} (same as training dataset)")
+            continue
+
         try:
             logger.info(f"Generating FID statistics for {dataset_str}...")
 

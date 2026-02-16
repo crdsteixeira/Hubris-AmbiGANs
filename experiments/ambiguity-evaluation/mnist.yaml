@@ -10,13 +10,14 @@ seed: 42
 datasets:
   training: mnist
   evaluation:
+    #- mnist
     #- ambiguous-mnist
-    #- ambiguess-mnist
+    - ambiguess-mnist
     - companion-mnist
 
 classifiers:
-  - cnn
-  - vgg16
+  #- cnn
+  #- vgg16
   - densenet
   - resnet50
   - vit

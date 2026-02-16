@@ -16,6 +16,62 @@ from src.models import DatasetParams
 logger = logging.getLogger(__name__)
 
 
+class EmpiricalNormalizeToRange(torch.nn.Module):
+    """
+    Custom transform that applies z-score normalization then rescales to [-1, 1] range.
+
+    This handles empirical normalization for datasets with limited dynamic range
+    (e.g., ambiguess-mnist) while maintaining compatibility with FID which expects [-1, 1] input.
+    """
+
+    def __init__(self, mean: float, std: float, clamp_range: float = 3.0) -> None:
+        """
+        Initialize with empirical mean and std.
+
+        Args:
+            mean: Empirical mean for z-score normalization
+            std: Empirical std for z-score normalization
+            clamp_range: Values are clamped to [-clamp_range, clamp_range] before rescaling
+
+        """
+        super().__init__()
+        self.mean = mean
+        self.std = std
+        self.clamp_range = clamp_range
+
+        # Pre-compute rescaling parameters based on [0, 1] input range
+        # This avoids recalculating on every forward pass
+        min_normalized = (0.0 - self.mean) / self.std
+        max_normalized = (1.0 - self.mean) / self.std
+        min_clamped = max(-self.clamp_range, min(min_normalized, self.clamp_range))
+        max_clamped = max(-self.clamp_range, min(max_normalized, self.clamp_range))
+
+        self.mid_point = (min_clamped + max_clamped) / 2.0
+        self.scale_factor = 2.0 / (max_clamped - min_clamped)
+
+    def forward(self, tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Apply z-score normalization and rescale to [-1, 1].
+
+        Args:
+            tensor: Input tensor in [0, 1] range
+
+        Returns:
+            Normalized tensor in [-1, 1] range
+
+        """
+        # Apply z-score normalization: (x - mean) / std
+        normalized = (tensor - self.mean) / self.std
+
+        # Clamp to [-clamp_range, clamp_range] to handle outliers
+        clamped = torch.clamp(normalized, -self.clamp_range, self.clamp_range)
+
+        # Rescale from [min_clamped, max_clamped] to [-1, 1] using pre-computed parameters
+        rescaled = (clamped - self.mid_point) * self.scale_factor
+
+        return rescaled
+
+
 def get_mnist(params: DatasetParams) -> Dataset:
     """Retrieve the MNIST dataset."""
     dataset = torchvision.datasets.MNIST(
@@ -124,28 +180,127 @@ def get_chest_xray(params: DatasetParams) -> Dataset:
 
 def get_ambiguous_mnist(params: DatasetParams) -> Dataset:
     """Retrieve the AmbiguousMNIST dataset."""
-    # TODO
-    raise NotImplementedError(
-        "AmbiguousMNIST loading is not implemented yet. " f"Requested dataroot: {params.dataroot}"
-    )
+    del params  # Not used: ambiguous datasets don't use dataroot or train flags
+    # TODO: select one every 10 samples, since they are repeated 10 times with different labels
+    raise NotImplementedError("AmbiguousMNIST loading is not implemented yet.")
+
+
+class _AmbiguousHFDataset(Dataset):
+    """Generic wrapper for ambiguous datasets from HuggingFace."""
+
+    def __init__(self, hf_dataset: Dataset, transform: Any = None) -> None:
+        """Initialize with HuggingFace dataset and transform."""
+        self.hf_dataset = hf_dataset
+        self.transform = transform
+
+    def __len__(self) -> int:
+        """Return the number of samples in the dataset."""
+        return len(self.hf_dataset)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+        """Retrieve the image and label for the given index."""
+        sample = self.hf_dataset[idx]
+        image = sample["image"]
+
+        # Ensure image is a PIL Image and convert to RGB (same as CompanionDataset)
+        if not isinstance(image, Image.Image):
+            image = Image.fromarray(image) if isinstance(image, np.ndarray) else Image.new("RGB", (28, 28))
+        image = image.convert("RGB")
+
+        if self.transform:
+            image = self.transform(image)
+
+        label = sample["label"]
+        return image, label
+
+    @property
+    def data(self) -> torch.Tensor:
+        """Return all images in the dataset as a tensor stack."""
+        images = []
+        for sample in self.hf_dataset:
+            image = sample["image"]
+            # Ensure image is a PIL Image and convert to RGB
+            if not isinstance(image, Image.Image):
+                image = Image.fromarray(image) if isinstance(image, np.ndarray) else Image.new("RGB", (28, 28))
+            image = image.convert("RGB")
+            if self.transform:
+                image = self.transform(image)
+            images.append(image)
+        return torch.stack(images)
+
+    @property
+    def targets(self) -> torch.Tensor:
+        """Return all labels in the dataset as a tensor."""
+        return torch.tensor([sample["label"] for sample in self.hf_dataset])
+
+
+def _load_ambiguous_hf_dataset(
+    hf_dataset_id: str,
+    transform: torchvision.transforms.Compose,
+    pytesting: bool = False,
+) -> Dataset:
+    """
+    Load an ambiguous dataset from HuggingFace Hub.
+
+    Args:
+        hf_dataset_id: HuggingFace dataset ID (e.g., 'mweiss/mnist_ambiguous')
+        transform: Transform to apply to images
+        pytesting: If True, load only a subset for testing purposes
+
+    Returns:
+        Dataset wrapper with the images and labels
+
+    """
+    # Always use test split for ambiguous datasets
+    # Use trust_remote_code=True for script-based datasets
+    split = "test"
+    if pytesting:
+        split = "test[:10%]"  # Load only 10% for testing
+
+    ds = load_dataset(hf_dataset_id, split=split, trust_remote_code=True)
+    return _AmbiguousHFDataset(ds, transform=transform)
 
 
 def get_ambiguess_mnist(params: DatasetParams) -> Dataset:
-    """Retrieve the Ambiguess MNIST dataset."""
-    # TODO
-    # from datasets import load_dataset
-    # ds = load_dataset("mweiss/mnist_ambiguous")
-    raise NotImplementedError(
-        "Ambiguess MNIST loading is not implemented yet. " f"Requested dataroot: {params.dataroot}"
+    """
+    Retrieve the Ambiguess MNIST dataset from HuggingFace Hub.
+
+    Uses empirically calculated mean and std (0.1214, 0.2219) to account for
+    the lower contrast and dynamic range of the ambiguous dataset compared to
+    standard MNIST (mean=0.1255, std=0.3030).
+
+    Empirical normalization is rescaled to [-1, 1] for FID compatibility.
+    """
+    # Empirical mean and std for ambiguess-mnist (calculated from test set on [0, 1] range)
+    # These account for the inherently lower contrast of ambiguous images
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.Grayscale(num_output_channels=1),
+            torchvision.transforms.ToTensor(),
+            EmpiricalNormalizeToRange(mean=0.121400, std=0.221853, clamp_range=3.0),
+        ]
     )
+    return _load_ambiguous_hf_dataset("mweiss/mnist_ambiguous", transform, params.pytesting)
 
 
 def get_ambiguess_fmnist(params: DatasetParams) -> Dataset:
-    """Retrieve the Ambiguess FMNIST dataset."""
-    # TODO
-    raise NotImplementedError(
-        "Ambiguess FMNIST loading is not implemented yet. " f"Requested dataroot: {params.dataroot}"
+    """
+    Retrieve the Ambiguess FMNIST dataset from HuggingFace Hub.
+
+    Uses empirically calculated mean and std (0.2241, 0.2910) to account for
+    the specific characteristics of the ambiguous fashion-MNIST dataset.
+
+    Empirical normalization is rescaled to [-1, 1] for FID compatibility.
+    """
+    # Empirical mean and std for ambiguess-fmnist (calculated from test set on [0, 1] range)
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.Grayscale(num_output_channels=1),
+            torchvision.transforms.ToTensor(),
+            EmpiricalNormalizeToRange(mean=0.224149, std=0.291023, clamp_range=3.0),
+        ]
     )
+    return _load_ambiguous_hf_dataset("mweiss/fashion_mnist_ambiguous", transform, params.pytesting)
 
 
 class CompanionDataset(Dataset):

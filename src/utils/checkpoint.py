@@ -91,6 +91,9 @@ def construct_classifier_from_checkpoint(
     logger.info(f"\t. Params: {model_params}")
 
     model = construct_classifier(model_params)
+    # Move model to device before loading state dict
+    device_str = device.value if isinstance(device, DeviceType) else str(device)
+    model = model.to(device_str)
     model.load_state_dict(cp["state"])
     model.eval()
 
