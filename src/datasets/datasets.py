@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Any
 
+import ddu_dirty_mnist
 import numpy as np
 import torch
 import torchvision
@@ -181,8 +182,90 @@ def get_chest_xray(params: DatasetParams) -> Dataset:
 def get_ambiguous_mnist(params: DatasetParams) -> Dataset:
     """Retrieve the AmbiguousMNIST dataset."""
     del params  # Not used: ambiguous datasets don't use dataroot or train flags
-    # TODO: select one every 10 samples, since they are repeated 10 times with different labels
-    raise NotImplementedError("AmbiguousMNIST loading is not implemented yet.")
+
+    # Get FILESDIR from environment, default to current directory
+    filesdir = os.environ.get("FILESDIR", ".")
+    data_dir = os.path.join(filesdir, "data")
+
+    # Ensure the data directory exists
+    os.makedirs(data_dir, exist_ok=True)
+
+    ambiguous_mnist_test = ddu_dirty_mnist.AmbiguousMNIST(data_dir, train=False, download=True, device="cpu")
+
+    # Wrapper class to handle deduplication (select one every 10 samples)
+    class _AmbiguousMNISTDataset(Dataset):
+        """
+        Wrapper for AmbiguousMNIST that handles deduplication.
+
+        Rescales z-score normalized data to [-1, 1] range (matching standard PyTorch
+        normalization for MNIST and other datasets). This ensures compatibility with
+        feature extractors and evaluation metrics that expect [-1, 1] normalized images.
+        """
+
+        def __init__(self, dataset: Dataset, step: int = 10) -> None:
+            """Initialize with the dataset and sampling step."""
+            self.dataset = dataset
+            self.step = step
+            # Create indices for every 10th sample
+            self.indices = list(range(0, len(dataset), step))
+
+            # Empirical stats from ddu_dirty_mnist z-normalized data
+            # These values are observed from actual data samples
+            self.data_min = -0.57
+            self.data_max = 2.61
+
+        def _normalize_to_minus1_1(self, tensor: torch.Tensor) -> torch.Tensor:
+            """
+            Normalize z-score normalized tensor to [-1, 1] range using linear scaling.
+
+            Maps the empirical data range to [-1, 1] to match standard PyTorch
+            normalization (Normalize((0.5,), (0.5,))) used for MNIST and other datasets.
+            This ensures features extracted from ambiguous-mnist are comparable to
+            those from standard MNIST.
+            """
+            # Linear rescaling from [data_min, data_max] to [0, 1]
+            normalized_01 = (tensor - self.data_min) / (self.data_max - self.data_min)
+            # Clip to [0, 1] in case of outliers
+            normalized_01 = torch.clamp(normalized_01, 0.0, 1.0)
+            # Convert from [0, 1] to [-1, 1]: 2*x - 1
+            return 2.0 * normalized_01 - 1.0
+
+        def __len__(self) -> int:
+            """Return the number of deduplicated samples."""
+            return len(self.indices)
+
+        def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+            """Retrieve the image and label for the given index."""
+            actual_idx = self.indices[idx]
+            image, label = self.dataset[actual_idx]
+            # Normalize image to [-1, 1] to match standard MNIST normalization
+            return self._normalize_to_minus1_1(image), label
+
+        @property
+        def data(self) -> torch.Tensor:
+            """Return all images in the dataset as a tensor stack."""
+            images = []
+            for idx in self.indices:
+                image, _ = self.dataset[idx]
+                if isinstance(image, torch.Tensor):
+                    # Normalize to [-1, 1]
+                    images.append(self._normalize_to_minus1_1(image))
+                else:
+                    # Convert to tensor if not already
+                    tensor = torch.from_numpy(np.array(image))
+                    images.append(self._normalize_to_minus1_1(tensor))
+            return torch.stack(images)
+
+        @property
+        def targets(self) -> torch.Tensor:
+            """Return all labels in the dataset as a tensor."""
+            labels = []
+            for idx in self.indices:
+                _, label = self.dataset[idx]
+                labels.append(label)
+            return torch.tensor(labels)
+
+    return _AmbiguousMNISTDataset(ambiguous_mnist_test, step=10)
 
 
 class _AmbiguousHFDataset(Dataset):
