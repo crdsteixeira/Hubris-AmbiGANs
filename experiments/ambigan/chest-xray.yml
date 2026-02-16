@@ -5,17 +5,18 @@ out_dir: out
 data_dir: data
 fixed_noise: 128
 test_noise_seed: 15
-device: cuda
-num_workers: 0
+device: cuda:1å
 
 # Number of runs to perform using same parameters but different seeds.
-num_runs: 3
+num_runs: 1
 
 # Configuration
 gen_test_noise: true
 gen_pairwise_inception: true
 gen_classifiers: true
 gen_gan: true
+gen_dataset: true
+run_hubris_evaluation: true
 
 # Dataset parameters, including positive and negative class.
 dataset:
@@ -26,10 +27,10 @@ dataset:
 
 # Classifier list to be generated.
 classifiers:
-  - name: ensemble_mean_32_chestxray_200_balanced_128
+  - name: ensemble_mean_32_chestxray_100_balanced_128
     c_type: ensemble
     batch_size: 800
-    epochs: 200
+    epochs: 100 # old 200
     lr: 0.001
     nf: 50
     seed: 32
@@ -39,12 +40,8 @@ classifiers:
 # Seed parameters for each run (step1 and step2).
 step_1_seeds:
   - 42
-  - 43
-  - 44
 step_2_seeds:
   - 34
-  - 35
-  - 36
 
 # GAN model parameters
 model:
@@ -67,30 +64,31 @@ optimizer:
 # GAN training parameters
 train:
   step_1:
-    epochs: 100
-    checkpoint_every: 100
+    epochs: 50
+    checkpoint_every: 10
     disc_iters: 1
     batch_size: 32
   step_2:
     epochs: 50
-    checkpoint_every: 50
+    checkpoint_every: 10
     disc_iters: 1
     batch_size: 32
     step_1_epochs:
       - last
     classifier:
-      - ensemble_mean_32_chestxray_200_balanced_128
+      - ensemble_mean_32_chestxray_100_balanced_128
     weight:
       - gaussian:
           - alpha: 1.50
-            var: 0.01
-          - alpha: 0.50
-            var: 0.01
-          - alpha: 1.00
-            var: 0.01
-          - alpha: 1.50
-            var: 0.10
-          - alpha: 0.50
-            var: 0.10
-          - alpha: 1.00
-            var: 0.10
+            var: 0.1
+
+evaluation:
+  companion_n_samples: 5000
+  hubris:
+    models: 
+      - convnext
+      - vit
+      - efficientnetv2
+    epochs: 10
+    batch_size: 64
+  

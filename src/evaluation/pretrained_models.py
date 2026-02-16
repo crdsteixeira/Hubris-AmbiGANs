@@ -15,6 +15,7 @@ from transformers import (
     ConvNextConfig,
     ConvNextForImageClassification,
     ConvNextImageProcessor,
+    EfficientNetConfig,
     ViTConfig,
 )
 
@@ -110,4 +111,22 @@ class ViT(HuggingFaceModel):
         model = AutoModelForImageClassification.from_pretrained(
             "NeuronZero/CXR-Classifier", config=config, ignore_mismatched_sizes=True
         )
+        return processor, model
+
+
+class EfficientNetV2(HuggingFaceModel):
+    """EfficientNetV2 wrapper class."""
+
+    def __init__(self) -> None:
+        """EfficientNetV2 wrapper initialization."""
+        super().__init__()
+        self.processor, self.model = self._load_efficientnetv2()
+
+    def _load_efficientnetv2(self) -> tuple[AutoImageProcessor, AutoModelForImageClassification]:
+        """Load EfficientNetV2 model from HuggingFace Hub."""
+        model_id = "google/efficientnet-b2"
+        config = EfficientNetConfig.from_pretrained(model_id)
+        config.num_labels = 1
+        processor = AutoImageProcessor.from_pretrained(model_id)
+        model = AutoModelForImageClassification.from_pretrained(model_id, config=config, ignore_mismatched_sizes=True)
         return processor, model

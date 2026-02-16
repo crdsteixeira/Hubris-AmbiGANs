@@ -6,6 +6,7 @@ import logging
 import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -20,7 +21,7 @@ from tqdm import tqdm
 
 from src.datasets.load import load_dataset
 from src.enums import DeviceType, PretrainedModels
-from src.evaluation.pretrained_models import ConvNext, ViT
+from src.evaluation.pretrained_models import ConvNext, EfficientNetV2, ViT
 from src.metrics.accuracy import binary_accuracy
 from src.metrics.hubris import Hubris
 from src.models import CLEvaluationArgs, LoadDatasetParams
@@ -234,13 +235,133 @@ def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, Dat
     return train_dataloader, test_dataloader, ambi_dataloader
 
 
+def construct_model_path(config: CLEvaluationArgs, model_name: str) -> Path:
+    """
+    Construct the finetuned model save path.
+
+    Args:
+        config: Evaluation configuration
+        model_name: Name of the model (e.g., 'convnext', 'vit')
+
+    Returns:
+        Path object pointing to the model directory
+
+    """
+    filesdir = os.environ.get("FILESDIR", "./data")
+    model_dir = (
+        Path(filesdir)
+        / "models"
+        / "finetuned"
+        / f"{config.dataset_name}.{config.pos_class}v{config.neg_class}"
+        / model_name
+    )
+    return model_dir
+
+
+def model_exists(config: CLEvaluationArgs, model_name: str) -> bool:
+    """Check if a finetuned model already exists."""
+    model_dir = construct_model_path(config, model_name)
+    # checkpoint() appends model_name, creating model_dir/{model_name}/classifier.pth
+    checkpoint_path = model_dir / model_name / "classifier.pth"
+    # Check if checkpoint file exists
+    exists = checkpoint_path.exists()
+    logger.info("Checking for model at: %s (exists: %s)", checkpoint_path, exists)
+    return exists
+
+
+def load_finetuned_model(
+    config: CLEvaluationArgs,
+    model_name: str,
+    device: str,
+) -> nn.Module:
+    """Load a previously finetuned model from disk."""
+    model_dir = construct_model_path(config, model_name)
+    # checkpoint() appends model_name, creating model_dir/{model_name}/
+    model_checkpoint_dir = model_dir / model_name
+    logger.info("Loading finetuned model from: %s", model_checkpoint_dir)
+
+    checkpoint_file = model_checkpoint_dir / "classifier.pth"
+    if not checkpoint_file.exists():
+        raise FileNotFoundError(f"Model checkpoint not found at {checkpoint_file}")
+
+    device_type = DeviceType(device) if isinstance(device, str) else device
+
+    # Load checkpoint
+    checkpoint_data = torch.load(
+        checkpoint_file, map_location=str(device_type.value if isinstance(device_type, DeviceType) else device_type)
+    )
+
+    # If checkpoint has trainer params (old style), use construct_classifier_from_checkpoint
+    if (
+        checkpoint_data.get("params")
+        and isinstance(checkpoint_data["params"], dict)
+        and "type" in checkpoint_data["params"]
+    ):
+        model, _, _, _, _ = construct_classifier_from_checkpoint(str(model_checkpoint_dir), device=device_type)
+    else:
+        # For pretrained models, create new instance and load state_dict
+        if model_name == "convnext":
+            model = ConvNext()
+        elif model_name == "vit":
+            model = ViT()
+        elif model_name == "efficientnetv2":
+            model = EfficientNetV2()
+        else:
+            raise ValueError(f"Unknown pretrained model: {model_name}")
+
+        # Load the state_dict into the underlying model
+        device_str = device_type.value if isinstance(device_type, DeviceType) else str(device_type)
+
+        # Try loading with strict=False to handle both old and new checkpoint formats
+        state_dict = checkpoint_data["state"]
+
+        # If keys have "model." prefix, we need to remove it or load into wrapper instead
+        if any(k.startswith("model.") for k in state_dict.keys()):
+            # Old format: load into the wrapper
+            model.load_state_dict(state_dict, strict=False)
+        else:
+            # New format: load into the inner model
+            model.model.load_state_dict(state_dict, strict=False)
+
+        model.model.to(device_str)
+        model.model.eval()
+
+    return model
+
+
 def train_model(
     model_type: PretrainedModels,
     epochs: int,
     device: DeviceType,
     train_dataloader: DataLoader,
+    config: CLEvaluationArgs,
 ) -> nn.Module:
-    """Train or load pretrained model."""
+    """
+    Train or load pretrained model.
+
+    If a finetuned model already exists for this dataset/class configuration,
+    it will be loaded instead of retraining.
+
+    Args:
+        model_type: Type of model to train/load
+        epochs: Number of epochs for training
+        device: Device to use for training
+        train_dataloader: DataLoader for training data
+        config: Evaluation configuration
+
+    Returns:
+        The trained or loaded model
+
+    """
+    model_name = model_type.value
+
+    # Check if finetuned model already exists
+    if model_exists(config, model_name):
+        logger.info("Finetuned model found for %s. Loading from disk...", model_name)
+        model = load_finetuned_model(config, model_name, device)
+        return model
+
+    # Train new model
     logger.info("Retraining model %s...", model_type.value)
     if model_type == PretrainedModels.convnext:
         model = ConvNext()
@@ -248,8 +369,29 @@ def train_model(
     elif model_type == PretrainedModels.vit:
         model = ViT()
         model.retrain(train_dataloader, epochs=epochs, device=device)
+    elif model_type == PretrainedModels.efficientnetv2:
+        model = EfficientNetV2()
+        model.retrain(train_dataloader, epochs=epochs, device=device)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
+
+    # Save the trained model
+    model_dir = construct_model_path(config, model_name)
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    # For pretrained models, save state_dict directly
+    model_checkpoint_dir = model_dir / model_name
+    model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Saving finetuned model to: %s", model_checkpoint_dir)
+
+    # Save state dict and metadata (save wrapper state_dict to maintain compatibility)
+    save_dict = {
+        "name": model_name,
+        "state": model.state_dict(),  # Save wrapper state_dict for compatibility
+    }
+    torch.save(save_dict, model_checkpoint_dir / "classifier.pth")
+
     return model
 
 
@@ -290,8 +432,8 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
         # Initialize wandb for this model-dataset pair
         setup_wandb_for_model(config, model_enum, gan_id, config.seed)
 
-        # Train model
-        model = train_model(model_enum, config.epochs, config.device, train_dataloader)
+        # Train or load model
+        model = train_model(model_enum, config.epochs, config.device, train_dataloader, config)
 
         df = pd.DataFrame()
         df = pd.concat((df, evaluate(config, model, test_dataloader, name=f"{config.dataset_name} Original")))

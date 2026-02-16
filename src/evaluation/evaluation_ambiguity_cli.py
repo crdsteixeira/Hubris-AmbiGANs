@@ -214,7 +214,19 @@ def load_datasets_for_evaluation(
         )
     )
 
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    # Use custom collate function for datasets with ground truth labels (ambiguess, companion)
+    # This preserves labels as lists instead of converting to tensors
+    collate_fn = None
+    if dataset_name in (
+        DatasetNames.ambiguess_mnist,
+        DatasetNames.ambiguess_fmnist,
+        DatasetNames.companion_mnist,
+        DatasetNames.companion_fmnist,
+        DatasetNames.companion_chest_xray,
+    ):
+        collate_fn = collate_with_ground_truth
+
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
     logger.info("  ✓ Loaded %s with %d classes", dataset_str, num_classes)
 
     return test_dataloader
@@ -243,20 +255,74 @@ def compute_entropy(predictions: torch.Tensor) -> float:
     return entropy.mean().item()
 
 
-def compute_top_pairs(_: torch.Tensor, __: torch.Tensor) -> float:
+def collate_with_ground_truth(batch: list[tuple[Any, Any]]) -> tuple[torch.Tensor, list]:
     """
-    Compute top pairs from classifier predictions (softmax probabilities).
+    Preserve ground truth labels as lists in batch collation.
+
+    For ambiguous datasets (ambiguess, companion), labels are lists of class indices.
+    This collate function stacks images into a tensor but keeps labels as a list of lists.
 
     Args:
-        _: Tensor of shape (n_samples, n_classes) with probabilities
-        __: Tensor of shape (n_samples,) with true class labels
+        batch: List of (image, label) tuples from the dataset.
+
     Returns:
-        Top pairs metric (e.g., difference between top 2 probabilities)
+        Tuple of (stacked_images, list_of_labels).
 
     """
-    # TODO implement
+    images = []
+    labels = []
 
-    return 0
+    for image, label in batch:
+        images.append(image)
+        labels.append(label)
+
+    # Stack images into a tensor
+    stacked_images = torch.stack(images)
+
+    # Keep labels as a list (don't convert to tensor)
+    # This preserves list[list[int]] for ambiguous datasets
+    return stacked_images, labels
+
+
+def compute_top_pairs(predictions: torch.Tensor, ground_truth: list[list[int]]) -> float:
+    """
+    Compute top pairs metric for ambiguous datasets.
+
+    For each sample, checks if the two most likely predicted classes equal
+    the two true classes (i.e., the set of top 2 predictions matches the set
+    of ground truth classes). Returns the percentage of inputs where this is true.
+    Fom paper: "Generating and detecting true ambiguity: a forgotten danger in DNN supervision testing"
+
+    Args:
+        predictions: Tensor of shape (n_samples, n_classes) with softmax probabilities
+        ground_truth: List of lists where each element is a list of ground truth class indices
+                     (e.g., [[0, 4], [2, 7], ...])
+
+    Returns:
+        Percentage of inputs where top 2 predictions equal the ground truth classes
+
+    """
+    if len(predictions) != len(ground_truth):
+        logger.warning(f"Mismatch: got {len(predictions)} predictions but {len(ground_truth)} ground truth labels")
+        return 0.0
+
+    # Get top 2 predictions for each sample
+    _, top_2_indices = torch.topk(predictions, k=2, dim=1)
+    top_2_indices = top_2_indices.cpu().numpy()
+
+    # Count exact matches between top 2 predictions and ground truth
+    matches = 0
+    for top_2, gt in zip(top_2_indices, ground_truth):
+        if not gt:  # Skip if no ground truth
+            continue
+
+        # Check if the set of top 2 predictions equals the set of ground truth classes
+        # Order doesn't matter, only set equality
+        if set(top_2) == set(gt):
+            matches += 1
+
+    # Return percentage of exact matches
+    return float(matches / len(ground_truth) * 100) if ground_truth else 0.0
 
 
 def generate_fid_stats(  # pylint: disable=too-many-statements
@@ -465,7 +531,7 @@ def compute_fid_metric(
     return fid_score
 
 
-def compute_evaluation_metrics(
+def compute_evaluation_metrics(  # noqa: C901
     model: torch.nn.Module,
     dataloader: DataLoader,
     device: DeviceType | str,
@@ -496,13 +562,15 @@ def compute_evaluation_metrics(
     model.eval()
     all_preds = []
     all_images = []
+    all_labels = []
 
     with torch.no_grad():
-        for images, _ in dataloader:
+        for images, labels in dataloader:
             images = images.to(device_str)
             outputs = model(images)
             all_preds.append(outputs.cpu())
             all_images.append(images.cpu())
+            all_labels.append(labels)
 
     all_preds = torch.cat(all_preds)
     all_images = torch.cat(all_images)
@@ -516,6 +584,20 @@ def compute_evaluation_metrics(
     metrics = {
         "entropy": entropy,
     }
+
+    # Compute top_pairs metric if ground truth labels are available (ambiguess/companion datasets)
+    # Check if labels are lists (ground truth class lists) rather than single integers
+    if all_labels and isinstance(all_labels[0], list):
+        # Flatten all ground truth labels
+        ground_truth = []
+        for label_batch in all_labels:
+            if isinstance(label_batch, torch.Tensor):
+                ground_truth.extend(label_batch.cpu().numpy().tolist())
+            else:
+                ground_truth.extend(label_batch)
+
+        top_pairs = compute_top_pairs(softmax_preds, ground_truth)
+        metrics["top_pairs"] = top_pairs
 
     # Compute FID if stats file is available
     if fid_stats_path is not None:
@@ -597,19 +679,45 @@ def extract_features(images: torch.Tensor, device: DeviceType | str, extractor: 
         raise
 
 
-def extract_training_features(config: "CLAmbiguityArgs", device: DeviceType | str) -> tuple[np.ndarray, object]:
+def extract_training_features(
+    config: "CLAmbiguityArgs", device: DeviceType | str, eval_dataset_name: str | None = None
+) -> tuple[np.ndarray, object]:
     """
     Extract features from the real training dataset to use as reference for pymdma.
 
     Args:
         config: Configuration containing dataroot and training dataset info
         device: Device to use for computation
+        eval_dataset_name: Name of the evaluation dataset. If provided and different from training dataset,
+                          the number of training samples will match the evaluation dataset size.
+                          If None or same as training dataset, defaults to 10k samples.
 
     Returns:
         Tuple of (feature array from training dataset, reusable extractor model)
 
     """
     training_dataset_str = config.training_dataset
+
+    # Determine number of training samples to extract
+    n_samples = 10000  # Default
+    if eval_dataset_name is not None and eval_dataset_name != training_dataset_str:
+        # Load evaluation dataset to determine its size
+        try:
+            eval_dataset, _, _ = load_dataset(
+                LoadDatasetParams(
+                    dataroot=config.dataroot,
+                    dataset_name=DatasetNames(eval_dataset_name),
+                    train=False,
+                    pytesting=False,
+                    pos_class=None,
+                    neg_class=None,
+                )
+            )
+            if hasattr(eval_dataset, "__len__"):
+                n_samples = len(eval_dataset)
+                logger.info(f"Using {n_samples} training samples to match evaluation dataset {eval_dataset_name}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning(f"Failed to determine evaluation dataset {eval_dataset_name} size, using 10k: {e}")
 
     logger.info("Extracting features from training dataset (%s) for pymdma reference...", training_dataset_str)
 
@@ -625,8 +733,7 @@ def extract_training_features(config: "CLAmbiguityArgs", device: DeviceType | st
         )
     )
 
-    # Sample down to 10k images for efficiency
-    n_samples = 10000
+    # Sample down to the determined number of images
     if hasattr(train_dataset, "__len__"):
         total_samples: int | float = len(train_dataset)
     else:
@@ -783,7 +890,7 @@ def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-stateme
     return fid_score, pymdma_metrics
 
 
-def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statements  # noqa: C901
+def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches  # noqa: C901
     config: "CLAmbiguityArgs",
     classifier: ClassifierType,
     dataset: DatasetNames,
@@ -877,6 +984,26 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
             "entropy": entropy,
         }
 
+        # Compute top_pairs metric if ground truth is available (ambiguess/companion datasets)
+        # Collect ground truth from dataloader
+        all_labels = []
+        for _, labels in test_dataloader:
+            all_labels.append(labels)
+
+        ground_truth = None
+        if all_labels and isinstance(all_labels[0], list):
+            # Flatten all ground truth labels
+            ground_truth = []
+            for label_batch in all_labels:
+                if isinstance(label_batch, torch.Tensor):
+                    ground_truth.extend(label_batch.cpu().numpy().tolist())
+                else:
+                    ground_truth.extend(label_batch)
+
+            top_pairs = compute_top_pairs(softmax_preds, ground_truth)
+            metrics["top_pairs"] = top_pairs
+            logger.info(f"    ✓ Computed top_pairs for {classifier_str} on {dataset_str}: {top_pairs:.6f}")
+
         # Add pre-computed dataset-level metrics (same for all classifiers)
         if dataset_fid is not None:
             metrics["fid"] = dataset_fid
@@ -884,6 +1011,8 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
 
         # Log results
         log_msg = f"  ✓ Metrics computed - Entropy: {metrics['entropy']:.4f}"
+        if "top_pairs" in metrics:
+            log_msg += f", Top Pairs: {metrics['top_pairs']:.4f}"
         if "fid" in metrics:
             log_msg += f", FID: {metrics['fid']:.4f}"
 
@@ -897,6 +1026,8 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
             "classifier": classifier_str,
             "entropy": metrics["entropy"],
         }
+        if "top_pairs" in metrics:
+            log_data["top_pairs"] = metrics["top_pairs"]
         if "fid" in metrics:
             log_data["fid"] = metrics["fid"]
         for metric_name in PYMDMA_METRIC_NAMES:
@@ -932,8 +1063,6 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
 def run_evaluation_loop(
     config: "CLAmbiguityArgs",
     eval_datasets: list,
-    real_features: np.ndarray | None,
-    extractor: Any = None,
 ) -> None:
     """
     Run the evaluation loop for all models on all datasets.
@@ -944,12 +1073,13 @@ def run_evaluation_loop(
     Args:
         config: Configuration with models and dataset info
         eval_datasets: List of datasets to evaluate on
-        real_features: Optional reference features for pymdma metrics
-        extractor: Optional cached feature extractor to avoid recreating it
 
     """
     total_steps = len(eval_datasets) * (1 + len(config.models))  # 1 dataset-level + N classifiers
     current_step = 0
+
+    # Create feature extractor once and reuse it across datasets
+    extractor = None
 
     for dataset in eval_datasets:
         dataset_str = _enum_to_str(dataset)
@@ -959,7 +1089,16 @@ def run_evaluation_loop(
             logger.info(f"\nEvaluating on training dataset {dataset_str} (skipping FID/pymdma metrics)")
             dataset_fid = None
             dataset_pymdma: dict[str, Any] = {}
+            real_features = None
         else:
+            # Extract training features for this specific evaluation dataset
+            # Number of training samples will match the evaluation dataset size
+            try:
+                real_features, extractor = extract_training_features(config, config.device, dataset_str)
+            except (RuntimeError, OSError, ValueError) as e:
+                logger.warning("Failed to extract training features for %s: %s", dataset_str, e)
+                real_features = None
+
             # Step 1: Compute dataset-level metrics once (FID + pymdma)
             current_step += 1
             logger.info(f"\n[{current_step}/{total_steps}] Computing dataset-level metrics for {dataset_str}")
@@ -1060,17 +1199,9 @@ def main() -> None:  # pylint: disable=too-many-statements
     logger.info("PHASE 2: Evaluation")
     logger.info(separator)
 
-    # Extract real training features once for pymdma comparison
-    logger.info("Extracting reference features from training dataset...")
-    extractor = None
-    try:
-        real_features, extractor = extract_training_features(config, config.device)
-    except (RuntimeError, OSError, ValueError) as e:
-        logger.warning("Failed to extract training features for pymdma: %s", e)
-        real_features = None
-        extractor = None
-
-    run_evaluation_loop(config, eval_datasets, real_features, extractor)
+    # Run evaluation loop - training features will be extracted per evaluation dataset
+    # with size matching the evaluation dataset (or 10k if evaluating on training dataset itself)
+    run_evaluation_loop(config, eval_datasets)
 
     logger.info(separator)
     logger.info("Ambiguity evaluation complete")

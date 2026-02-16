@@ -138,3 +138,4 @@ class PretrainedModels(StrEnum):
 
     convnext = "convnext"
     vit = "vit"
+    efficientnetv2 = "efficientnetv2"

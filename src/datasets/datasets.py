@@ -268,6 +268,24 @@ def get_ambiguous_mnist(params: DatasetParams) -> Dataset:
     return _AmbiguousMNISTDataset(ambiguous_mnist_test, step=10)
 
 
+def _extract_ground_truth_from_p_label(p_label: list[float] | np.ndarray) -> list[int]:
+    """
+    Extract ground truth class labels from probability distribution.
+
+    Args:
+        p_label: List or array of probabilities (e.g., [0.5, 0, 0, 0, 0.5, 0]).
+
+    Returns:
+        List of class indices with non-zero probability (e.g., [0, 4]).
+
+    """
+    try:
+        return [int(i) for i, prob in enumerate(p_label) if prob > 0]
+    except (TypeError, ValueError) as e:
+        logger.warning(f"Could not extract ground truth from p_label: {e}")
+        return []
+
+
 class _AmbiguousHFDataset(Dataset):
     """Generic wrapper for ambiguous datasets from HuggingFace."""
 
@@ -280,8 +298,8 @@ class _AmbiguousHFDataset(Dataset):
         """Return the number of samples in the dataset."""
         return len(self.hf_dataset)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
-        """Retrieve the image and label for the given index."""
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, list[int]]:
+        """Retrieve the image and ground truth labels for the given index."""
         sample = self.hf_dataset[idx]
         image = sample["image"]
 
@@ -293,8 +311,9 @@ class _AmbiguousHFDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        label = sample["label"]
-        return image, label
+        # Extract ground truth from p_label (indices with non-zero probability)
+        ground_truth = _extract_ground_truth_from_p_label(sample.get("p_label", []))
+        return image, ground_truth
 
     @property
     def data(self) -> torch.Tensor:
@@ -312,9 +331,9 @@ class _AmbiguousHFDataset(Dataset):
         return torch.stack(images)
 
     @property
-    def targets(self) -> torch.Tensor:
-        """Return all labels in the dataset as a tensor."""
-        return torch.tensor([sample["label"] for sample in self.hf_dataset])
+    def targets(self) -> list[list[int]]:
+        """Return all ground truth labels in the dataset as a list of lists."""
+        return [_extract_ground_truth_from_p_label(sample.get("p_label", [])) for sample in self.hf_dataset]
 
 
 def _load_ambiguous_hf_dataset(
@@ -389,23 +408,25 @@ def get_ambiguess_fmnist(params: DatasetParams) -> Dataset:
 class CompanionDataset(Dataset):
     """Custom dataset class for handling companion datasets from multiple GAN subsets."""
 
-    def __init__(self, image_paths: list[str], transform: Any = None) -> None:
+    def __init__(self, image_paths: list[str], labels: list[list[int]] | None = None, transform: Any = None) -> None:
         """
-        Initialize the companion dataset with image paths and optional transform.
+        Initialize the companion dataset with image paths, optional labels, and optional transform.
 
         Args:
             image_paths: List of full paths to image files.
+            labels: List of ground truth labels corresponding to each image.
             transform: Optional torchvision transform to apply to images.
 
         """
         self.image_paths = image_paths
+        self.labels = labels if labels is not None else [[0] for _ in image_paths]
         self.transform = transform
 
     def __len__(self) -> int:
         """Return the number of images in the dataset."""
         return len(self.image_paths)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, list[int]]:
         """
         Load and return the image at the given index.
 
@@ -413,7 +434,7 @@ class CompanionDataset(Dataset):
             idx: Index of the image to load.
 
         Returns:
-            Tuple of (image tensor, dummy label).
+            Tuple of (image tensor, ground truth label list).
 
         """
         image = Image.open(self.image_paths[idx]).convert("RGB")
@@ -421,7 +442,7 @@ class CompanionDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        return image, 0
+        return image, self.labels[idx]
 
     @property
     def data(self) -> torch.Tensor:
@@ -436,11 +457,46 @@ class CompanionDataset(Dataset):
 
     @property
     def targets(self) -> torch.Tensor:
-        """Return dummy targets as torch tensor with all zeros for compatibility."""
-        return torch.zeros(len(self.image_paths), dtype=torch.long)
+        """Return targets as torch tensor with ground truth labels."""
+        return torch.tensor(self.labels, dtype=torch.long)
 
 
-def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples_per_subset: int = 200) -> list[str]:
+def _parse_ground_truth_from_dirname(dirname: str, dataset_name: str) -> list[int]:
+    """
+    Extract ground truth class labels from directory name.
+
+    Args:
+        dirname: Directory name (e.g., 'mnist-4v9' or 'mnist.4v9').
+        dataset_name: Name of the dataset (e.g., 'mnist').
+
+    Returns:
+        List of class labels (e.g., [4, 9]).
+
+    """
+    # Remove dataset prefix (e.g., 'mnist-' or 'mnist.')
+    prefix_dash = f"{dataset_name}-"
+    prefix_dot = f"{dataset_name}."
+
+    if dirname.startswith(prefix_dash):
+        class_str = dirname[len(prefix_dash) :]
+    elif dirname.startswith(prefix_dot):
+        class_str = dirname[len(prefix_dot) :]
+    else:
+        logger.warning(f"Could not parse ground truth from directory: {dirname}")
+        return []
+
+    # Split by 'v' to get individual classes (e.g., '4v9' -> ['4', '9'])
+    try:
+        classes = [int(c) for c in class_str.split("v")]
+        return classes
+    except ValueError:
+        logger.warning(f"Could not parse class labels from: {class_str}")
+        return []
+
+
+def _find_companion_dataset_images(  # noqa: C901
+    dataroot: str, dataset_name: str, n_samples_per_subset: int = 200
+) -> tuple[list[str], list[list[int]]]:
     """
     Find and collect companion dataset images from all GAN subsets of a dataset.
 
@@ -450,7 +506,8 @@ def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples_p
         n_samples_per_subset: Number of random images to select per class subset (default: 200).
 
     Returns:
-        List of paths to randomly selected companion dataset images (200 per subset).
+        Tuple of (list of image paths, list of ground truth labels for each image).
+        Where each element in the labels list corresponds to the classes in the companion subset.
 
     Raises:
         ValueError: If no companion datasets are found.
@@ -466,6 +523,7 @@ def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples_p
         raise ValueError(f"AmbiGAN root directory not found at {gan_root}")
 
     all_images = []
+    all_labels = []
 
     # Find all subdirectories matching the pattern {dataset_name}-*
     for entry in os.listdir(gan_root):
@@ -473,6 +531,12 @@ def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples_p
 
         # Check if this is a subdirectory for the correct dataset
         if not os.path.isdir(subset_dir) or not entry.startswith(f"{dataset_name}-"):
+            continue
+
+        # Parse ground truth from directory name
+        ground_truth = _parse_ground_truth_from_dirname(entry, dataset_name)
+        if not ground_truth:
+            logger.warning(f"Skipping {entry}: could not parse ground truth labels")
             continue
 
         # Find the most recent run (subdirectory) within this subset
@@ -517,7 +581,9 @@ def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples_p
             else:
                 selected_from_subset = list(np.random.choice(image_files, size=n_samples_per_subset, replace=False))
 
+            # Add images and their corresponding ground truth labels
             all_images.extend(selected_from_subset)
+            all_labels.extend([ground_truth] * len(selected_from_subset))
 
         except (OSError, ValueError) as e:
             logger.warning(f"Error processing subset {entry}: {e}")
@@ -528,12 +594,12 @@ def _find_companion_dataset_images(dataroot: str, dataset_name: str, n_samples_p
 
     logger.info(f"Total companion images collected: {len(all_images)}")
 
-    return all_images
+    return all_images, all_labels
 
 
 def get_companion_mnist(params: DatasetParams) -> Dataset:
-    """Retrieve the Companion MNIST dataset."""
-    image_paths = _find_companion_dataset_images(params.dataroot, "mnist")
+    """Retrieve the Companion MNIST dataset with ground truth labels."""
+    image_paths, labels = _find_companion_dataset_images(params.dataroot, "mnist")
 
     transform = torchvision.transforms.Compose(
         [
@@ -543,12 +609,12 @@ def get_companion_mnist(params: DatasetParams) -> Dataset:
         ]
     )
 
-    return CompanionDataset(image_paths, transform=transform)
+    return CompanionDataset(image_paths, labels=labels, transform=transform)
 
 
 def get_companion_fmnist(params: DatasetParams) -> Dataset:
-    """Retrieve the Companion FMNIST dataset."""
-    image_paths = _find_companion_dataset_images(params.dataroot, "fashion_mnist")
+    """Retrieve the Companion FMNIST dataset with ground truth labels."""
+    image_paths, labels = _find_companion_dataset_images(params.dataroot, "fashion_mnist")
 
     transform = torchvision.transforms.Compose(
         [
@@ -558,12 +624,12 @@ def get_companion_fmnist(params: DatasetParams) -> Dataset:
         ]
     )
 
-    return CompanionDataset(image_paths, transform=transform)
+    return CompanionDataset(image_paths, labels=labels, transform=transform)
 
 
 def get_companion_chest_xray(params: DatasetParams) -> Dataset:
-    """Retrieve the Companion Chest X-ray dataset."""
-    image_paths = _find_companion_dataset_images(params.dataroot, "chest_xray")
+    """Retrieve the Companion Chest X-ray dataset with ground truth labels."""
+    image_paths, labels = _find_companion_dataset_images(params.dataroot, "chest_xray")
 
     transform = torchvision.transforms.Compose(
         [
@@ -573,4 +639,4 @@ def get_companion_chest_xray(params: DatasetParams) -> Dataset:
         ]
     )
 
-    return CompanionDataset(image_paths, transform=transform)
+    return CompanionDataset(image_paths, labels=labels, transform=transform)

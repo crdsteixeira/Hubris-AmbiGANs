@@ -11,9 +11,9 @@ datasets:
   training: mnist
   evaluation:
     #- mnist
-    - ambiguous-mnist
+    #- ambiguous-mnist
     - ambiguess-mnist
-    #- companion-mnist
+    - companion-mnist
 
 classifiers:
   #- cnn
