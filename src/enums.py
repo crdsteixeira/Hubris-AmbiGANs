@@ -60,6 +60,9 @@ class DatasetNames(StrEnum):
     companion_mnist = "companion-mnist"
     companion_fmnist = "companion-fashion-mnist"
     companion_chest_xray = "companion-chest-xray"
+    synthetic_mnist = "synthetic-mnist"
+    synthetic_fmnist = "synthetic-fashion-mnist"
+    synthetic_chest_xray = "synthetic-chest-xray"
 
     @classmethod
     def valid_dataset(cls, name: str) -> bool:

@@ -1,6 +1,7 @@
 """CLI for ambiguity evaluation."""  # pylint: disable=too-many-lines
 
 import argparse
+import json
 import logging
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classifier.multiclass_train_utils import train_single_multiclass_classifier
+from src.datasets.datasets import CompanionDataset
 from src.datasets.load import load_dataset
 from src.enums import ClassifierType, DatasetNames, DeviceType
 from src.metrics.fid.fid import FID
@@ -41,6 +43,40 @@ PYMDMA_METRIC_NAMES = [
 def _enum_to_str(value: Any) -> str:
     """Convert enum to string value, handling both enum and string inputs."""
     return value.value if hasattr(value, "value") else str(value)
+
+
+def save_companion_dataset_metadata(dataset: Any, dataset_name: str, dataroot: str) -> None:
+    """
+    Save companion dataset metadata (image paths and labels) to a JSON file.
+
+    Args:
+        dataset: The loaded dataset object (should be CompanionDataset if applicable)
+        dataset_name: Name of the dataset (e.g., 'companion-mnist')
+        dataroot: Root data directory
+
+    """
+    # Only save if this is a CompanionDataset
+    if not isinstance(dataset, CompanionDataset):
+        return
+
+    # Create data directory if it doesn't exist
+    data_dir = Path(dataroot) / ".." / "data"
+    data_dir = data_dir.resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create metadata file
+    metadata = {
+        "dataset_name": dataset_name,
+        "num_samples": len(dataset.image_paths),
+        "image_paths": dataset.image_paths,
+        "labels": dataset.labels,
+    }
+
+    output_file = data_dir / f"companion-{dataset_name}.json"
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+
+    logger.info(f"✓ Saved companion dataset metadata to {output_file}")
 
 
 def parse_args() -> CLAmbiguityArgs:
@@ -229,6 +265,9 @@ def load_datasets_for_evaluation(
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
     logger.info("  ✓ Loaded %s with %d classes", dataset_str, num_classes)
 
+    # Save companion dataset metadata if applicable
+    save_companion_dataset_metadata(test_dataset, dataset_str, config.dataroot)
+
     return test_dataloader
 
 
@@ -248,8 +287,8 @@ def compute_entropy(predictions: torch.Tensor) -> float:
     epsilon = 1e-7
     predictions = torch.clamp(predictions, epsilon, 1 - epsilon)
 
-    # Calculate entropy: -sum(p * log(p))
-    entropy = -(predictions * torch.log(predictions)).sum(dim=1)
+    # Calculate entropy: -sum(p * log2(p))
+    entropy = -(predictions * torch.log2(predictions)).sum(dim=1)
 
     # Return mean entropy
     return entropy.mean().item()
@@ -743,6 +782,8 @@ def extract_training_features(
     if total_samples > n_samples:
         logger.info(f"Sampling {n_samples} images from {total_samples} total")
         indices = np.random.choice(int(total_samples), size=n_samples, replace=False)
+        # Convert numpy indices to Python ints (HuggingFace datasets don't accept numpy.int64)
+        indices = indices.tolist()
         train_dataset = torch.utils.data.Subset(train_dataset, indices)
 
     train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=False)
@@ -813,7 +854,7 @@ def compute_pymdma_metrics_from_images(
     return metrics_dict
 
 
-def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-statements  # noqa: C901
+def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches  # noqa: C901
     config: "CLAmbiguityArgs",
     dataset: DatasetNames,
     fid_stats_path: str | None = None,
@@ -856,6 +897,37 @@ def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-stateme
         return None, {}
 
     test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+    # Save companion dataset metadata if applicable
+    save_companion_dataset_metadata(test_dataset, dataset_str, config.dataroot)
+
+    # Generate FID statistics using the actual evaluation dataset size
+    if fid_stats_path is None or not os.path.exists(fid_stats_path):
+        if dataset_str != config.training_dataset:
+            try:
+                logger.info(f"  Generating FID statistics for {dataset_str} (size: {len(test_dataset)})...")
+                fid_stats_path = generate_fid_stats(
+                    dataroot=config.dataroot,
+                    dataset_name=config.training_dataset,
+                    batch_size=64,
+                    num_workers=6,
+                    device=config.device,
+                    use_test_set=False,  # Use training set as reference
+                    n_samples=len(test_dataset),  # Match evaluation dataset size
+                )
+                logger.info(f"  ✓ FID statistics generated: {fid_stats_path}")
+
+                # Create symlink if this is a synthetic/companion/ambiguous dataset
+                if dataset_str != config.training_dataset:
+                    stats_dir = Path(config.dataroot) / "fid-stats"
+                    ref_stats_file = stats_dir / f"stats.{config.training_dataset}.npz"
+                    eval_stats_file = stats_dir / f"stats.{dataset_str}.npz"
+                    if ref_stats_file.exists() and not eval_stats_file.exists():
+                        logger.info(f"  Linking stats.{config.training_dataset}.npz -> stats.{dataset_str}.npz")
+                        eval_stats_file.symlink_to(ref_stats_file)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.warning(f"Failed to generate FID statistics for {dataset_str}: {e}")
+                fid_stats_path = None
 
     # Compute FID
     fid_score = None
@@ -969,6 +1041,17 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
             f"    Model outputs shape: {all_preds.shape}, min: {all_preds.min():.4f}, max: {all_preds.max():.4f}"
         )
 
+        # Handle case where model outputs 1D tensor (single value per sample)
+        if all_preds.dim() == 1:
+            all_preds = all_preds.unsqueeze(1)
+            logger.info(f"    Unsqueezed 1D tensor to 2D: {all_preds.shape}")
+
+        # Handle binary classification case where model outputs [N, 1] instead of [N, 2]
+        # Convert to [N, 2] by using logit and its negative for the two classes
+        if all_preds.shape[1] == 1:
+            all_preds = torch.cat([all_preds, -all_preds], dim=1)
+            logger.info(f"    Converted binary logit to 2-class format: {all_preds.shape}")
+
         softmax_preds = torch.softmax(all_preds, dim=1)
         logger.info(
             f"    Softmax probs shape: {softmax_preds.shape}, min: {softmax_preds.min():.4f}, max: {softmax_preds.max():.4f}"
@@ -1054,7 +1137,7 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
         wandb.alert(  # type: ignore[attr-defined]
             title=f"Evaluation Failed: {classifier_str} on {dataset_str}",
             text=f"Error: {str(e)}",
-            level="error",
+            level="ERROR",
         )
         wandb.finish(exit_code=1)
         return False
@@ -1137,62 +1220,6 @@ def main() -> None:  # pylint: disable=too-many-statements
 
     ensure_models_trained(config, config.training_dataset)
     logger.info("All models ready for evaluation")
-
-    # Phase 1.5: Generate FID statistics for evaluation datasets if needed
-    logger.info(separator)
-    logger.info("PHASE 1.5: Generating FID Statistics")
-    logger.info(separator)
-
-    for dataset in eval_datasets:
-        dataset_str = _enum_to_str(dataset)
-
-        # Skip FID stats generation if evaluating on training dataset
-        if dataset_str == config.training_dataset:
-            logger.info(f"Skipping FID statistics for {dataset_str} (same as training dataset)")
-            continue
-
-        try:
-            logger.info(f"Generating FID statistics for {dataset_str}...")
-
-            # Determine the reference dataset for FID stats
-            # For synthetic datasets (companion-*, ambiguous-*), use the training dataset as reference
-            if "companion-" in dataset_str or "ambiguous-" in dataset_str:
-                ref_dataset = config.training_dataset
-                use_test_set = True  # Use test set from reference dataset
-            else:
-                ref_dataset = dataset_str
-                use_test_set = False  # For non-synthetic, use training set
-
-            # Always use 10k samples for consistent pymdma metrics comparison
-            stats_file = generate_fid_stats(
-                dataroot=config.dataroot,
-                dataset_name=ref_dataset,
-                batch_size=64,
-                num_workers=6,
-                device=config.device,
-                use_test_set=use_test_set,
-                n_samples=10000,
-            )
-
-            logger.info(f"✓ FID statistics generated: {stats_file}")
-
-            # If using a reference dataset (synthesis case), create a symlink so find_fid_stats finds it
-            if ref_dataset != dataset_str:
-                stats_dir = Path(config.dataroot) / "fid-stats"
-                ref_stats_file = stats_dir / f"stats.{ref_dataset}.npz"
-                eval_stats_file = stats_dir / f"stats.{dataset_str}.npz"
-                if ref_stats_file.exists() and not eval_stats_file.exists():
-                    logger.info(f"Linking {ref_stats_file.name} -> {eval_stats_file.name}")
-                    eval_stats_file.symlink_to(ref_stats_file)
-
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error(f"✗✗✗ CRITICAL: Failed to generate FID statistics for {dataset_str}: {e}")
-            logger.error("✗✗✗ FID metrics will NOT be computed!")
-            logger.error(f"✗✗✗ Exception details: {type(e).__name__}")
-            import traceback  # pylint: disable=import-outside-toplevel
-
-            logger.error(f"✗✗✗ Traceback: {traceback.format_exc()}")
-            raise  # Fail hard so user knows something is wrong
 
     # Phase 2: Evaluate each model on each dataset
     logger.info(separator)

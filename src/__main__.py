@@ -32,10 +32,17 @@ logger = logging.getLogger(__name__)
 
 def find_latest_gan_path(config: ConfigMain) -> str:
     """Find latest run executed for this specific subset."""
+    # For inherently binary datasets (chest-xray), don't append the binary class suffix
+    # For multi-class datasets where we select a binary subset (mnist-1v0), do append it
+    if config.dataset.name == "chest-xray":
+        dataset_dir = config.dataset.name.value
+    else:
+        dataset_dir = f"{config.dataset.name.value}-{config.dataset.binary.pos}v{config.dataset.binary.neg}"
+
     gan_root = os.path.join(
         config.out_dir,
         "AmbiGAN",
-        f"{config.dataset.name}-{config.dataset.binary.pos}v{config.dataset.binary.neg}",
+        dataset_dir,
     )
 
     subdirs = [os.path.join(gan_root, d) for d in os.listdir(gan_root) if os.path.isdir(os.path.join(gan_root, d))]
@@ -225,6 +232,66 @@ def gen_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -
         device=config.device,
         fid_stats_path=fid_stats_path,
     )
+
+    # Skip if companion dataset already exists
+    if os.path.exists(params.out_dir) and len(os.listdir(params.out_dir)) > 0:
+        logger.info(f"Companion dataset already exists at {params.out_dir}, skipping generation")
+        return
+
+    args = [
+        sys.executable,
+        "-m",
+        "src.gen_dataset",
+        "--gan-path",
+        str(params.gan_path),
+        "--seed",
+        str(params.seed),
+        "--n-samples",
+        str(params.n_samples),
+        "--device",
+        str(params.device),
+        "--out-dir",
+        str(params.out_dir),
+        "--fid-stats-path",
+        str(fid_stats_path),
+    ]
+
+    subprocess.run(args, check=True, env=os.environ.copy())
+    # Clean up CUDA memory after dataset generation completes
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
+
+def gen_synthetic_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -> None:
+    """Generate synthetic dataset from step_1/50 using config parameters."""
+    # Use step_1/50 checkpoint directly from the latest GAN path
+    gan_path = os.path.join(latest_gan_path, "step_1", "50")
+
+    if not config.evaluation:
+        raise ValueError("evaluation config is required for gen_synthetic_dataset")
+
+    if not os.path.exists(gan_path):
+        raise ValueError(f"GAN checkpoint path does not exist: {gan_path}")
+
+    # For chest-xray, use same number of samples as companion dataset
+    # For other datasets, use 200 samples
+    n_samples = config.evaluation.companion_n_samples if config.dataset.name == "chest-xray" else 200
+
+    params = CLDatasetArgs(
+        seed=config.test_noise_seed,
+        # img_size=config.img_size, (default)
+        n_samples=n_samples,
+        out_dir=os.path.join(latest_gan_path, "synthetic"),
+        gan_path=gan_path,
+        device=config.device,
+        fid_stats_path=fid_stats_path,
+    )
+
+    # Skip if synthetic dataset already exists
+    if os.path.exists(params.out_dir) and len(os.listdir(params.out_dir)) > 0:
+        logger.info(f"Synthetic dataset already exists at {params.out_dir}, skipping generation")
+        return
 
     args = [
         sys.executable,
@@ -423,6 +490,8 @@ def main() -> None:
     # generate companion dataset
     if config.gen_dataset:
         gen_dataset(config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path)
+        # Generate synthetic dataset from step_1/50
+        gen_synthetic_dataset(config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path)
         # Additional cleanup before evaluation
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

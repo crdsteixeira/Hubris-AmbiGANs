@@ -11,6 +11,8 @@ datasets:
   training: fashion-mnist
   evaluation:
     - fashion-mnist
+    - synthetic-fashion-mnist
+    - ambiguess-fashion-mnist
     - companion-fashion-mnist
 
 classifiers:

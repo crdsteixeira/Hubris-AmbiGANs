@@ -17,62 +17,6 @@ from src.models import DatasetParams
 logger = logging.getLogger(__name__)
 
 
-class EmpiricalNormalizeToRange(torch.nn.Module):
-    """
-    Custom transform that applies z-score normalization then rescales to [-1, 1] range.
-
-    This handles empirical normalization for datasets with limited dynamic range
-    (e.g., ambiguess-mnist) while maintaining compatibility with FID which expects [-1, 1] input.
-    """
-
-    def __init__(self, mean: float, std: float, clamp_range: float = 3.0) -> None:
-        """
-        Initialize with empirical mean and std.
-
-        Args:
-            mean: Empirical mean for z-score normalization
-            std: Empirical std for z-score normalization
-            clamp_range: Values are clamped to [-clamp_range, clamp_range] before rescaling
-
-        """
-        super().__init__()
-        self.mean = mean
-        self.std = std
-        self.clamp_range = clamp_range
-
-        # Pre-compute rescaling parameters based on [0, 1] input range
-        # This avoids recalculating on every forward pass
-        min_normalized = (0.0 - self.mean) / self.std
-        max_normalized = (1.0 - self.mean) / self.std
-        min_clamped = max(-self.clamp_range, min(min_normalized, self.clamp_range))
-        max_clamped = max(-self.clamp_range, min(max_normalized, self.clamp_range))
-
-        self.mid_point = (min_clamped + max_clamped) / 2.0
-        self.scale_factor = 2.0 / (max_clamped - min_clamped)
-
-    def forward(self, tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Apply z-score normalization and rescale to [-1, 1].
-
-        Args:
-            tensor: Input tensor in [0, 1] range
-
-        Returns:
-            Normalized tensor in [-1, 1] range
-
-        """
-        # Apply z-score normalization: (x - mean) / std
-        normalized = (tensor - self.mean) / self.std
-
-        # Clamp to [-clamp_range, clamp_range] to handle outliers
-        clamped = torch.clamp(normalized, -self.clamp_range, self.clamp_range)
-
-        # Rescale from [min_clamped, max_clamped] to [-1, 1] using pre-computed parameters
-        rescaled = (clamped - self.mid_point) * self.scale_factor
-
-        return rescaled
-
-
 def get_mnist(params: DatasetParams) -> Dataset:
     """Retrieve the MNIST dataset."""
     dataset = torchvision.datasets.MNIST(
@@ -190,16 +134,33 @@ def get_ambiguous_mnist(params: DatasetParams) -> Dataset:
     # Ensure the data directory exists
     os.makedirs(data_dir, exist_ok=True)
 
-    ambiguous_mnist_test = ddu_dirty_mnist.AmbiguousMNIST(data_dir, train=False, download=True, device="cpu")
+    # Use same transform pipeline as standard MNIST
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.ToPILImage(),
+            torchvision.transforms.Grayscale(num_output_channels=1),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.5,), (0.5,)),
+        ]
+    )
+
+    # Load with deduplication wrapper
+    ambiguous_mnist_test = ddu_dirty_mnist.AmbiguousMNIST(
+        data_dir,
+        train=False,
+        download=True,
+        device="cuda",
+        noise_stddev=0.0,
+        normalize=False,
+        transform=transform,
+    )
 
     # Wrapper class to handle deduplication (select one every 10 samples)
     class _AmbiguousMNISTDataset(Dataset):
         """
         Wrapper for AmbiguousMNIST that handles deduplication.
 
-        Rescales z-score normalized data to [-1, 1] range (matching standard PyTorch
-        normalization for MNIST and other datasets). This ensures compatibility with
-        feature extractors and evaluation metrics that expect [-1, 1] normalized images.
+        Selects every 10th sample to reduce dataset size while maintaining diversity.
         """
 
         def __init__(self, dataset: Dataset, step: int = 10) -> None:
@@ -209,27 +170,6 @@ def get_ambiguous_mnist(params: DatasetParams) -> Dataset:
             # Create indices for every 10th sample
             self.indices = list(range(0, len(dataset), step))
 
-            # Empirical stats from ddu_dirty_mnist z-normalized data
-            # These values are observed from actual data samples
-            self.data_min = -0.57
-            self.data_max = 2.61
-
-        def _normalize_to_minus1_1(self, tensor: torch.Tensor) -> torch.Tensor:
-            """
-            Normalize z-score normalized tensor to [-1, 1] range using linear scaling.
-
-            Maps the empirical data range to [-1, 1] to match standard PyTorch
-            normalization (Normalize((0.5,), (0.5,))) used for MNIST and other datasets.
-            This ensures features extracted from ambiguous-mnist are comparable to
-            those from standard MNIST.
-            """
-            # Linear rescaling from [data_min, data_max] to [0, 1]
-            normalized_01 = (tensor - self.data_min) / (self.data_max - self.data_min)
-            # Clip to [0, 1] in case of outliers
-            normalized_01 = torch.clamp(normalized_01, 0.0, 1.0)
-            # Convert from [0, 1] to [-1, 1]: 2*x - 1
-            return 2.0 * normalized_01 - 1.0
-
         def __len__(self) -> int:
             """Return the number of deduplicated samples."""
             return len(self.indices)
@@ -238,8 +178,7 @@ def get_ambiguous_mnist(params: DatasetParams) -> Dataset:
             """Retrieve the image and label for the given index."""
             actual_idx = self.indices[idx]
             image, label = self.dataset[actual_idx]
-            # Normalize image to [-1, 1] to match standard MNIST normalization
-            return self._normalize_to_minus1_1(image), label
+            return image, label
 
         @property
         def data(self) -> torch.Tensor:
@@ -247,13 +186,7 @@ def get_ambiguous_mnist(params: DatasetParams) -> Dataset:
             images = []
             for idx in self.indices:
                 image, _ = self.dataset[idx]
-                if isinstance(image, torch.Tensor):
-                    # Normalize to [-1, 1]
-                    images.append(self._normalize_to_minus1_1(image))
-                else:
-                    # Convert to tensor if not already
-                    tensor = torch.from_numpy(np.array(image))
-                    images.append(self._normalize_to_minus1_1(tensor))
+                images.append(image)
             return torch.stack(images)
 
         @property
@@ -367,19 +300,13 @@ def get_ambiguess_mnist(params: DatasetParams) -> Dataset:
     """
     Retrieve the Ambiguess MNIST dataset from HuggingFace Hub.
 
-    Uses empirically calculated mean and std (0.1214, 0.2219) to account for
-    the lower contrast and dynamic range of the ambiguous dataset compared to
-    standard MNIST (mean=0.1255, std=0.3030).
-
-    Empirical normalization is rescaled to [-1, 1] for FID compatibility.
+    Uses standard MNIST normalization for consistency with MNIST dataset.
     """
-    # Empirical mean and std for ambiguess-mnist (calculated from test set on [0, 1] range)
-    # These account for the inherently lower contrast of ambiguous images
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.Grayscale(num_output_channels=1),
             torchvision.transforms.ToTensor(),
-            EmpiricalNormalizeToRange(mean=0.121400, std=0.221853, clamp_range=3.0),
+            torchvision.transforms.Normalize((0.5,), (0.5,)),
         ]
     )
     return _load_ambiguous_hf_dataset("mweiss/mnist_ambiguous", transform, params.pytesting)
@@ -389,17 +316,13 @@ def get_ambiguess_fmnist(params: DatasetParams) -> Dataset:
     """
     Retrieve the Ambiguess FMNIST dataset from HuggingFace Hub.
 
-    Uses empirically calculated mean and std (0.2241, 0.2910) to account for
-    the specific characteristics of the ambiguous fashion-MNIST dataset.
-
-    Empirical normalization is rescaled to [-1, 1] for FID compatibility.
+    Uses standard FashionMNIST normalization for consistency with FashionMNIST dataset.
     """
-    # Empirical mean and std for ambiguess-fmnist (calculated from test set on [0, 1] range)
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.Grayscale(num_output_channels=1),
             torchvision.transforms.ToTensor(),
-            EmpiricalNormalizeToRange(mean=0.224149, std=0.291023, clamp_range=3.0),
+            torchvision.transforms.Normalize((0.5,), (0.5,)),
         ]
     )
     return _load_ambiguous_hf_dataset("mweiss/fashion_mnist_ambiguous", transform, params.pytesting)
@@ -494,7 +417,7 @@ def _parse_ground_truth_from_dirname(dirname: str, dataset_name: str) -> list[in
         return []
 
 
-def _find_companion_dataset_images(  # noqa: C901
+def _find_companion_dataset_images(  # pylint: disable=too-many-branches,too-many-statements  # noqa: C901
     dataroot: str, dataset_name: str, n_samples_per_subset: int = 200
 ) -> tuple[list[str], list[list[int]]]:
     """
@@ -513,6 +436,9 @@ def _find_companion_dataset_images(  # noqa: C901
         ValueError: If no companion datasets are found.
 
     """
+    # Convert underscores to hyphens for directory names
+    dataset_dir_name = dataset_name.replace("_", "-")
+
     # Find the out_dir by looking for the AmbiGAN directory
     # The dataroot is typically: {out_dir}/data
     # The AmbiGAN root should be at: {out_dir}/AmbiGAN/{dataset_name}-*
@@ -525,12 +451,42 @@ def _find_companion_dataset_images(  # noqa: C901
     all_images = []
     all_labels = []
 
-    # Find all subdirectories matching the pattern {dataset_name}-*
+    # Special case for inherently binary datasets (chest-xray) without -1v0 suffix
+    if dataset_name == "chest_xray":
+        subset_dir = os.path.join(gan_root, dataset_dir_name)
+        if os.path.isdir(subset_dir):
+            # Find the most recent run
+            run_dirs = [
+                os.path.join(subset_dir, d)
+                for d in os.listdir(subset_dir)
+                if os.path.isdir(os.path.join(subset_dir, d))
+            ]
+            if run_dirs:
+                latest_run = max(run_dirs, key=os.path.getmtime)
+                companion_dir = os.path.join(latest_run, "companion_dataset", "ambi")
+                if os.path.exists(companion_dir):
+                    image_files = sorted(
+                        [
+                            os.path.join(companion_dir, f)
+                            for f in os.listdir(companion_dir)
+                            if f.endswith((".png", ".jpg", ".jpeg"))
+                        ]
+                    )
+                    if image_files:
+                        all_images.extend(image_files)
+                        # For chest-xray binary: ground truth is [1, 0]
+                        all_labels.extend([[1, 0]] * len(image_files))
+                        logger.info(f"Found {len(image_files)} companion images for chest-xray")
+
+        if all_images:
+            return all_images, all_labels
+
+    # Find all subdirectories matching the pattern {dataset_dir_name}-*
     for entry in os.listdir(gan_root):
         subset_dir = os.path.join(gan_root, entry)
 
         # Check if this is a subdirectory for the correct dataset
-        if not os.path.isdir(subset_dir) or not entry.startswith(f"{dataset_name}-"):
+        if not os.path.isdir(subset_dir) or not entry.startswith(f"{dataset_dir_name}-"):
             continue
 
         # Parse ground truth from directory name
@@ -640,3 +596,175 @@ def get_companion_chest_xray(params: DatasetParams) -> Dataset:
     )
 
     return CompanionDataset(image_paths, labels=labels, transform=transform)
+
+
+def _find_synthetic_dataset_images(dataroot: str, dataset_name: str) -> list[str]:
+    """
+    Find and collect synthetic dataset images from the latest GAN run.
+
+    Args:
+        dataroot: Root directory containing the dataset and AmbiGAN outputs.
+        dataset_name: Name of the dataset (e.g., 'mnist', 'fashion_mnist', 'chest_xray').
+
+    Returns:
+        List of paths to synthetic dataset images.
+
+    Raises:
+        ValueError: If no synthetic dataset is found.
+
+    """
+    # Convert underscores to hyphens for directory names
+    dataset_dir_name = dataset_name.replace("_", "-")
+
+    # Find the out_dir by looking for the AmbiGAN directory
+    out_dir = os.path.dirname(dataroot)
+    gan_root = os.path.join(out_dir, "AmbiGAN")
+
+    if not os.path.exists(gan_root):
+        raise ValueError(f"AmbiGAN root directory not found at {gan_root}")
+
+    # Find the directory matching the dataset
+    subset_dir = os.path.join(gan_root, dataset_dir_name)
+
+    if not os.path.isdir(subset_dir):
+        raise ValueError(f"Dataset directory not found at {subset_dir}")
+
+    # Find the most recent run
+    run_dirs = [
+        os.path.join(subset_dir, d) for d in os.listdir(subset_dir) if os.path.isdir(os.path.join(subset_dir, d))
+    ]
+
+    if not run_dirs:
+        raise ValueError(f"No run directories found in {subset_dir}")
+
+    # Select the most recently modified run
+    latest_run = max(run_dirs, key=os.path.getmtime)
+
+    # Look for the synthetic dataset in the latest run
+    synthetic_dir = os.path.join(latest_run, "synthetic")
+
+    if not os.path.exists(synthetic_dir):
+        raise ValueError(f"Synthetic dataset not found at {synthetic_dir}")
+
+    # Collect all image files
+    image_files = sorted(
+        [os.path.join(synthetic_dir, f) for f in os.listdir(synthetic_dir) if f.endswith((".png", ".jpg", ".jpeg"))]
+    )
+
+    if not image_files:
+        raise ValueError(f"No images found in synthetic dataset directory {synthetic_dir}")
+
+    logger.info(f"Found {len(image_files)} synthetic images in {synthetic_dir}")
+
+    return image_files
+
+
+def get_synthetic_mnist(params: DatasetParams) -> Dataset:
+    """Retrieve the Synthetic MNIST dataset."""
+    image_paths = _find_synthetic_dataset_images(params.dataroot, "mnist")
+
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.Resize(28),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.1307,), (0.3081,)),
+        ]
+    )
+
+    class SyntheticDataset(Dataset):
+        """Simple dataset for synthetic images without labels."""
+
+        def __init__(self, image_paths: list[str], transform: Any = None) -> None:
+            """Initialize the dataset."""
+            self.image_paths = image_paths
+            self.transform = transform
+            # Create dummy data attribute for compatibility
+            self.data = np.array([np.array(Image.open(p)) for p in image_paths])
+            self.targets = np.zeros(len(image_paths))
+
+        def __len__(self) -> int:
+            """Return the number of samples."""
+            return len(self.image_paths)
+
+        def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+            """Retrieve image and dummy label."""
+            image = Image.open(self.image_paths[idx]).convert("L")
+            if self.transform:
+                image = self.transform(image)
+            return image, 0
+
+    return SyntheticDataset(image_paths, transform=transform)
+
+
+def get_synthetic_fmnist(params: DatasetParams) -> Dataset:
+    """Retrieve the Synthetic Fashion-MNIST dataset."""
+    image_paths = _find_synthetic_dataset_images(params.dataroot, "fashion_mnist")
+
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.Resize(28),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.2860,), (0.3530,)),
+        ]
+    )
+
+    class SyntheticDataset(Dataset):
+        """Simple dataset for synthetic images without labels."""
+
+        def __init__(self, image_paths: list[str], transform: Any = None) -> None:
+            """Initialize the dataset."""
+            self.image_paths = image_paths
+            self.transform = transform
+            # Create dummy data attribute for compatibility
+            self.data = np.array([np.array(Image.open(p)) for p in image_paths])
+            self.targets = np.zeros(len(image_paths))
+
+        def __len__(self) -> int:
+            """Return the number of samples."""
+            return len(self.image_paths)
+
+        def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+            """Retrieve image and dummy label."""
+            image = Image.open(self.image_paths[idx]).convert("L")
+            if self.transform:
+                image = self.transform(image)
+            return image, 0
+
+    return SyntheticDataset(image_paths, transform=transform)
+
+
+def get_synthetic_chest_xray(params: DatasetParams) -> Dataset:
+    """Retrieve the Synthetic Chest X-ray dataset."""
+    image_paths = _find_synthetic_dataset_images(params.dataroot, "chest_xray")
+
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.Resize(128),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
+    )
+
+    class SyntheticDataset(Dataset):
+        """Simple dataset for synthetic images without labels."""
+
+        def __init__(self, image_paths: list[str], transform: Any = None) -> None:
+            """Initialize the dataset."""
+            self.image_paths = image_paths
+            self.transform = transform
+            # Create dummy data attribute for compatibility
+            self.data = np.array([np.array(Image.open(p)) for p in image_paths])
+            self.targets = np.zeros(len(image_paths))
+
+        def __len__(self) -> int:
+            """Return the number of samples."""
+            return len(self.image_paths)
+
+        def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+            """Retrieve image and dummy label."""
+            image = Image.open(self.image_paths[idx]).convert("RGB")
+            if self.transform:
+                image = self.transform(image)
+            return image, 0
+
+    return SyntheticDataset(image_paths, transform=transform)

@@ -18,6 +18,9 @@ from src.datasets.datasets import (
     get_companion_mnist,
     get_fashion_mnist,
     get_mnist,
+    get_synthetic_chest_xray,
+    get_synthetic_fmnist,
+    get_synthetic_mnist,
 )
 from src.datasets.utils import BinaryDataset
 from src.enums import DatasetNames
@@ -39,6 +42,9 @@ def get_function(dataset_name: DatasetNames) -> Callable[[DatasetParams], Any]:
         DatasetNames.companion_mnist: get_companion_mnist,
         DatasetNames.companion_fmnist: get_companion_fmnist,
         DatasetNames.companion_chest_xray: get_companion_chest_xray,
+        DatasetNames.synthetic_mnist: get_synthetic_mnist,
+        DatasetNames.synthetic_fmnist: get_synthetic_fmnist,
+        DatasetNames.synthetic_chest_xray: get_synthetic_chest_xray,
     }
     return mapping[dataset_name]
 

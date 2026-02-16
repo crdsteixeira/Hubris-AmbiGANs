@@ -11,6 +11,7 @@ datasets:
   training: chest-xray
   evaluation:
     - chest-xray
+    - synthetic-chest-xray
     - companion-chest-xray
 
 classifiers:
