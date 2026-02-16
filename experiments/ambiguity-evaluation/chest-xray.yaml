@@ -2,7 +2,16 @@
 # Medical imaging is complex, requires strong regularization and careful training
 # All architectures benefit from longer training
 
-dataset: chest-xray
+data_dir: data
+out_dir: models
+device: cuda:1
+seed: 42
+
+datasets:
+  training: chest-xray
+  evaluation:
+    - chest-xray
+    - companion-chest-xray
 
 classifiers:
   - cnn

@@ -2,7 +2,16 @@
 # Fashion-MNIST is moderately complex, requires balanced regularization
 # Different architectures need different amounts of training
 
-dataset: fashion-mnist
+data_dir: data
+out_dir: models
+device: cuda:1
+seed: 42
+
+datasets:
+  training: fashion-mnist
+  evaluation:
+    - fashion-mnist
+    - companion-fashion-mnist
 
 classifiers:
   - cnn

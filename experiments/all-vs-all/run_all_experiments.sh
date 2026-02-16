@@ -1,5 +1,6 @@
 #!/bin/bash
-# Run all MNIST digit pair experiments (non-repeated pairs only: 0v1, 0v2, ..., 8v9)
+# Run all digit pair experiments for MNIST or Fashion-MNIST datasets
+# Usage: ./run_all_experiments.sh [mnist|fashion-mnist]
 
 set -e
 
@@ -7,15 +8,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIGS_DIR="$SCRIPT_DIR"
 
+# Default to mnist if not specified
+DATASET="${1:-mnist}"
+
+# Validate dataset argument
+if [[ ! "$DATASET" =~ ^(mnist|fashion-mnist)$ ]]; then
+    echo "Error: Invalid dataset '$DATASET'. Must be 'mnist' or 'fashion-mnist'"
+    echo "Usage: $0 [mnist|fashion-mnist]"
+    exit 1
+fi
+
 cd "$PROJECT_ROOT"
 
-# Count total configs
-TOTAL_CONFIGS=$(ls -1 "$CONFIGS_DIR"/mnist-[0-9]v[0-9].yml "$CONFIGS_DIR"/mnist-[0-9]v[0-9][0-9].yml 2>/dev/null | wc -l)
-echo "Found $TOTAL_CONFIGS configuration files to run"
+# Count total configs for the specified dataset
+TOTAL_CONFIGS=$(ls -1 "$CONFIGS_DIR"/${DATASET}-[0-9]v[0-9].yml "$CONFIGS_DIR"/${DATASET}-[0-9]v[0-9][0-9].yml 2>/dev/null | wc -l)
+echo "Found $TOTAL_CONFIGS configuration files for $DATASET to run"
+
+if [ "$TOTAL_CONFIGS" -eq 0 ]; then
+    echo "Error: No configuration files found for $DATASET"
+    echo "Please run: python generate_configs.py --dataset $DATASET"
+    exit 1
+fi
 
 # Process each config
 COUNT=0
-for config_file in "$CONFIGS_DIR"/mnist-[0-9]v[0-9].yml "$CONFIGS_DIR"/mnist-[0-9]v[0-9][0-9].yml; do
+for config_file in "$CONFIGS_DIR"/${DATASET}-[0-9]v[0-9].yml "$CONFIGS_DIR"/${DATASET}-[0-9]v[0-9][0-9].yml; do
     if [ ! -f "$config_file" ]; then
         continue
     fi
@@ -39,5 +56,5 @@ done
 
 echo ""
 echo "=========================================="
-echo "All experiments completed successfully!"
+echo "All $DATASET experiments completed successfully!"
 echo "=========================================="

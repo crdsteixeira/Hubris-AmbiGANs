@@ -78,6 +78,7 @@ evaluation:
   hubris:
     models: 
       - convnext
+      - vit
     epochs: 10
     batch_size: 64
   

@@ -176,6 +176,16 @@ poetry run python -m src --config experiments/ambigan_upscaling/chest-xray-initi
 
 This work started with the framework from previous developments of GASTeN from [luispcunha](https://github.com/luispcunha), published as [GASTeN: Generative Adversarial Stress Test Networks](https://link.springer.com/epdf/10.1007/978-3-031-30047-9_8?sharing_token=XGbq9zmVBDFAEaM4r1AAp_e4RwlQNchNByi7wbcMAY55SAL6inraGCkI72KOuzssTzewKWv51v_1pft7j7WJRbiAzL0vaTmG2vf4gs1QhnZ3lV72H7zSKLWQESXZjq5-1pg77WEnt2EHZaN2b51chvHsO6TW3tiGXSVhUgy87Ts%3D)
 
+## All vs all experiments
+
+datasets available: mnist and fashion-mnist
+
+```bash
+python generate_configs.py --dataset mnist
+
+./run_all_experiments.sh mnist
+```
+
 # Ambiguity Evaluation
 
 TODO: finish this

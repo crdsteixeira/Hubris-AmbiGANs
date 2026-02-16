@@ -1,5 +1,5 @@
 project: AmbiGAN
-name: mnist-0v1  # <<<<<<
+name: fashion-mnist-0v1  # <<<<<<
 out_dir: out
 data_dir: data
 fixed_noise: 128
@@ -13,21 +13,21 @@ gen_pairwise_inception: true
 gen_classifiers: true
 gen_gan: true
 gen_dataset: true
-run_hubris_evaluation: false
+run_hubris_evaluation: true
 
 dataset:
-  name: mnist
-  binary: 
-    pos: 0   # <<<<<<
-    neg: 1   # <<<<<<
+  name: fashion-mnist
+  binary:
+    pos: 0 # <<<<<<
+    neg: 1 # <<<<<<
 
 classifiers:
-  - name: ensemble_mean_32_mnist_50_0v1_balanced # <<<<<<
+  - name: ensemble_mean_32_fashion_50_0v1_balanced # <<<<<<
     c_type: ensemble
     batch_size: 800
-    epochs: 50 
+    epochs: 50
     lr: 0.001
-    nf: 50 
+    nf: 50
     seed: 32
     ensemble_type: cnn
     ensemble_output_method: mean
@@ -61,23 +61,24 @@ train:
     batch_size: 32
   step_2:
     epochs: 50
-    checkpoint_every: 20
+    checkpoint_every: 10
     disc_iters: 1
     batch_size: 32
     step_1_epochs:
       - last
     classifier:
-      - ensemble_mean_32_mnist_50_0v1_balanced # <<<<<<
+      - ensemble_mean_32_fashion_50_0v1_balanced # <<<<<<
     weight:
       - gaussian:
-          - alpha: 0.50 
-            var: 0.10
+          - alpha: 1.50
+            var: 0.1
 
 evaluation:
   companion_n_samples: 2500
   hubris:
     models: 
       - convnext
+      - vit
+      # - efficientnetv2
     epochs: 10
     batch_size: 64
-  
