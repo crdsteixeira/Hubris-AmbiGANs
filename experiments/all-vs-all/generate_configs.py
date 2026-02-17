@@ -20,16 +20,16 @@ def generate_all_configs(dataset: str) -> None:
         print(f"Error: Invalid dataset '{dataset}'. Must be 'mnist' or 'fashion-mnist'")
         sys.exit(1)
 
-    # Look for template in ambigan subdirectory first, then fallback to current directory
+    # Look for template in parent ambigan subdirectory first, then fallback to current directory
     template_filename = f"{dataset}-0v1.yml"
-    template_path = Path(__file__).parent / "ambigan" / template_filename
+    template_path = Path(__file__).parent.parent / "ambigan" / template_filename
 
     if not template_path.exists():
         template_path = Path(__file__).parent / template_filename
 
     if not template_path.exists():
         print("Error: Template file not found. Checked:")
-        print(f"  - {Path(__file__).parent / 'ambigan' / template_filename}")
+        print(f"  - {Path(__file__).parent.parent / 'ambigan' / template_filename}")
         print(f"  - {Path(__file__).parent / template_filename}")
         sys.exit(1)
 

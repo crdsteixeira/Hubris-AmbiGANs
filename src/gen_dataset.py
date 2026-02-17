@@ -16,10 +16,11 @@ from torchvision.utils import save_image
 from tqdm import tqdm
 
 from src.metrics.fid.fid import FID
+from src.metrics.image_quality import calculate_pymdma_metrics
 from src.models import CLDatasetArgs
 from src.utils.checkpoint import construct_gan_from_checkpoint
 from src.utils.logging import configure_logging
-from src.utils.utility_functions import calculate_pymdma_metrics, gen_seed, setup_reprod
+from src.utils.utility_functions import gen_seed, setup_reprod
 
 load_dotenv()
 
@@ -74,7 +75,7 @@ def main() -> None:
     torch.cuda.empty_cache()
 
     logger.info(f"Generated test noise, stored in {config.out_dir}")
-    if config.fid_stats_path is not None:
+    if config.fid_stats_path is not None and config.calculate_stats:
         dataset_fid = fid.finalize()
         logger.info(f"Dataset FID is: {dataset_fid}")
         # for pymdma
@@ -114,6 +115,9 @@ def parse_args() -> CLDatasetArgs:
     parser.add_argument("--device", type=str, default="cpu", help="Device to use, cuda or cpu")
     parser.add_argument(
         "--fid-stats-path", dest="fid_stats_path", type=str, default=None, help="Path to FID statistics file"
+    )
+    parser.add_argument(
+        "--skip-stats", dest="calculate_stats", action="store_false", help="Skip calculating and saving metrics"
     )
 
     args = parser.parse_args()

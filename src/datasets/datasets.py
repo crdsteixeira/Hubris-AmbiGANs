@@ -678,8 +678,14 @@ def get_synthetic_mnist(params: DatasetParams) -> Dataset:
             """Initialize the dataset."""
             self.image_paths = image_paths
             self.transform = transform
-            # Create dummy data attribute for compatibility
-            self.data = np.array([np.array(Image.open(p)) for p in image_paths])
+            # Create dummy data attribute for compatibility (don't load all images at once)
+            # Load first image to get shape, then create dummy array
+            if image_paths:
+                sample_img = Image.open(image_paths[0]).convert("L")
+                sample_array = np.array(sample_img)
+                self.data = np.zeros((len(image_paths), *sample_array.shape), dtype=sample_array.dtype)
+            else:
+                self.data = np.zeros((0, 28, 28), dtype=np.uint8)
             self.targets = np.zeros(len(image_paths))
 
         def __len__(self) -> int:
@@ -715,8 +721,14 @@ def get_synthetic_fmnist(params: DatasetParams) -> Dataset:
             """Initialize the dataset."""
             self.image_paths = image_paths
             self.transform = transform
-            # Create dummy data attribute for compatibility
-            self.data = np.array([np.array(Image.open(p)) for p in image_paths])
+            # Create dummy data attribute for compatibility (don't load all images at once)
+            # Load first image to get shape, then create dummy array
+            if image_paths:
+                sample_img = Image.open(image_paths[0]).convert("L")
+                sample_array = np.array(sample_img)
+                self.data = np.zeros((len(image_paths), *sample_array.shape), dtype=sample_array.dtype)
+            else:
+                self.data = np.zeros((0, 28, 28), dtype=np.uint8)
             self.targets = np.zeros(len(image_paths))
 
         def __len__(self) -> int:
@@ -752,8 +764,14 @@ def get_synthetic_chest_xray(params: DatasetParams) -> Dataset:
             """Initialize the dataset."""
             self.image_paths = image_paths
             self.transform = transform
-            # Create dummy data attribute for compatibility
-            self.data = np.array([np.array(Image.open(p)) for p in image_paths])
+            # Create dummy data attribute for compatibility (don't load all images at once)
+            # Load first image to get shape, then create dummy array
+            if image_paths:
+                sample_img = Image.open(image_paths[0]).convert("RGB")
+                sample_array = np.array(sample_img)
+                self.data = np.zeros((len(image_paths), *sample_array.shape), dtype=sample_array.dtype)
+            else:
+                self.data = np.zeros((0, 128, 128, 3), dtype=np.uint8)
             self.targets = np.zeros(len(image_paths))
 
         def __len__(self) -> int:

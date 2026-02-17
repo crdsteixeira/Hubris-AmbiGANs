@@ -309,6 +309,7 @@ def gen_synthetic_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_pa
         str(params.out_dir),
         "--fid-stats-path",
         str(fid_stats_path),
+        "--skip-stats",
     ]
 
     subprocess.run(args, check=True, env=os.environ.copy())

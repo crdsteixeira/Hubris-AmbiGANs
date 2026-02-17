@@ -13,6 +13,7 @@ datasets:
     - chest-xray
     - synthetic-chest-xray
     - companion-chest-xray
+  balanced: true
 
 classifiers:
   - cnn

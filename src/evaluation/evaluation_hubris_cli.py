@@ -21,8 +21,8 @@ from tqdm import tqdm
 
 from src.datasets.load import load_dataset
 from src.enums import DeviceType, PretrainedModels
-from src.evaluation.pretrained_models import ConvNext, EfficientNetV2, ViT
-from src.metrics.accuracy import binary_accuracy
+from src.evaluation.pretrained_models import ConvNext, EfficientNetV2, Swin, ViT
+from src.metrics.accuracy import binary_accuracy, binary_precision_recall_f1
 from src.metrics.hubris import Hubris
 from src.models import CLEvaluationArgs, LoadDatasetParams
 from src.utils.checkpoint import checkpoint, construct_classifier_from_checkpoint
@@ -87,7 +87,12 @@ def process_inference_batch(
     if images.shape[0] > inference_batch_size:
         for i in range(0, images.shape[0], inference_batch_size):
             batch_images = images[i : i + inference_batch_size].to(device)
-            batch_preds.append(model(batch_images).cpu())
+            # Use predict method for inference to get probabilities (sigmoid applied)
+            if hasattr(model, "predict"):
+                batch_preds.append(model.predict(batch_images).cpu())
+            else:
+                # Fallback for other model types
+                batch_preds.append(model(batch_images).cpu())
             if estimator is not None:
                 batch_ref_preds.append(estimator(batch_images).cpu())
             del batch_images
@@ -96,13 +101,24 @@ def process_inference_batch(
         preds = torch.cat(batch_preds)
         ref_preds = torch.cat(batch_ref_preds) if estimator is not None else None
     else:
-        preds = model(images.to(device)).cpu()
+        # Use predict method for inference to get probabilities (sigmoid applied)
+        if hasattr(model, "predict"):
+            preds = model.predict(images.to(device)).cpu()
+        else:
+            # Fallback for other model types
+            preds = model(images.to(device)).cpu()
         ref_preds = estimator(images.to(device)).cpu() if estimator is not None else None
 
     return preds, ref_preds
 
 
-def evaluate(config: CLEvaluationArgs, model: nn.Module, loader: DataLoader, name: str) -> pd.DataFrame:
+def evaluate(
+    config: CLEvaluationArgs,
+    model: nn.Module,
+    loader: DataLoader,
+    name: str,
+    compute_prf: bool = True,
+) -> pd.DataFrame:
     """Evaluate model using companion dataset with memory-efficient inference."""
     model.eval()
     preds = []
@@ -137,6 +153,10 @@ def evaluate(config: CLEvaluationArgs, model: nn.Module, loader: DataLoader, nam
         full_labels = torch.cat(labels)
 
     accuracy = binary_accuracy(full_preds, full_labels, avg=True, threshold=0.50).item()
+    if compute_prf:
+        precision, recall, f1_score = binary_precision_recall_f1(full_preds, full_labels, threshold=0.50)
+    else:
+        precision, recall, f1_score = None, None, None
     hubris = Hubris(C=None, dataset_size=len(full_preds))
     absolute_hubris = hubris.compute(full_preds, ref_preds=None)
 
@@ -144,6 +164,9 @@ def evaluate(config: CLEvaluationArgs, model: nn.Module, loader: DataLoader, nam
     df = df.assign(
         dataset=[name],
         accuracy=[accuracy],
+        precision=[precision],
+        recall=[recall],
+        f1_score=[f1_score],
         absolute_hubris=[absolute_hubris],
         acd=[(0.50 - full_preds).abs().mean().item()],
     )
@@ -306,6 +329,8 @@ def load_finetuned_model(
             model = ViT()
         elif model_name == "efficientnetv2":
             model = EfficientNetV2()
+        elif model_name == "swin":
+            model = Swin()
         else:
             raise ValueError(f"Unknown pretrained model: {model_name}")
 
@@ -372,6 +397,9 @@ def train_model(
     elif model_type == PretrainedModels.efficientnetv2:
         model = EfficientNetV2()
         model.retrain(train_dataloader, epochs=epochs, device=device)
+    elif model_type == PretrainedModels.swin:
+        model = Swin()
+        model.retrain(train_dataloader, epochs=epochs, device=device)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -437,7 +465,18 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
 
         df = pd.DataFrame()
         df = pd.concat((df, evaluate(config, model, test_dataloader, name=f"{config.dataset_name} Original")))
-        df = pd.concat((df, evaluate(config, model, ambi_dataloader, name=f"{config.dataset_name} Companion")))
+        df = pd.concat(
+            (
+                df,
+                evaluate(
+                    config,
+                    model,
+                    ambi_dataloader,
+                    name=f"{config.dataset_name} Companion",
+                    compute_prf=False,
+                ),
+            )
+        )
 
         # save to CSV for local backup
         csv_path = os.path.join(
@@ -468,6 +507,9 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
                 "acd_original": df[df["dataset"] == f"{config.dataset_name} Original"]["acd"].values[0],
                 "acd_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["acd"].values[0],
                 "accuracy": df[df["dataset"] == f"{config.dataset_name} Original"]["accuracy"].values[0],
+                "precision_original": df[df["dataset"] == f"{config.dataset_name} Original"]["precision"].values[0],
+                "recall_original": df[df["dataset"] == f"{config.dataset_name} Original"]["recall"].values[0],
+                "f1_original": df[df["dataset"] == f"{config.dataset_name} Original"]["f1_score"].values[0],
             }
         )
 

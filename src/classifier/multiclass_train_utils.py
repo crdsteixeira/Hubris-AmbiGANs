@@ -9,39 +9,19 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from src.classifier.construct_classifier import construct_classifier
-from src.classifier.train_classifier import save_predictions, train
+from src.classifier.train_classifier import evaluate, save_predictions, train
 from src.datasets.load import load_dataset
 from src.enums import ClassifierType, DatasetNames, DeviceType, TrainingStage
-from src.metrics.accuracy import multiclass_accuracy
-from src.models import CLTrainArgs, LoadDatasetParams, TrainClassifierArgs
+from src.metrics.accuracy import binary_accuracy, multiclass_accuracy, top_n_accuracy
+from src.models import (
+    CLTrainArgs,
+    EvaluateParams,
+    LoadDatasetParams,
+    TrainClassifierArgs,
+)
 from src.utils.checkpoint import construct_classifier_from_checkpoint
 
 logger = logging.getLogger(__name__)
-
-
-def top_n_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, n: int = 2) -> float:
-    """
-    Calculate top-n accuracy for multiclass classification.
-
-    Args:
-        y_pred: Model predictions (logits or probabilities)
-        y_true: Ground truth labels
-        n: Number of top predictions to consider
-
-    Returns:
-        Top-n accuracy score
-
-    """
-    # Get top-n predictions
-    _, top_n_preds = torch.topk(y_pred, n, dim=1)
-
-    # Expand y_true to match top_n_preds shape
-    y_true_expanded = y_true.unsqueeze(1).expand_as(top_n_preds)
-
-    # Check if true label is in top-n predictions
-    correct = top_n_preds.eq(y_true_expanded).any(dim=1)
-
-    return correct.sum().item() / len(y_true)
 
 
 def evaluate_with_top_k_accuracy(
@@ -97,7 +77,7 @@ def evaluate_with_top_k_accuracy(
     }
 
 
-def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-arguments,broad-exception-caught
+def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-arguments,broad-exception-caught,too-many-statements
     dataset_name: DatasetNames | str,
     classifier_type: ClassifierType | str,
     data_dir: str,
@@ -109,6 +89,8 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
     seed: int | None = None,
     entity: str | None = None,
     project: str = "multiclass-classifiers",
+    pos_class: int | None = None,
+    neg_class: int | None = None,
 ) -> dict:
     """
     Train a single multiclass classifier on a dataset.
@@ -125,6 +107,8 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
         seed: Random seed for reproducibility
         entity: WandB entity name
         project: WandB project name
+        pos_class: Index of positive class for binary classification
+        neg_class: Index of negative class for binary classification
 
     Returns:
         Dictionary with metrics (top1_accuracy, top2_accuracy, loss) and 'error' field if failed
@@ -161,13 +145,15 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
         load_params = LoadDatasetParams(
             dataroot=data_dir,
             dataset_name=dataset_enum,
-            pos_class=None,  # Multiclass
-            neg_class=None,
+            pos_class=pos_class,
+            neg_class=neg_class,
             train=True,
             pytesting=False,
         )
         dataset, num_classes, img_size = load_dataset(load_params)
         logger.info("Dataset: %s | Classes: %s | Image Size: %s", dataset_name_value, num_classes, img_size.image_size)
+
+        binary_mode = pos_class is not None and neg_class is not None and num_classes == 2
 
         # Prepare output directory
         dataset_out_dir = os.path.join(out_dir, dataset_name_value)
@@ -232,8 +218,13 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
             name=f"{classifier_type_value}_{seed}",
         )
 
-        # Loss function
-        criterion = nn.CrossEntropyLoss()
+        # Loss and accuracy
+        if binary_mode:
+            criterion = nn.BCELoss()
+            acc_fun = binary_accuracy  # type: ignore[assignment]
+        else:
+            criterion = nn.CrossEntropyLoss()
+            acc_fun = multiclass_accuracy  # type: ignore[assignment]
 
         # Construct classifier
         C = construct_classifier(args)
@@ -245,7 +236,7 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
             criterion,
             train_loader,
             val_loader,
-            multiclass_accuracy,
+            acc_fun,
             train_classifier_args=args,
             cl_args=cl_args,
         )
@@ -256,12 +247,32 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
         logger.info(f"\nLoading best model from checkpoint: {cp_path}")
 
         # Evaluate on test set
-        test_metrics = evaluate_with_top_k_accuracy(
-            best_C,
-            test_loader,
-            criterion,
-            device=device.value,
-        )
+        if binary_mode:
+            eval_params = EvaluateParams(
+                device=device,
+                verbose=False,
+                desc="Test",
+                header=None,
+            )
+            test_acc, test_loss = evaluate(
+                best_C,
+                test_loader,
+                criterion,
+                acc_fun,
+                params=eval_params,
+            )
+            test_metrics = {
+                "loss": test_loss,
+                "top1_accuracy": test_acc,
+                "top2_accuracy": 0.0,
+            }
+        else:
+            test_metrics = evaluate_with_top_k_accuracy(
+                best_C,
+                test_loader,
+                criterion,
+                device=device.value,
+            )
 
         logger.info("\n%s", "=" * 80)
         logger.info("RESULTS: %s on %s", classifier_type_value.upper(), dataset_name_value)

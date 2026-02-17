@@ -9,11 +9,11 @@ device: cuda:1
 num_runs: 1
 
 gen_test_noise: false
-gen_pairwise_inception: false
+gen_pairwise_inception: true
 gen_classifiers: false
 gen_gan: false
 gen_dataset: true
-run_hubris_evaluation: false
+run_hubris_evaluation: true
 
 dataset:
   name: mnist
@@ -79,7 +79,8 @@ evaluation:
     models: 
       - convnext
       - vit
-      # - efficientnetv2
-    epochs: 10
+      - efficientnetv2
+      - swin
+    epochs: 5
     batch_size: 64
   

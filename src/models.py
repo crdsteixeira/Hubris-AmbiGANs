@@ -673,6 +673,7 @@ class CLAmbiguityArgs(BaseModel):
     device: DeviceType = Field(default=DeviceType.cpu, description="Device to use")
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
     training_dataset: str = Field(..., description="Dataset used for training models")
+    balanced: bool = Field(default=False, description="Enable class balancing for datasets that support it")
     eval_sample_size: int | None = Field(
         default=None,
         description="Limit evaluation dataset size for faster metrics computation (optional, None means use full dataset)",
@@ -903,6 +904,7 @@ class CLDatasetArgs(BaseModel):
     gan_path: str = Field(..., description="Directory for pre-trained AmbiGAN location")
     device: DeviceType = Field(default=DeviceType.cpu, description="Device to use, cuda or cpu")
     fid_stats_path: str | None = Field(default=None, description="Path to FID statistics file.")
+    calculate_stats: bool = Field(default=True, description="Whether to calculate and save metrics")
 
 
 class CLEvaluationArgs(DatasetClasses):

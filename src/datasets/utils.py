@@ -52,6 +52,14 @@ class BinaryDataset(Dataset):
         if num_pos == num_neg:
             return  # Dataset is already balanced
 
+        # Skip balancing if one class is completely missing
+        if num_pos == 0 or num_neg == 0:
+            logger.warning(
+                "Cannot balance dataset: class imbalance is too severe. "
+                f"Positive samples: {num_pos}, Negative samples: {num_neg}. Skipping balancing."
+            )
+            return
+
         # Oversample the minority class
         if num_pos < num_neg:
             minority_indices = pos_indices

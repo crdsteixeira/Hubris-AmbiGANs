@@ -11,7 +11,6 @@ import numpy as np
 import torch
 import wandb
 import yaml
-from pydantic import ValidationError
 from pymdma.image.models.features import ExtractorFactory
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -20,11 +19,17 @@ from src.classifier.multiclass_train_utils import train_single_multiclass_classi
 from src.datasets.datasets import CompanionDataset
 from src.datasets.load import load_dataset
 from src.enums import ClassifierType, DatasetNames, DeviceType
+from src.metrics.ambiguity import compute_entropy, compute_top_pairs
 from src.metrics.fid.fid import FID
+from src.metrics.image_quality import (
+    compute_fid_metric,
+    compute_pymdma_metrics_from_images,
+    extract_features,
+)
 from src.models import CLAmbiguityArgs, LoadDatasetParams
 from src.utils.checkpoint import construct_classifier_from_checkpoint
 from src.utils.logging import configure_logging
-from src.utils.utility_functions import calculate_pymdma_metrics, setup_reprod
+from src.utils.utility_functions import setup_reprod
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -40,9 +45,28 @@ PYMDMA_METRIC_NAMES = [
 ]
 
 
+# Datasets that support binary classification with hardcoded class indices
+BINARY_DATASETS = {
+    "chest-xray": (1, 0),
+    "synthetic-chest-xray": (1, 0),
+}
+
+
 def _enum_to_str(value: Any) -> str:
     """Convert enum to string value, handling both enum and string inputs."""
     return value.value if hasattr(value, "value") else str(value)
+
+
+def _get_binary_classes(
+    config: "CLAmbiguityArgs",
+    dataset_name: DatasetNames | str,
+) -> tuple[int | None, int | None]:
+    """Get binary classes if dataset supports balancing and it's enabled."""
+    if not config.balanced:
+        return None, None
+
+    dataset_str = _enum_to_str(dataset_name)
+    return BINARY_DATASETS.get(dataset_str, (None, None))
 
 
 def save_companion_dataset_metadata(dataset: Any, dataset_name: str, dataroot: str) -> None:
@@ -97,16 +121,17 @@ def parse_args() -> CLAmbiguityArgs:
     if isinstance(config_dict.get("datasets"), dict):
         training_dataset = config_dict["datasets"].get("training")
         eval_datasets = config_dict["datasets"].get("evaluation", [])
+        balanced = config_dict["datasets"].get("balanced", False)
     else:
         training_dataset = config_dict.get("dataset")
         eval_datasets = config_dict.get("datasets", [])
+        balanced = config_dict.get("balanced", False)
 
-    # Get FILESDIR from environment, use relative paths if not set
-    filesdir = os.environ.get("FILESDIR")
     data_dir = config_dict.get("data_dir", "data")
     out_dir = config_dict.get("out_dir", "models")
 
     # If FILESDIR is set and paths are relative, prepend FILESDIR
+    filesdir = os.environ.get("FILESDIR")
     if filesdir:
         if not os.path.isabs(data_dir):
             data_dir = os.path.join(filesdir, data_dir)
@@ -121,13 +146,10 @@ def parse_args() -> CLAmbiguityArgs:
         "device": DeviceType(config_dict.get("device", "cpu")),
         "seed": config_dict.get("seed"),
         "training_dataset": training_dataset,
+        "balanced": balanced,
     }
 
-    try:
-        return CLAmbiguityArgs.model_validate(args_dict)
-    except ValidationError as exc:
-        logger.error("Argument validation error: %s", exc)
-        raise
+    return CLAmbiguityArgs(**args_dict)
 
 
 def find_checkpoint(out_dir: str, training_dataset: str, classifier_type: str, seed: int) -> Path | None:
@@ -168,6 +190,9 @@ def ensure_models_trained(config: "CLAmbiguityArgs", training_dataset: str) -> N
     """
     seed = config.seed if config.seed is not None else 42
 
+    training_dataset_enum = DatasetNames(training_dataset)
+    pos_class, neg_class = _get_binary_classes(config, training_dataset_enum)
+
     for classifier in config.models:
         classifier_str = _enum_to_str(classifier)
 
@@ -183,6 +208,8 @@ def ensure_models_trained(config: "CLAmbiguityArgs", training_dataset: str) -> N
                 out_dir=config.out_dir,
                 device=config.device,
                 seed=config.seed,
+                pos_class=pos_class,
+                neg_class=neg_class,
             )
         else:
             logger.info("Found trained %s on %s: %s", classifier_str, training_dataset, checkpoint_path)
@@ -239,14 +266,15 @@ def load_datasets_for_evaluation(
     logger.info("Loading %s dataset...", dataset_str)
 
     # Load test dataset
+    pos_class, neg_class = _get_binary_classes(config, dataset_name)
     test_dataset, num_classes, _ = load_dataset(
         LoadDatasetParams(
             dataroot=config.dataroot,
             dataset_name=dataset_name,
+            pos_class=pos_class,
+            neg_class=neg_class,
             train=False,
             pytesting=False,
-            pos_class=None,
-            neg_class=None,
         )
     )
 
@@ -269,29 +297,6 @@ def load_datasets_for_evaluation(
     save_companion_dataset_metadata(test_dataset, dataset_str, config.dataroot)
 
     return test_dataloader
-
-
-def compute_entropy(predictions: torch.Tensor) -> float:
-    """
-    Compute entropy from classifier predictions (softmax probabilities).
-
-    Args:
-        predictions: Tensor of shape (n_samples, n_classes) with probabilities
-
-    Returns:
-        Mean entropy across samples
-
-    """
-    # Ensure predictions are probabilities (sum to 1)
-    # Add small epsilon to avoid log(0)
-    epsilon = 1e-7
-    predictions = torch.clamp(predictions, epsilon, 1 - epsilon)
-
-    # Calculate entropy: -sum(p * log2(p))
-    entropy = -(predictions * torch.log2(predictions)).sum(dim=1)
-
-    # Return mean entropy
-    return entropy.mean().item()
 
 
 def collate_with_ground_truth(batch: list[tuple[Any, Any]]) -> tuple[torch.Tensor, list]:
@@ -321,47 +326,6 @@ def collate_with_ground_truth(batch: list[tuple[Any, Any]]) -> tuple[torch.Tenso
     # Keep labels as a list (don't convert to tensor)
     # This preserves list[list[int]] for ambiguous datasets
     return stacked_images, labels
-
-
-def compute_top_pairs(predictions: torch.Tensor, ground_truth: list[list[int]]) -> float:
-    """
-    Compute top pairs metric for ambiguous datasets.
-
-    For each sample, checks if the two most likely predicted classes equal
-    the two true classes (i.e., the set of top 2 predictions matches the set
-    of ground truth classes). Returns the percentage of inputs where this is true.
-    Fom paper: "Generating and detecting true ambiguity: a forgotten danger in DNN supervision testing"
-
-    Args:
-        predictions: Tensor of shape (n_samples, n_classes) with softmax probabilities
-        ground_truth: List of lists where each element is a list of ground truth class indices
-                     (e.g., [[0, 4], [2, 7], ...])
-
-    Returns:
-        Percentage of inputs where top 2 predictions equal the ground truth classes
-
-    """
-    if len(predictions) != len(ground_truth):
-        logger.warning(f"Mismatch: got {len(predictions)} predictions but {len(ground_truth)} ground truth labels")
-        return 0.0
-
-    # Get top 2 predictions for each sample
-    _, top_2_indices = torch.topk(predictions, k=2, dim=1)
-    top_2_indices = top_2_indices.cpu().numpy()
-
-    # Count exact matches between top 2 predictions and ground truth
-    matches = 0
-    for top_2, gt in zip(top_2_indices, ground_truth):
-        if not gt:  # Skip if no ground truth
-            continue
-
-        # Check if the set of top 2 predictions equals the set of ground truth classes
-        # Order doesn't matter, only set equality
-        if set(top_2) == set(gt):
-            matches += 1
-
-    # Return percentage of exact matches
-    return float(matches / len(ground_truth) * 100) if ground_truth else 0.0
 
 
 def generate_fid_stats(  # pylint: disable=too-many-statements
@@ -528,48 +492,6 @@ def find_fid_stats(dataroot: str, dataset_name: str) -> str | None:
     return None
 
 
-def compute_fid_metric(
-    model: torch.nn.Module | None,
-    dataloader: DataLoader,
-    device: DeviceType | str,
-    fid_stats_path: str,
-) -> float:
-    """
-    Compute FID metric from model predictions.
-
-    Args:
-        model: Trained classifier model (not used, kept for backward compatibility)
-        dataloader: DataLoader with test data
-        device: Device to use for computation
-        fid_stats_path: Path to FID statistics file
-
-    Returns:
-        FID score
-
-    """
-    # model is not used - FID only depends on images, not model predictions
-    if model is not None:
-        model.eval()
-
-    # Initialize FID metric with reference statistics
-    device_obj = DeviceType(device) if isinstance(device, str) else device
-    device_str = device_obj.value if isinstance(device_obj, DeviceType) else str(device_obj)
-    fid = FID(fid_stats_file=fid_stats_path, dims=2048, n_images=len(dataloader.dataset), device=device_obj)
-
-    with torch.no_grad():
-        for images, _ in dataloader:
-            images = images.to(device_str)
-            # Convert to RGB if needed
-            if images.shape[1] != 3:
-                images = images.repeat(1, 3, 1, 1)
-            # NOTE: Use fid.update() which handles normalization and RGB conversion
-            # This calls fid.fid.update() with is_real=False (for synthetic/generated images)
-            fid.update(images, (0, 0))  # Second param is ignored, kept for API compatibility
-
-    fid_score = fid.finalize()
-    return fid_score
-
-
 def compute_evaluation_metrics(  # noqa: C901
     model: torch.nn.Module,
     dataloader: DataLoader,
@@ -669,55 +591,6 @@ def compute_evaluation_metrics(  # noqa: C901
     return metrics
 
 
-def extract_features(images: torch.Tensor, device: DeviceType | str, extractor: Any = None) -> np.ndarray:
-    """
-    Extract features from images using DINO ViT S/8.
-
-    Args:
-        images: Tensor of images with shape (batch_size, channels, height, width)
-        device: Device to use for computation
-        extractor: Optional cached extractor model. If None, creates a new one.
-
-    Returns:
-        Feature array with shape (batch_size, feature_dim)
-
-    """
-    try:
-        # Convert device to string for PyTorch operations
-        device_str = device.value if isinstance(device, DeviceType) else str(device)
-
-        if extractor is None:
-            extractor = ExtractorFactory.model_from_name(name="dino_vits8")
-            extractor = extractor.to(device_str)  # Move model to device
-            extractor.eval()
-        else:
-            extractor = extractor.to(device_str)
-
-        features_list = []
-
-        # Process in batches to avoid memory issues
-        batch_size = 32
-        for i in range(0, len(images), batch_size):
-            batch_images = images[i : i + batch_size]
-
-            # Convert to RGB if needed
-            if batch_images.shape[1] != 3:
-                batch_images = batch_images.repeat(1, 3, 1, 1)
-
-            # Normalize to [0, 1]
-            batch_images = (batch_images + 1.0) / 2.0
-            batch_images = batch_images.clamp(0, 1)
-
-            with torch.no_grad():
-                features = extractor(batch_images.to(device_str)).cpu().numpy()
-            features_list.append(features)
-
-        return np.concatenate(features_list, axis=0)
-    except (RuntimeError, ValueError, OSError) as e:
-        logger.error("Failed to extract features: %s", e)
-        raise
-
-
 def extract_training_features(
     config: "CLAmbiguityArgs", device: DeviceType | str, eval_dataset_name: str | None = None
 ) -> tuple[np.ndarray, object]:
@@ -808,50 +681,6 @@ def extract_training_features(
     logger.info("  ✓ Extracted features: shape %s", real_features.shape)
 
     return real_features, extractor
-
-
-def compute_pymdma_metrics_from_images(
-    eval_images: torch.Tensor,
-    real_features: np.ndarray,
-    device: DeviceType | str,
-    extractor: Any = None,
-    sample_size: int | None = None,
-) -> dict[str, float]:
-    """
-    Compute pymdma metrics comparing synthetic evaluation dataset against real training features.
-
-    Args:
-        eval_images: Synthetic evaluation dataset images
-        real_features: Feature array from real training dataset (reference)
-        device: Device to use for computation
-        extractor: Optional cached extractor model to avoid recreating it
-        sample_size: Optional limit on evaluation images for faster metrics (None = use all)
-
-    Returns:
-        Dictionary with pymdma metrics
-
-    """
-    logger.info("Extracting features from evaluation dataset...")
-
-    # Sample evaluation images if size limit specified
-    if sample_size is not None and len(eval_images) > sample_size:
-        indices = np.random.choice(len(eval_images), size=sample_size, replace=False)
-        eval_images = eval_images[indices]
-        logger.info("Sampled %d evaluation images (full set: %d)", sample_size, len(eval_images))
-
-    # Extract features from synthetic evaluation dataset (reuse extractor if provided)
-    synt_features = extract_features(eval_images, device, extractor)
-
-    # Calculate pymdma metrics comparing synthetic vs real
-    logger.info("Computing pymdma metrics (synthetic vs real training distribution)...")
-    pymdma_df = calculate_pymdma_metrics(real_features, synt_features)
-
-    # Convert DataFrame to dictionary
-    metrics_dict = {}
-    for col in pymdma_df.columns:
-        metrics_dict[col] = pymdma_df[col].values[0]
-
-    return metrics_dict
 
 
 def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches  # noqa: C901

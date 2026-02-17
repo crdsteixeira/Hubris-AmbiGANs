@@ -183,7 +183,7 @@ datasets available: mnist and fashion-mnist
 ```bash
 python generate_configs.py --dataset mnist
 
-./run_all_experiments.sh mnist
+./run_all_experiments.sh
 ```
 
 # Ambiguity Evaluation
