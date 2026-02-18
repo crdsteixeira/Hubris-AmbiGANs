@@ -11,7 +11,7 @@ datasets:
   training: mnist
   evaluation:
     - mnist
-    # - synthetic-mnist
+    - synthetic-mnist
     - ambiguous-mnist
     - ambiguess-mnist
     - companion-mnist

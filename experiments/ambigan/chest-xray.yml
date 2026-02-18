@@ -89,6 +89,6 @@ evaluation:
       - convnext
       - vit
       - efficientnetv2
+      - swin
     epochs: 10
     batch_size: 64
-  

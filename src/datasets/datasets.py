@@ -328,39 +328,46 @@ def get_ambiguess_fmnist(params: DatasetParams) -> Dataset:
     return _load_ambiguous_hf_dataset("mweiss/fashion_mnist_ambiguous", transform, params.pytesting)
 
 
-class CompanionDataset(Dataset):
-    """Custom dataset class for handling companion datasets from multiple GAN subsets."""
+class ImageDataset(Dataset):
+    """Generic dataset for image loading with configurable color mode and labels."""
 
-    def __init__(self, image_paths: list[str], labels: list[list[int]] | None = None, transform: Any = None) -> None:
+    def __init__(
+        self,
+        image_paths: list[str],
+        color_mode: str = "RGB",
+        labels: list[list[int]] | list[int] | None = None,
+        transform: Any = None,
+    ) -> None:
         """
-        Initialize the companion dataset with image paths, optional labels, and optional transform.
+        Initialize the dataset with image paths, color mode, optional labels, and transform.
 
         Args:
             image_paths: List of full paths to image files.
-            labels: List of ground truth labels corresponding to each image.
+            color_mode: Color mode for loading images ('RGB' or 'L' for grayscale).
+            labels: Optional labels (list of lists for companion datasets, single value for synthetic).
             transform: Optional torchvision transform to apply to images.
 
         """
         self.image_paths = image_paths
+        self.color_mode = color_mode
         self.labels = labels if labels is not None else [[0] for _ in image_paths]
         self.transform = transform
 
+        # Create dummy data attribute for compatibility
+        if image_paths:
+            sample_img = Image.open(image_paths[0]).convert(color_mode)
+            sample_array = np.array(sample_img)
+            self.data = np.zeros((len(image_paths), *sample_array.shape), dtype=sample_array.dtype)
+        else:
+            self.data = np.zeros((0, 28, 28) if color_mode == "L" else (0, 128, 128, 3), dtype=np.uint8)
+
     def __len__(self) -> int:
-        """Return the number of images in the dataset."""
+        """Return the number of samples."""
         return len(self.image_paths)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, list[int]]:
-        """
-        Load and return the image at the given index.
-
-        Args:
-            idx: Index of the image to load.
-
-        Returns:
-            Tuple of (image tensor, ground truth label list).
-
-        """
-        image = Image.open(self.image_paths[idx]).convert("RGB")
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, Any]:
+        """Load and return image and label at given index."""
+        image = Image.open(self.image_paths[idx]).convert(self.color_mode)
 
         if self.transform:
             image = self.transform(image)
@@ -368,15 +375,23 @@ class CompanionDataset(Dataset):
         return image, self.labels[idx]
 
     @property
-    def data(self) -> torch.Tensor:
-        """Return all images in the dataset as a tensor stack."""
-        images = []
-        for path in self.image_paths:
-            image = Image.open(path).convert("RGB")
-            if self.transform:
-                image = self.transform(image)
-            images.append(image)
-        return torch.stack(images)
+    def targets(self) -> torch.Tensor:
+        """Return targets as torch tensor. Base implementation returns zeros."""
+        return torch.zeros(len(self.image_paths), dtype=torch.long)
+
+
+class CompanionDataset(ImageDataset):
+    """Dataset for companion images with ground truth labels."""
+
+    def __init__(
+        self,
+        image_paths: list[str],
+        color_mode: str = "RGB",
+        labels: list[list[int]] | None = None,
+        transform: Any = None,
+    ) -> None:
+        """Initialize companion dataset with specified color mode."""
+        super().__init__(image_paths, color_mode=color_mode, labels=labels, transform=transform)
 
     @property
     def targets(self) -> torch.Tensor:
@@ -565,7 +580,7 @@ def get_companion_mnist(params: DatasetParams) -> Dataset:
         ]
     )
 
-    return CompanionDataset(image_paths, labels=labels, transform=transform)
+    return CompanionDataset(image_paths, color_mode="RGB", labels=labels, transform=transform)
 
 
 def get_companion_fmnist(params: DatasetParams) -> Dataset:
@@ -580,7 +595,7 @@ def get_companion_fmnist(params: DatasetParams) -> Dataset:
         ]
     )
 
-    return CompanionDataset(image_paths, labels=labels, transform=transform)
+    return CompanionDataset(image_paths, color_mode="RGB", labels=labels, transform=transform)
 
 
 def get_companion_chest_xray(params: DatasetParams) -> Dataset:
@@ -595,12 +610,12 @@ def get_companion_chest_xray(params: DatasetParams) -> Dataset:
         ]
     )
 
-    return CompanionDataset(image_paths, labels=labels, transform=transform)
+    return CompanionDataset(image_paths, color_mode="RGB", labels=labels, transform=transform)
 
 
-def _find_synthetic_dataset_images(dataroot: str, dataset_name: str) -> list[str]:
+def _find_synthetic_dataset_images(dataroot: str, dataset_name: str) -> list[str]:  # noqa: C901
     """
-    Find and collect synthetic dataset images from the latest GAN run.
+    Find and collect synthetic dataset images from all class-pair GAN runs.
 
     Args:
         dataroot: Root directory containing the dataset and AmbiGAN outputs.
@@ -623,166 +638,141 @@ def _find_synthetic_dataset_images(dataroot: str, dataset_name: str) -> list[str
     if not os.path.exists(gan_root):
         raise ValueError(f"AmbiGAN root directory not found at {gan_root}")
 
-    # Find the directory matching the dataset
-    subset_dir = os.path.join(gan_root, dataset_dir_name)
+    # Collect all class-pair directories for this dataset
+    # These have names like "mnist-0v1", "mnist-1v2", "chest-xray", etc.
+    image_files = []
 
-    if not os.path.isdir(subset_dir):
-        raise ValueError(f"Dataset directory not found at {subset_dir}")
+    for entry in os.listdir(gan_root):
+        entry_path = os.path.join(gan_root, entry)
 
-    # Find the most recent run
-    run_dirs = [
-        os.path.join(subset_dir, d) for d in os.listdir(subset_dir) if os.path.isdir(os.path.join(subset_dir, d))
-    ]
+        # Check if entry is a directory matching this dataset
+        if not os.path.isdir(entry_path):
+            continue
 
-    if not run_dirs:
-        raise ValueError(f"No run directories found in {subset_dir}")
+        # For datasets with class pairs (mnist-0v1, mnist-1v2, etc.)
+        # or single name (chest-xray)
+        if not (entry == dataset_dir_name or entry.startswith(f"{dataset_dir_name}-")):
+            continue
 
-    # Select the most recently modified run
-    latest_run = max(run_dirs, key=os.path.getmtime)
+        # Find run directories within this class-pair directory
+        if not os.path.isdir(entry_path):
+            continue
 
-    # Look for the synthetic dataset in the latest run
-    synthetic_dir = os.path.join(latest_run, "synthetic")
+        run_dirs = []
+        try:
+            for d in os.listdir(entry_path):
+                run_dir = os.path.join(entry_path, d)
+                if os.path.isdir(run_dir):
+                    run_dirs.append(run_dir)
+        except OSError:
+            continue
 
-    if not os.path.exists(synthetic_dir):
-        raise ValueError(f"Synthetic dataset not found at {synthetic_dir}")
+        if not run_dirs:
+            continue
 
-    # Collect all image files
-    image_files = sorted(
-        [os.path.join(synthetic_dir, f) for f in os.listdir(synthetic_dir) if f.endswith((".png", ".jpg", ".jpeg"))]
-    )
+        # Select the most recently modified run for this class-pair
+        latest_run = max(run_dirs, key=os.path.getmtime)
+
+        # Look for the synthetic dataset in the latest run
+        synthetic_dir = os.path.join(latest_run, "synthetic")
+
+        if not os.path.exists(synthetic_dir):
+            logger.warning(f"Synthetic dataset not found at {synthetic_dir}, skipping")
+            continue
+
+        # Collect all image files from this class-pair
+        try:
+            class_images = sorted(
+                [
+                    os.path.join(synthetic_dir, f)
+                    for f in os.listdir(synthetic_dir)
+                    if f.endswith((".png", ".jpg", ".jpeg"))
+                ]
+            )
+            image_files.extend(class_images)
+            logger.info(f"Found {len(class_images)} synthetic images in {synthetic_dir}")
+        except OSError as e:
+            logger.warning(f"Error loading images from {synthetic_dir}: {e}")
+            continue
 
     if not image_files:
-        raise ValueError(f"No images found in synthetic dataset directory {synthetic_dir}")
+        raise ValueError(
+            f"No images found in synthetic dataset directory. "
+            f"Searched under {gan_root} for directories matching '{dataset_dir_name}' or '{dataset_dir_name}-*'"
+        )
 
-    logger.info(f"Found {len(image_files)} synthetic images in {synthetic_dir}")
+    logger.info(f"Found {len(image_files)} total synthetic images from all class-pairs")
 
     return image_files
 
 
-def get_synthetic_mnist(params: DatasetParams) -> Dataset:
+def _get_synthetic_transform(
+    color_mode: str, resize_size: int, normalize: bool = True
+) -> torchvision.transforms.Compose:
+    """
+    Build a transform pipeline for synthetic images.
+
+    Args:
+        color_mode: Color mode ('L' for grayscale, 'RGB' for color).
+        resize_size: Target size for resizing.
+        normalize: If True, apply standard [-1, 1] normalization. If False, only convert to tensor.
+
+    Returns:
+        Composed transform pipeline.
+
+    """
+    is_grayscale = color_mode == "L"
+    norm_values = (0.5,) if is_grayscale else (0.5, 0.5, 0.5)
+
+    transforms = [
+        torchvision.transforms.Resize(resize_size),
+        torchvision.transforms.ToTensor(),
+    ]
+
+    if normalize:
+        transforms.append(torchvision.transforms.Normalize(norm_values, norm_values))
+
+    return torchvision.transforms.Compose(transforms)
+
+
+def _get_synthetic_dataset(
+    image_paths: list[str],
+    color_mode: str,
+    resize_size: int,
+    normalize: bool = True,
+) -> Dataset:
+    """
+    Create a synthetic dataset with the given parameters.
+
+    Args:
+        image_paths: List of image file paths.
+        color_mode: Color mode ('L' for grayscale, 'RGB' for color).
+        resize_size: Target size for resizing.
+        normalize: If True, apply normalization.
+
+    Returns:
+        ImageDataset instance.
+
+    """
+    transform = _get_synthetic_transform(color_mode, resize_size, normalize)
+    # Synthetic datasets use single integer labels [0, 0, 0, ...] instead of label lists
+    labels = [0] * len(image_paths)
+    return ImageDataset(image_paths, color_mode=color_mode, labels=labels, transform=transform)
+
+
+def get_synthetic_mnist(params: DatasetParams, normalize: bool = True) -> Dataset:
     """Retrieve the Synthetic MNIST dataset."""
     image_paths = _find_synthetic_dataset_images(params.dataroot, "mnist")
-
-    transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.Resize(28),
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.1307,), (0.3081,)),
-        ]
-    )
-
-    class SyntheticDataset(Dataset):
-        """Simple dataset for synthetic images without labels."""
-
-        def __init__(self, image_paths: list[str], transform: Any = None) -> None:
-            """Initialize the dataset."""
-            self.image_paths = image_paths
-            self.transform = transform
-            # Create dummy data attribute for compatibility (don't load all images at once)
-            # Load first image to get shape, then create dummy array
-            if image_paths:
-                sample_img = Image.open(image_paths[0]).convert("L")
-                sample_array = np.array(sample_img)
-                self.data = np.zeros((len(image_paths), *sample_array.shape), dtype=sample_array.dtype)
-            else:
-                self.data = np.zeros((0, 28, 28), dtype=np.uint8)
-            self.targets = np.zeros(len(image_paths))
-
-        def __len__(self) -> int:
-            """Return the number of samples."""
-            return len(self.image_paths)
-
-        def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
-            """Retrieve image and dummy label."""
-            image = Image.open(self.image_paths[idx]).convert("L")
-            if self.transform:
-                image = self.transform(image)
-            return image, 0
-
-    return SyntheticDataset(image_paths, transform=transform)
+    return _get_synthetic_dataset(image_paths, color_mode="L", resize_size=28, normalize=normalize)
 
 
-def get_synthetic_fmnist(params: DatasetParams) -> Dataset:
+def get_synthetic_fmnist(params: DatasetParams, normalize: bool = True) -> Dataset:
     """Retrieve the Synthetic Fashion-MNIST dataset."""
     image_paths = _find_synthetic_dataset_images(params.dataroot, "fashion_mnist")
-
-    transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.Resize(28),
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.2860,), (0.3530,)),
-        ]
-    )
-
-    class SyntheticDataset(Dataset):
-        """Simple dataset for synthetic images without labels."""
-
-        def __init__(self, image_paths: list[str], transform: Any = None) -> None:
-            """Initialize the dataset."""
-            self.image_paths = image_paths
-            self.transform = transform
-            # Create dummy data attribute for compatibility (don't load all images at once)
-            # Load first image to get shape, then create dummy array
-            if image_paths:
-                sample_img = Image.open(image_paths[0]).convert("L")
-                sample_array = np.array(sample_img)
-                self.data = np.zeros((len(image_paths), *sample_array.shape), dtype=sample_array.dtype)
-            else:
-                self.data = np.zeros((0, 28, 28), dtype=np.uint8)
-            self.targets = np.zeros(len(image_paths))
-
-        def __len__(self) -> int:
-            """Return the number of samples."""
-            return len(self.image_paths)
-
-        def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
-            """Retrieve image and dummy label."""
-            image = Image.open(self.image_paths[idx]).convert("L")
-            if self.transform:
-                image = self.transform(image)
-            return image, 0
-
-    return SyntheticDataset(image_paths, transform=transform)
+    return _get_synthetic_dataset(image_paths, color_mode="L", resize_size=28, normalize=normalize)
 
 
-def get_synthetic_chest_xray(params: DatasetParams) -> Dataset:
+def get_synthetic_chest_xray(params: DatasetParams, normalize: bool = True) -> Dataset:
     """Retrieve the Synthetic Chest X-ray dataset."""
     image_paths = _find_synthetic_dataset_images(params.dataroot, "chest_xray")
-
-    transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.Resize(128),
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ]
-    )
-
-    class SyntheticDataset(Dataset):
-        """Simple dataset for synthetic images without labels."""
-
-        def __init__(self, image_paths: list[str], transform: Any = None) -> None:
-            """Initialize the dataset."""
-            self.image_paths = image_paths
-            self.transform = transform
-            # Create dummy data attribute for compatibility (don't load all images at once)
-            # Load first image to get shape, then create dummy array
-            if image_paths:
-                sample_img = Image.open(image_paths[0]).convert("RGB")
-                sample_array = np.array(sample_img)
-                self.data = np.zeros((len(image_paths), *sample_array.shape), dtype=sample_array.dtype)
-            else:
-                self.data = np.zeros((0, 128, 128, 3), dtype=np.uint8)
-            self.targets = np.zeros(len(image_paths))
-
-        def __len__(self) -> int:
-            """Return the number of samples."""
-            return len(self.image_paths)
-
-        def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
-            """Retrieve image and dummy label."""
-            image = Image.open(self.image_paths[idx]).convert("RGB")
-            if self.transform:
-                image = self.transform(image)
-            return image, 0
-
-    return SyntheticDataset(image_paths, transform=transform)
+    return _get_synthetic_dataset(image_paths, color_mode="RGB", resize_size=128, normalize=normalize)

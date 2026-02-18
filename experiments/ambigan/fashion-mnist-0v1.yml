@@ -79,6 +79,7 @@ evaluation:
     models: 
       - convnext
       - vit
-      # - efficientnetv2
-    epochs: 10
+      - efficientnetv2
+      - swin
+    epochs: 5
     batch_size: 64
