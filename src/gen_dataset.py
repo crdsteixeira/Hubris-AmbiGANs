@@ -28,7 +28,7 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
+def main() -> None:  # pylint: disable=too-many-statements
     """Run process to generate dataset."""
     logger.info("Dataset generation is starting...")
 
@@ -39,6 +39,14 @@ def main() -> None:
     config.seed = gen_seed() if config.seed is None else config.seed
 
     setup_reprod(config.seed)
+
+    # Check if companion dataset already exists
+    companion_dataset_exists = os.path.isdir(config.out_dir)
+
+    if companion_dataset_exists:
+        logger.info(f"✓ Companion dataset exists at {config.out_dir}")
+        logger.info("Skipping dataset generation.")
+        return
 
     G, _, _, _ = construct_gan_from_checkpoint(config.gan_path, device=config.device)
     G.eval()

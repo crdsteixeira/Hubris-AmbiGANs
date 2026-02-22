@@ -9,10 +9,10 @@ device: cuda:1
 num_runs: 1
 
 gen_test_noise: false
-gen_pairwise_inception: true
-gen_classifiers: true
-gen_gan: true
-gen_dataset: true
+gen_pairwise_inception: false
+gen_classifiers: false
+gen_gan: false
+gen_dataset: false
 run_hubris_evaluation: true
 
 dataset:
@@ -81,5 +81,5 @@ evaluation:
       - vit
       - efficientnetv2
       - swin
-    epochs: 5
-    batch_size: 64
+    epochs: 3
+    batch_size: 32

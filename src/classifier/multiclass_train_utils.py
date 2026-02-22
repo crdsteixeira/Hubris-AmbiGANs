@@ -5,7 +5,7 @@ import os
 
 import torch
 import wandb
-from torch import nn
+from torch import Callable, nn
 from torch.utils.data import DataLoader
 
 from src.classifier.construct_classifier import construct_classifier
@@ -22,6 +22,74 @@ from src.models import (
 from src.utils.checkpoint import construct_classifier_from_checkpoint
 
 logger = logging.getLogger(__name__)
+
+
+def split_test_set_for_classifier_training(
+    dataset: torch.utils.data.Dataset,
+    seed: int | None = None,
+) -> tuple[torch.utils.data.Subset, torch.utils.data.Subset, torch.utils.data.Subset]:
+    """
+    Split test set into train/val/eval (50/10/40) with deterministic seed.
+
+    This ensures that:
+    - Classifier training uses 50% of test data
+    - Classifier validation uses 10% of test data
+    - Ambiguity evaluation (entropy, top_pairs) uses held-out 40% on different distribution
+
+    Args:
+        dataset: The test dataset to split
+        seed: Random seed for reproducibility (default: use torch default)
+
+    Returns:
+        Tuple of (train_subset, val_subset, eval_subset)
+
+    """
+    # Use deterministic seed for splitting
+    train_size = int(0.5 * len(dataset))
+    val_size = int(0.1 * len(dataset))
+    eval_size = len(dataset) - train_size - val_size
+
+    generator = torch.Generator()
+    if seed is not None:
+        generator.manual_seed(seed)
+
+    train_set, val_set, eval_set = torch.utils.data.random_split(
+        dataset, [train_size, val_size, eval_size], generator=generator
+    )
+
+    return train_set, val_set, eval_set
+
+
+def split_validation_set_for_ambiguity_evaluation(
+    dataset: torch.utils.data.Dataset,
+    seed: int | None = None,
+) -> tuple[torch.utils.data.Subset, torch.utils.data.Subset]:
+    """
+    Split validation set into train/eval (80/20) with deterministic seed.
+
+    Used for chest x-ray ambiguity evaluation. This ensures that:
+    - Model training uses 80% of validation data
+    - Ambiguity evaluation uses held-out 20% portion
+
+    Args:
+        dataset: The validation dataset to split
+        seed: Random seed for reproducibility (default: use torch default)
+
+    Returns:
+        Tuple of (train_subset, eval_subset)
+
+    """
+    # Use deterministic seed for splitting
+    train_size = int(0.8 * len(dataset))
+    eval_size = len(dataset) - train_size
+
+    generator = torch.Generator()
+    if seed is not None:
+        generator.manual_seed(seed)
+
+    train_set, eval_set = torch.utils.data.random_split(dataset, [train_size, eval_size], generator=generator)
+
+    return train_set, eval_set
 
 
 def evaluate_with_top_k_accuracy(
@@ -54,7 +122,7 @@ def evaluate_with_top_k_accuracy(
         for data in dataloader:
             X, y = data
             X = X.to(device)
-            y = y.to(device)
+            y = y.to(device).long()
 
             outputs = model(X, output_feature_maps=False)
             loss = criterion(outputs, y)
@@ -107,8 +175,8 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
         seed: Random seed for reproducibility
         entity: WandB entity name
         project: WandB project name
-        pos_class: Index of positive class for binary classification
-        neg_class: Index of negative class for binary classification
+        pos_class: Positive class for binary classification
+        neg_class: Negative class for binary classification
 
     Returns:
         Dictionary with metrics (top1_accuracy, top2_accuracy, loss) and 'error' field if failed
@@ -141,13 +209,17 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
     )
 
     try:
-        # Load dataset
+        # Load dataset - Use TEST set to avoid data leakage from AmbiGAN training
+        # Exception: For chest x-ray, use VALIDATION split instead of test
+        # Classifiers are trained independently on held-out data and split into train/val/eval
         load_params = LoadDatasetParams(
             dataroot=data_dir,
             dataset_name=dataset_enum,
             pos_class=pos_class,
             neg_class=neg_class,
-            train=True,
+            split=(
+                "val" if dataset_enum == DatasetNames.chest_xray else "test"
+            ),  # Use validation for chest_xray, test otherwise
             pytesting=False,
         )
         dataset, num_classes, img_size = load_dataset(load_params)
@@ -159,17 +231,14 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
         dataset_out_dir = os.path.join(out_dir, dataset_name_value)
         os.makedirs(dataset_out_dir, exist_ok=True)
 
-        # Split dataset (70-15-15 train-val-test)
-        train_size = int(0.7 * len(dataset))
-        val_size = int(0.15 * len(dataset))
-        test_size = len(dataset) - train_size - val_size
-
-        train_set, val_set, test_set = torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
+        # Split dataset using deterministic seed (50-10-40 train-val-eval)
+        # 50% for training, 10% for validation, 40% held-out for ambiguity evaluation
+        train_set, val_set, eval_set = split_test_set_for_classifier_training(dataset, seed=seed)
 
         # Create data loaders
         train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
         val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
-        test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=4)
+        test_loader = DataLoader(eval_set, batch_size=batch_size, shuffle=False, num_workers=4)
 
         # Create training arguments
         args = TrainClassifierArgs(
@@ -218,17 +287,18 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
             name=f"{classifier_type_value}_{seed}",
         )
 
-        # Loss and accuracy
-        if binary_mode:
-            criterion = nn.BCELoss()
-            acc_fun = binary_accuracy  # type: ignore[assignment]
-        else:
-            criterion = nn.CrossEntropyLoss()
-            acc_fun = multiclass_accuracy  # type: ignore[assignment]
-
         # Construct classifier
         C = construct_classifier(args)
         logger.info(f"\nModel Architecture:\n{C}")
+
+        acc_fun: Callable
+        # Loss function and accuracy function
+        if binary_mode:
+            criterion = nn.BCELoss()
+            acc_fun = binary_accuracy
+        else:
+            criterion = nn.CrossEntropyLoss()
+            acc_fun = multiclass_accuracy
 
         # Train the model
         stats, cp_path = train(
@@ -310,9 +380,5 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
         except Exception as wandb_error:
             logger.error(f"Failed to log error to WandB: {wandb_error}")
 
-        return {
-            "top1_accuracy": 0.0,
-            "top2_accuracy": 0.0,
-            "loss": float("inf"),
-            "error": str(e),
-        }
+        # Re-raise the exception so the caller knows training failed
+        raise

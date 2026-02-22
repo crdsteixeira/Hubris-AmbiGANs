@@ -128,7 +128,7 @@ def main() -> None:  # pylint: disable=too-many-statements
             dataset_name=args.dataset_name,
             pos_class=args.pos_class,
             neg_class=args.neg_class,
-            train=True,
+            split="train",
             pytesting=False,
         )
     )
@@ -158,7 +158,7 @@ def main() -> None:  # pylint: disable=too-many-statements
             dataset_name=args.dataset_name,
             pos_class=args.pos_class,
             neg_class=args.neg_class,
-            train=False,
+            split="test",
             pytesting=False,
         )
     )

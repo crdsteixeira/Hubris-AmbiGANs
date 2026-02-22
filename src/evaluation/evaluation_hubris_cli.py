@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 from tqdm import tqdm
 
-from src.datasets.load import load_dataset
+from src.datasets.load import DatasetNames, load_dataset
 from src.enums import DeviceType, PretrainedModels
 from src.evaluation.pretrained_models import ConvNext, EfficientNetV2, Swin, ViT
 from src.metrics.accuracy import binary_accuracy, binary_precision_recall_f1
@@ -60,58 +60,6 @@ parser.add_argument("--seed", type=int, help="Random seed for reproducibility")
 parser.add_argument("--gan-id", dest="gan_id", default=None, help="GAN experiment ID for wandb tracking")
 
 
-def process_inference_batch(
-    images: torch.Tensor,
-    model: nn.Module,
-    estimator: nn.Module | None,
-    device: str,
-    inference_batch_size: int,
-) -> tuple[torch.Tensor, torch.Tensor | None]:
-    """
-    Process a batch of images through the model and estimator.
-
-    Args:
-        images: Batch of images
-        model: Model to evaluate
-        estimator: Optional estimator model
-        device: Device for computation
-        inference_batch_size: Batch size for inference
-
-    Returns:
-        Tuple of (predictions, estimator_predictions)
-
-    """
-    batch_preds = []
-    batch_ref_preds = []
-
-    if images.shape[0] > inference_batch_size:
-        for i in range(0, images.shape[0], inference_batch_size):
-            batch_images = images[i : i + inference_batch_size].to(device)
-            # Use predict method for inference to get probabilities (sigmoid applied)
-            if hasattr(model, "predict"):
-                batch_preds.append(model.predict(batch_images).cpu())
-            else:
-                # Fallback for other model types
-                batch_preds.append(model(batch_images).cpu())
-            if estimator is not None:
-                batch_ref_preds.append(estimator(batch_images).cpu())
-            del batch_images
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        preds = torch.cat(batch_preds)
-        ref_preds = torch.cat(batch_ref_preds) if estimator is not None else None
-    else:
-        # Use predict method for inference to get probabilities (sigmoid applied)
-        if hasattr(model, "predict"):
-            preds = model.predict(images.to(device)).cpu()
-        else:
-            # Fallback for other model types
-            preds = model(images.to(device)).cpu()
-        ref_preds = estimator(images.to(device)).cpu() if estimator is not None else None
-
-    return preds, ref_preds
-
-
 def evaluate(
     config: CLEvaluationArgs,
     model: nn.Module,
@@ -125,9 +73,6 @@ def evaluate(
     ref_preds = []
     labels = []
 
-    # Use smaller inference batch size to save memory (split large batches)
-    inference_batch_size = max(1, config.batch_size // 2) if config.batch_size > 16 else config.batch_size
-
     # Load estimator if needed
     estimator = None
     if config.estimator_path is not None:
@@ -136,13 +81,10 @@ def evaluate(
 
     with torch.no_grad():
         for images, label in tqdm(loader):
-            batch_preds, batch_ref_preds = process_inference_batch(
-                images, model, estimator, config.device, inference_batch_size
-            )
-            preds.append(batch_preds)
-            if batch_ref_preds is not None:
-                ref_preds.append(batch_ref_preds)
+            preds.append(model(images.to(config.device)).cpu())
             labels.append(label)
+            if estimator is not None:
+                ref_preds.append(estimator(images.to(config.device)).cpu())
 
             # Cleanup memory after each batch
             del images, label
@@ -151,14 +93,16 @@ def evaluate(
 
         full_preds = torch.cat(preds)
         full_labels = torch.cat(labels)
+        full_ref_preds = torch.cat(ref_preds) if estimator is not None else None
 
     accuracy = binary_accuracy(full_preds, full_labels, avg=True, threshold=0.50).item()
+    precision, recall, f1_score = None, None, None
     if compute_prf:
         precision, recall, f1_score = binary_precision_recall_f1(full_preds, full_labels, threshold=0.50)
-    else:
-        precision, recall, f1_score = None, None, None
+
     hubris = Hubris(C=None, dataset_size=len(full_preds))
     absolute_hubris = hubris.compute(full_preds, ref_preds=None)
+    improved_hubris = hubris.compute_improved(full_preds, ref_preds=None)
 
     df = pd.DataFrame()
     df = df.assign(
@@ -168,22 +112,21 @@ def evaluate(
         recall=[recall],
         f1_score=[f1_score],
         absolute_hubris=[absolute_hubris],
+        improved_hubris=[improved_hubris],
         acd=[(0.50 - full_preds).abs().mean().item()],
     )
 
     # Compute relative Hubris if estimator was used
     if estimator is not None and len(ref_preds) > 0:
-        full_ref_preds = torch.cat(ref_preds)
         relative_hubris = hubris.compute(full_preds, ref_preds=full_ref_preds)
+        improved_relative_hubris = hubris.compute_improved(full_preds, ref_preds=full_ref_preds)
         df = df.assign(
             relative_hubris=[relative_hubris],
+            improved_relative_hubris=[improved_relative_hubris],
         )
 
-        # Clean up estimator model
-        del estimator, full_ref_preds
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
+    # Clean up estimator model
+    del estimator
     torch.cuda.empty_cache()
     gc.collect()
 
@@ -226,34 +169,80 @@ def setup_wandb_for_model(config: CLEvaluationArgs, model: PretrainedModels, gan
 
 
 def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, DataLoader]:
-    """Load training, test, and companion datasets."""
-    dataset, _, _ = load_dataset(
-        LoadDatasetParams(
-            dataroot=config.dataroot,
-            dataset_name=config.dataset_name,
-            pos_class=config.pos_class,
-            neg_class=config.neg_class,
-            train=True,
-            pytesting=False,
+    """
+    Load training, test, and companion datasets.
+
+    For fine-tuning pretrained models, uses different splits by dataset:
+    - Chest X-ray: Uses VALIDATION split to avoid data leakage
+    - Other datasets (MNIST, Fashion-MNIST): Uses TEST split
+
+    This avoids data leakage since AmbiGAN was trained on the training set.
+    The loaded dataset is split into 70/30 (train for fine-tuning / test for evaluation).
+    Evaluation uses ONLY the held-out 30% test portion (never seen by fine-tuned models).
+    """
+    if config.dataset_name == DatasetNames.chest_xray:
+        # For chest_xray, use validation set instead of test set
+        finetune_train_set, _, _ = load_dataset(
+            LoadDatasetParams(
+                dataroot=config.dataroot,
+                dataset_name=config.dataset_name,
+                pos_class=config.pos_class,
+                neg_class=config.neg_class,
+                split="validation",
+                pytesting=False,
+            )
         )
-    )
-
-    test_dataset, _, _ = load_dataset(
-        LoadDatasetParams(
-            dataroot=config.dataroot,
-            dataset_name=config.dataset_name,
-            pos_class=config.pos_class,
-            neg_class=config.neg_class,
-            train=False,
-            pytesting=False,
+        finetune_test_set, _, _ = load_dataset(
+            LoadDatasetParams(
+                dataroot=config.dataroot,
+                dataset_name=config.dataset_name,
+                pos_class=config.pos_class,
+                neg_class=config.neg_class,
+                split="test",
+                pytesting=False,
+            )
         )
-    )
+        transform = finetune_test_set.transform
+    else:
+        # Load dataset to use for fine-tuning (avoid data leakage from AmbiGAN training)
+        test_dataset, _, _ = load_dataset(
+            LoadDatasetParams(
+                dataroot=config.dataroot,
+                dataset_name=config.dataset_name,
+                pos_class=config.pos_class,
+                neg_class=config.neg_class,
+                split="test",
+                pytesting=False,
+            )
+        )
 
-    ambi_dataset = ImageFolder(root=config.companion_dataroot, transform=test_dataset.transform)
+        # Split test set into 70/30 (train for fine-tuning / test for evaluation)
+        # Use deterministic seed to ensure reproducibility
+        train_size = int(0.7 * len(test_dataset))
+        test_size = len(test_dataset) - train_size
 
-    train_dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
+        generator = torch.Generator()
+        generator.manual_seed(config.seed if config.seed is not None else 42)
+        finetune_train_set, finetune_test_set = torch.utils.data.random_split(
+            test_dataset, [train_size, test_size], generator=generator
+        )
+
+        transform = test_dataset.transform
+
+    # Load companion dataset for evaluation
+    ambi_dataset = ImageFolder(root=config.companion_dataroot, transform=transform)
+
+    # Create dataloaders
+    # Fine-tuning uses 70% portion of test set
+    train_dataloader = DataLoader(finetune_train_set, batch_size=config.batch_size, shuffle=True)
+    # Evaluation uses held-out 30% portion (never seen by fine-tuned models)
+    test_dataloader = DataLoader(finetune_test_set, batch_size=config.batch_size, shuffle=False)
     ambi_dataloader = DataLoader(ambi_dataset, batch_size=config.batch_size, shuffle=False)
+
+    # Log dataset sizes
+    logger.info(f"Training set size: {len(finetune_train_set)}")
+    logger.info(f"Test set size: {len(finetune_test_set)}")
+    logger.info(f"Companion/Ambiguity dataset size: {len(ambi_dataset)}")
 
     return train_dataloader, test_dataloader, ambi_dataloader
 
@@ -494,6 +483,12 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
                 "hubris_a_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["absolute_hubris"].values[
                     0
                 ],
+                "hubris_improved_original": df[df["dataset"] == f"{config.dataset_name} Original"][
+                    "improved_hubris"
+                ].values[0],
+                "hubris_improved_companion": df[df["dataset"] == f"{config.dataset_name} Companion"][
+                    "improved_hubris"
+                ].values[0],
                 "hubris_r_original": (
                     df[df["dataset"] == f"{config.dataset_name} Original"]["relative_hubris"].values[0]
                     if "relative_hubris" in df.columns
@@ -502,6 +497,16 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
                 "hubris_r_companion": (
                     df[df["dataset"] == f"{config.dataset_name} Companion"]["relative_hubris"].values[0]
                     if "relative_hubris" in df.columns
+                    else None
+                ),
+                "hubris_improved_r_original": (
+                    df[df["dataset"] == f"{config.dataset_name} Original"]["improved_relative_hubris"].values[0]
+                    if "improved_relative_hubris" in df.columns
+                    else None
+                ),
+                "hubris_improved_r_companion": (
+                    df[df["dataset"] == f"{config.dataset_name} Companion"]["improved_relative_hubris"].values[0]
+                    if "improved_relative_hubris" in df.columns
                     else None
                 ),
                 "acd_original": df[df["dataset"] == f"{config.dataset_name} Original"]["acd"].values[0],

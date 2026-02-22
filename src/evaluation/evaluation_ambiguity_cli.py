@@ -15,7 +15,11 @@ from pymdma.image.models.features import ExtractorFactory
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.classifier.multiclass_train_utils import train_single_multiclass_classifier
+from src.classifier.multiclass_train_utils import (
+    split_test_set_for_classifier_training,
+    split_validation_set_for_ambiguity_evaluation,
+    train_single_multiclass_classifier,
+)
 from src.datasets.datasets import CompanionDataset
 from src.datasets.load import load_dataset
 from src.enums import ClassifierType, DatasetNames, DeviceType
@@ -26,7 +30,7 @@ from src.metrics.image_quality import (
     compute_pymdma_metrics_from_images,
     extract_features,
 )
-from src.models import CLAmbiguityArgs, LoadDatasetParams
+from src.models import CLAmbiguityArgs, ConfigTrainingParams, LoadDatasetParams
 from src.utils.checkpoint import construct_classifier_from_checkpoint
 from src.utils.logging import configure_logging
 from src.utils.utility_functions import setup_reprod
@@ -138,6 +142,14 @@ def parse_args() -> CLAmbiguityArgs:
         if not os.path.isabs(out_dir):
             out_dir = os.path.join(filesdir, out_dir)
 
+    # Extract training parameters, using defaults if not specified
+    training_config = config_dict.get("training", {})
+    training_params = ConfigTrainingParams(
+        batch_size=training_config.get("batch_size", 64),
+        epochs=training_config.get("epochs", 30),
+        lr=training_config.get("lr", 0.001),
+    )
+
     args_dict = {
         "dataroot": data_dir,
         "out_dir": out_dir,
@@ -147,6 +159,7 @@ def parse_args() -> CLAmbiguityArgs:
         "seed": config_dict.get("seed"),
         "training_dataset": training_dataset,
         "balanced": balanced,
+        "training_params": training_params,
     }
 
     return CLAmbiguityArgs(**args_dict)
@@ -200,12 +213,21 @@ def ensure_models_trained(config: "CLAmbiguityArgs", training_dataset: str) -> N
         checkpoint_path = find_checkpoint(config.out_dir, training_dataset, classifier_str, seed)
 
         if checkpoint_path is None:
-            logger.info("Training %s on %s...", classifier_str, training_dataset)
+            logger.info(
+                "Training %s on %s with epochs=%d, lr=%f...",
+                classifier_str,
+                training_dataset,
+                config.training_params.epochs,
+                config.training_params.lr,
+            )
             train_single_multiclass_classifier(
                 dataset_name=training_dataset,
                 classifier_type=classifier,
                 data_dir=config.dataroot,
                 out_dir=config.out_dir,
+                batch_size=config.training_params.batch_size,
+                epochs=config.training_params.epochs,
+                lr=config.training_params.lr,
                 device=config.device,
                 seed=config.seed,
                 pos_class=pos_class,
@@ -249,34 +271,49 @@ def load_datasets_for_evaluation(
     config: "CLAmbiguityArgs",
     dataset_name: DatasetNames,
     batch_size: int = 32,
-) -> DataLoader:
+) -> tuple[DataLoader, dict[str, Any]]:
     """
-    Load test dataset for evaluation.
+    Load dataset for evaluating ambiguity metrics.
+
+    For most datasets: Uses test set split into 50/10/40, returns only held-out 40% eval portion.
+    For chest x-ray: Uses validation set split into 80/20, returns only held-out 20% eval portion.
 
     Args:
-        config: Configuration containing dataroot and device info
+        config: Configuration containing dataroot, device info, and seed
         dataset_name: Name of the dataset to load (using DatasetNames enum)
         batch_size: Batch size for DataLoader
 
     Returns:
-        Test DataLoader
+        Tuple of (Test DataLoader, metadata dict with companion metrics if applicable)
 
     """
     dataset_str = _enum_to_str(dataset_name)
     logger.info("Loading %s dataset...", dataset_str)
 
-    # Load test dataset
+    # Load dataset (validation split for chest x-ray, test split for others)
     pos_class, neg_class = _get_binary_classes(config, dataset_name)
+
     test_dataset, num_classes, _ = load_dataset(
         LoadDatasetParams(
             dataroot=config.dataroot,
             dataset_name=dataset_name,
             pos_class=pos_class,
             neg_class=neg_class,
-            train=False,
+            split="test",
             pytesting=False,
         )
     )
+
+    # Split dataset based on dataset type
+    # For chest x-ray: validation split into 80/20 (train/eval for ambiguity metrics)
+    # For others: test split into 50/10/40 (train/val/eval for ambiguity metrics)
+    seed = config.seed if config.seed is not None else 42
+    if dataset_name == DatasetNames.chest_xray:
+        # Use 80/20 split for chest x-ray, return 20% held-out eval portion
+        _, eval_split = split_validation_set_for_ambiguity_evaluation(test_dataset, seed=seed)
+    else:
+        # Use 50/10/40 split for other datasets, return 40% held-out eval portion
+        _, _, eval_split = split_test_set_for_classifier_training(test_dataset, seed=seed)
 
     # Use custom collate function for datasets with ground truth labels (ambiguess, companion)
     # This preserves labels as lists instead of converting to tensors
@@ -290,13 +327,15 @@ def load_datasets_for_evaluation(
     ):
         collate_fn = collate_with_ground_truth
 
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    test_dataloader = DataLoader(eval_split, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
     logger.info("  ✓ Loaded %s with %d classes", dataset_str, num_classes)
 
     # Save companion dataset metadata if applicable
     save_companion_dataset_metadata(test_dataset, dataset_str, config.dataroot)
 
-    return test_dataloader
+    dataset_metadata: dict[str, Any] = {}
+
+    return test_dataloader, dataset_metadata
 
 
 def collate_with_ground_truth(batch: list[tuple[Any, Any]]) -> tuple[torch.Tensor, list]:
@@ -326,6 +365,67 @@ def collate_with_ground_truth(batch: list[tuple[Any, Any]]) -> tuple[torch.Tenso
     # Keep labels as a list (don't convert to tensor)
     # This preserves list[list[int]] for ambiguous datasets
     return stacked_images, labels
+
+
+def get_model_predictions(
+    model: torch.nn.Module,
+    dataloader: DataLoader,
+    device: DeviceType | str,
+) -> torch.Tensor:
+    """
+    Get softmax predictions from a model on a dataloader.
+
+    TODO: review this function
+
+    Handles various output formats from different models:
+    - SimpleCNN/MLP binary: 1D sigmoid probabilities
+    - SimpleCNN/MLP multiclass: raw logits
+    - Other models: raw logits
+    - Pretrained models: raw logits
+
+    Converts all outputs to [N, n_classes] softmax probabilities.
+
+    Args:
+        model: Model to get predictions from (must be in eval mode)
+        dataloader: DataLoader with images
+        device: Device to use for computation
+
+    Returns:
+        Tensor of shape (n_samples, n_classes) with softmax probabilities
+
+    """
+    device_str = device.value if isinstance(device, DeviceType) else str(device)
+
+    all_preds = []
+    with torch.no_grad():
+        for images, _ in dataloader:
+            images = images.to(device_str)
+            outputs = model(images)
+            all_preds.append(outputs.cpu())
+
+    all_preds = torch.cat(all_preds)
+
+    # Reshape 1D output to [N, 1] if needed
+    if all_preds.dim() == 1:
+        all_preds = all_preds.unsqueeze(1)
+
+    # Handle binary classification case [N, 1] (typically sigmoid output)
+    # Convert to [N, 2] with proper probability distribution: [1-p, p]
+    if all_preds.shape[1] == 1:
+        p = torch.clamp(all_preds, 0.0, 1.0)
+        all_preds = torch.cat([1 - p, p], dim=1)
+        return all_preds
+
+    # For multiclass: check if already probabilities or need softmax
+    # If all values in [0,1] and sum close to 1, treat as probabilities; else apply softmax
+    if all_preds.max().item() <= 1.0 and all_preds.min().item() >= 0.0:
+        # Likely probabilities - verify by checking row sums
+        row_sums = all_preds.sum(dim=1)
+        if (row_sums > 0.9).all() and (row_sums < 1.1).all():
+            return all_preds  # Already probabilities
+
+    # Otherwise treat as logits and apply softmax
+    return torch.softmax(all_preds, dim=1)
 
 
 def generate_fid_stats(  # pylint: disable=too-many-statements
@@ -368,6 +468,7 @@ def generate_fid_stats(  # pylint: disable=too-many-statements
 
     logger.info(f"Generating FID statistics for {dataset_name}...")
 
+    split = "test" if use_test_set else "train"
     # Load dataset
     try:
         dataset, _, _ = load_dataset(
@@ -376,7 +477,7 @@ def generate_fid_stats(  # pylint: disable=too-many-statements
                 dataset_name=DatasetNames(dataset_name),
                 pos_class=None,
                 neg_class=None,
-                train=not use_test_set,  # train=False means use test set
+                split=split,
                 pytesting=False,
             )
         )
@@ -536,11 +637,8 @@ def compute_evaluation_metrics(  # noqa: C901
     all_preds = torch.cat(all_preds)
     all_images = torch.cat(all_images)
 
-    # Compute softmax probabilities for entropy calculation
-    softmax_preds = torch.softmax(all_preds, dim=1)
-
     # Compute entropy metric
-    entropy = compute_entropy(softmax_preds)
+    entropy = compute_entropy(all_preds)
 
     metrics = {
         "entropy": entropy,
@@ -557,7 +655,7 @@ def compute_evaluation_metrics(  # noqa: C901
             else:
                 ground_truth.extend(label_batch)
 
-        top_pairs = compute_top_pairs(softmax_preds, ground_truth)
+        top_pairs = compute_top_pairs(all_preds, ground_truth)
         metrics["top_pairs"] = top_pairs
 
     # Compute FID if stats file is available
@@ -619,7 +717,7 @@ def extract_training_features(
                 LoadDatasetParams(
                     dataroot=config.dataroot,
                     dataset_name=DatasetNames(eval_dataset_name),
-                    train=False,
+                    split="test",
                     pytesting=False,
                     pos_class=None,
                     neg_class=None,
@@ -638,7 +736,7 @@ def extract_training_features(
         LoadDatasetParams(
             dataroot=config.dataroot,
             dataset_name=DatasetNames(training_dataset_str),
-            train=True,  # Load training set
+            split="train",  # Load training set
             pytesting=False,
             pos_class=None,
             neg_class=None,
@@ -691,7 +789,7 @@ def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-stateme
     extractor: Any = None,
 ) -> tuple[float | None, dict[str, float]]:
     """
-    Compute FID and pymdma metrics for a dataset (dataset-level, independent of classifier).
+    Compute FID, pymdma, and confusion distance metrics for a dataset (dataset-level, independent of classifier).
 
     These metrics measure image quality/distribution and should be constant across all classifiers.
 
@@ -703,7 +801,7 @@ def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-stateme
         extractor: Cached feature extractor
 
     Returns:
-        Tuple of (fid_score, pymdma_metrics_dict)
+        Tuple of (fid_score, dataset_metrics_dict) where dataset_metrics_dict includes pymdma and confusion_distance metrics
 
     """
     dataset_str = _enum_to_str(dataset)
@@ -717,7 +815,7 @@ def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-stateme
                 dataset_name=dataset,
                 pos_class=None,
                 neg_class=None,
-                train=False,
+                split="test",
                 pytesting=False,
             )
         )
@@ -768,7 +866,7 @@ def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-stateme
             logger.warning("Failed to compute FID: %s", e)
 
     # Compute pymdma metrics
-    pymdma_metrics = {}
+    dataset_metrics = {}
     if real_features is not None:
         try:
             # Load all images from dataset without sampling
@@ -782,13 +880,14 @@ def compute_dataset_metrics(  # pylint: disable=too-many-locals,too-many-stateme
             pymdma_metrics = compute_pymdma_metrics_from_images(
                 all_images, real_features, config.device, extractor, sample_size=None
             )
+            dataset_metrics.update(pymdma_metrics)
             for metric_name in PYMDMA_METRIC_NAMES:
-                if metric_name in pymdma_metrics:
-                    logger.info("    ✓ %s: %.4f", metric_name, pymdma_metrics[metric_name])
+                if metric_name in dataset_metrics:
+                    logger.info("    ✓ %s: %.4f", metric_name, dataset_metrics[metric_name])
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to compute pymdma metrics: %s", e)
 
-    return fid_score, pymdma_metrics
+    return fid_score, dataset_metrics
 
 
 def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches  # noqa: C901
@@ -796,27 +895,27 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
     classifier: ClassifierType,
     dataset: DatasetNames,
     dataset_fid: float | None = None,
-    dataset_pymdma: dict | None = None,
+    dataset_metrics: dict | None = None,
 ) -> bool:
     """
     Evaluate a single model on a single dataset.
 
     Computes classifier-specific metrics (entropy, uncertainty).
-    Uses pre-computed dataset-level metrics (FID, pymdma) which are identical across classifiers.
+    Uses pre-computed dataset-level metrics (FID, pymdma, confusion distance) which are identical across classifiers.
 
     Args:
         config: Configuration with models and dataset info
         classifier: Classifier type to evaluate
         dataset: Dataset to evaluate on
         dataset_fid: Pre-computed FID score for this dataset (dataset-level metric, same for all classifiers)
-        dataset_pymdma: Pre-computed pymdma metrics for this dataset (dataset-level metrics, same for all classifiers)
+        dataset_metrics: Pre-computed dataset-level metrics for this dataset (pymdma, confusion distance, etc.)
 
     Returns:
         Boolean indicating if evaluation succeeded (True) or failed (False)
 
     """
-    if dataset_pymdma is None:
-        dataset_pymdma = {}
+    if dataset_metrics is None:
+        dataset_metrics = {}
 
     classifier_str = _enum_to_str(classifier)
     dataset_str = _enum_to_str(dataset)
@@ -849,41 +948,14 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
 
         # Load dataset for entropy computation
         logger.info("  Loading %s dataset (different from training for varied entropy)...", dataset_str)
-        test_dataloader = load_datasets_for_evaluation(config, dataset, batch_size=32)
-        logger.info(f"  ✓ Dataset {dataset_str} loaded - {len(test_dataloader.dataset)} samples")
+        test_dataloader, dataset_companion_metrics = load_datasets_for_evaluation(config, dataset, batch_size=32)
+        logger.info("  ✓ Dataset %s loaded - %d samples", dataset_str, len(test_dataloader.dataset))
 
         # Compute classifier-specific metrics (entropy - depends on model predictions)
         logger.info("  Computing classifier-specific metrics...")
-
-        # Convert device to string for PyTorch operations
-        device_str = config.device.value if isinstance(config.device, DeviceType) else str(config.device)
-
-        all_preds = []
-        with torch.no_grad():
-            for images, _ in test_dataloader:
-                images = images.to(device_str)
-                outputs = model(images)
-                all_preds.append(outputs.cpu())
-
-        all_preds = torch.cat(all_preds)
+        softmax_preds = get_model_predictions(model, test_dataloader, config.device)
         logger.info(
-            f"    Model outputs shape: {all_preds.shape}, min: {all_preds.min():.4f}, max: {all_preds.max():.4f}"
-        )
-
-        # Handle case where model outputs 1D tensor (single value per sample)
-        if all_preds.dim() == 1:
-            all_preds = all_preds.unsqueeze(1)
-            logger.info(f"    Unsqueezed 1D tensor to 2D: {all_preds.shape}")
-
-        # Handle binary classification case where model outputs [N, 1] instead of [N, 2]
-        # Convert to [N, 2] by using logit and its negative for the two classes
-        if all_preds.shape[1] == 1:
-            all_preds = torch.cat([all_preds, -all_preds], dim=1)
-            logger.info(f"    Converted binary logit to 2-class format: {all_preds.shape}")
-
-        softmax_preds = torch.softmax(all_preds, dim=1)
-        logger.info(
-            f"    Softmax probs shape: {softmax_preds.shape}, min: {softmax_preds.min():.4f}, max: {softmax_preds.max():.4f}"
+            f"    Probabilities shape: {softmax_preds.shape}, min: {softmax_preds.min():.4f}, max: {softmax_preds.max():.4f}"
         )
 
         # IMPORTANT: Entropy MUST be computed fresh for each classifier-dataset pair
@@ -891,7 +963,7 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
         entropy = compute_entropy(softmax_preds)
         logger.info(f"    ✓ Computed entropy for {classifier_str} on {dataset_str}: {entropy:.6f}")
 
-        # Combine metrics: classifier-specific entropy + dataset-level FID/pymdma
+        # Combine metrics: classifier-specific entropy + dataset-level FID/pymdma/confusion_distance
         metrics = {
             "entropy": entropy,
         }
@@ -919,7 +991,10 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
         # Add pre-computed dataset-level metrics (same for all classifiers)
         if dataset_fid is not None:
             metrics["fid"] = dataset_fid
-        metrics.update(dataset_pymdma)
+        metrics.update(dataset_metrics)
+
+        # Add companion dataset metrics if available
+        metrics.update(dataset_companion_metrics)
 
         # Log results
         log_msg = f"  ✓ Metrics computed - Entropy: {metrics['entropy']:.4f}"
@@ -1000,7 +1075,7 @@ def run_evaluation_loop(
         if dataset_str == config.training_dataset:
             logger.info(f"\nEvaluating on training dataset {dataset_str} (skipping FID/pymdma metrics)")
             dataset_fid = None
-            dataset_pymdma: dict[str, Any] = {}
+            dataset_metrics: dict[str, Any] = {}
             real_features = None
         else:
             # Extract training features for this specific evaluation dataset
@@ -1016,7 +1091,7 @@ def run_evaluation_loop(
             logger.info(f"\n[{current_step}/{total_steps}] Computing dataset-level metrics for {dataset_str}")
 
             fid_stats_path = find_fid_stats(config.dataroot, dataset_str)
-            dataset_fid, dataset_pymdma = compute_dataset_metrics(
+            dataset_fid, dataset_metrics = compute_dataset_metrics(
                 config, dataset, fid_stats_path=fid_stats_path, real_features=real_features, extractor=extractor
             )
 
@@ -1025,7 +1100,7 @@ def run_evaluation_loop(
             current_step += 1
             classifier_str = _enum_to_str(classifier)
             logger.info(f"\n[{current_step}/{total_steps}] Evaluating {classifier_str} on {dataset_str}")
-            evaluate_single_model(config, classifier, dataset, dataset_fid, dataset_pymdma)
+            evaluate_single_model(config, classifier, dataset, dataset_fid, dataset_metrics)
 
 
 def main() -> None:  # pylint: disable=too-many-statements

@@ -45,7 +45,6 @@ def evaluate(
     for data in seq:
         X, y = data
         X = X.to(params.device.value)
-        y = y.to(params.device.value)
 
         with torch.no_grad():
             accuracies = []
@@ -54,6 +53,7 @@ def evaluate(
                 for m in C.models:
                     y_hat = m(X, output_feature_maps=False)
                     loss = criterion(y_hat, y)
+
                     running_accuracy += acc_fun(y_hat, y, avg=False).cpu()
                     running_loss += loss.item() * X.shape[0]
                     accuracies.append(acc_fun(y_hat, y, avg=True).cpu())
@@ -62,17 +62,17 @@ def evaluate(
                 y_total = C(X, output_feature_maps=True)
                 y_hat = y_total[0]
                 y_c_hat = y_total[-1][-1]  # Get features before last layer
-
                 loss = criterion(y_hat, y)
+
                 running_accuracy += acc_fun(y_hat, y, avg=False).cpu()
                 running_loss += loss.item() * X.shape[0]
-
                 for j in range(y_c_hat.size(-1)):
                     accuracies.append(acc_fun(y_c_hat[:, j], y, avg=True).cpu())
             else:
-                # Regular classifier (CNN, VGG, DenseNet, ResNet, ViT, etc.)
+                # TODO: Regular classifier
                 y_hat = C(X)
                 loss = criterion(y_hat, y)
+
                 running_accuracy += acc_fun(y_hat, y, avg=False).cpu()
                 running_loss += loss.item() * X.shape[0]
                 accuracies.append(acc_fun(y_hat, y, avg=True).cpu())
@@ -84,8 +84,6 @@ def evaluate(
 
     if training:
         C.train()
-
-    # TODO: use wandb logging
 
     per_C_accuracy = np.array(per_C_accuracy)
     logger.info(f"per classifier accuracy:  {np.mean(per_C_accuracy, axis=0)}.")

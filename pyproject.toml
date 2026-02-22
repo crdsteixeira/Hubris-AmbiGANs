@@ -95,6 +95,7 @@ disable = [
     "import-error",
     "logging-fstring-interpolation",
     "no-name-in-module",
+    "no-member",
     "too-many-arguments",
     "too-many-locals",
     "too-few-public-methods",
@@ -117,6 +118,7 @@ exclude = '''
 '''
 
 [tool.mypy]
+python_version = "3.11"
 ignore_missing_imports = true
 exclude = '.*_deprecated.*\.py$'
 

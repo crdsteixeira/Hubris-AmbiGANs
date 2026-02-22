@@ -9,10 +9,9 @@ class ClassifierType(StrEnum):
     cnn = "cnn"
     mlp = "mlp"
     ensemble = "ensemble"
-    vgg16 = "vgg16"
+    fully_connected = "fully-connected"
     densenet = "densenet"
-    resnet50 = "resnet50"
-    vit = "vit"
+    resnet = "resnet"
 
 
 class EnsembleType(StrEnum):

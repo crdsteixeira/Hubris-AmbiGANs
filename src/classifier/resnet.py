@@ -1,59 +1,54 @@
-"""Module for a DenseNet-based classifier."""
+"""Module for a ResNet50-based classifier."""
 
 import torch
 from torch import nn
-from torchvision.models import densenet121
+from torchvision.models import resnet50
 
 from src.models import ClassifierParams
 
 
 class Classifier(nn.Module):
-    """DenseNet121-based classifier for image classification with custom FC layers and dropout."""
+    """ResNet50-based classifier for image classification with custom FC layers and dropout."""
 
     def __init__(self, params: ClassifierParams) -> None:
-        """Initialize the DenseNet121 classifier using ClassifierParams."""
+        """Initialize the ResNet50 classifier using ClassifierParams."""
         super().__init__()
         num_channels, height, width = params.img_size
         num_classes = params.n_classes
 
         self.blocks = nn.ModuleList()
 
-        # DenseNet expects 3-channel 224x224 images
+        # ResNet50 expects 3-channel 224x224 images
         # For MNIST/FashionMNIST (28x28, 1-channel), we need to reshape
         if height != 224 or width != 224 or num_channels != 3:
             # Create a reshape block that converts input to (224, 224, 3)
             self.blocks.append(
                 nn.Sequential(
-                    DenseNetReshape(num_channels),
+                    # Reshape from (batch, 1, 28, 28) or (batch, 3, h, w) to (batch, 3, 224, 224)
+                    ResNetReshape(num_channels),
                 )
             )
         else:
             # If already 224x224x3, just add identity
             self.blocks.append(nn.Identity())
 
-        # Load pretrained DenseNet121 and remove the classification head
-        densenet = densenet121(weights="DEFAULT")
+        # Load pretrained ResNet50 and remove the classification head
+        resnet = resnet50(weights="DEFAULT")
 
-        # Remove the classifier layer
-        # Keep everything up to and including the final relu and adaptive average pooling
-        self.feature_extractor = nn.Sequential(
-            densenet.features,
-            nn.ReLU(inplace=True),
-        )
+        # Remove the average pooling and fully connected layers
+        # We'll use the feature extraction part (everything before avgpool)
+        self.feature_extractor = nn.Sequential(*list(resnet.children())[:-2])
 
-        # Get the number of output features from DenseNet121 (last conv layer has 1024 channels)
-        num_features = densenet.classifier.in_features
-
-        # Add global average pooling
+        # Add global average pooling to get fixed-size features
         self.blocks.append(nn.AdaptiveAvgPool2d((1, 1)))
 
         # Add the feature extractor as a block
         self.blocks.append(self.feature_extractor)
 
-        # Custom FC layers with lower dropout (0.1 as in the Keras code, though using 0.2 for consistency with other models)
+        # Custom FC layers: Dense(256) + Dropout(0.2) + Dense(125) + Dropout(0.2)
         fc_block_1 = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(num_features, 256),
+            nn.Linear(2048, 256),  # ResNet50 outputs 2048 channels
             nn.ReLU(),
             nn.Dropout(0.2),
         )
@@ -73,18 +68,18 @@ class Classifier(nn.Module):
         )
         self.blocks.append(output_block)
 
-        # Freeze DenseNet121 backbone
+        # Freeze ResNet50 weights
         for param in self.feature_extractor.parameters():
             param.requires_grad = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass through the DenseNet121 classifier."""
+        """Forward pass through the ResNet50 classifier."""
         # Apply reshape if needed
         x = self.blocks[0](x)
 
         # Apply feature extractor
         x = self.blocks[1](x)  # AdaptiveAvgPool2d
-        x = self.blocks[2](x)  # DenseNet121 feature extractor
+        x = self.blocks[2](x)  # ResNet50 feature extractor
         x = x.view(x.size(0), -1)  # Flatten
 
         # Apply FC layers and output
@@ -98,8 +93,8 @@ class Classifier(nn.Module):
         return x
 
 
-class DenseNetReshape(nn.Module):
-    """Custom layer to reshape MNIST/FashionMNIST images to DenseNet input format."""
+class ResNetReshape(nn.Module):
+    """Custom layer to reshape MNIST/FashionMNIST images to ResNet50 input format."""
 
     def __init__(self, num_channels: int) -> None:
         """Initialize the reshape layer."""
@@ -108,6 +103,8 @@ class DenseNetReshape(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Reshape input from (batch, channels, h, w) to (batch, 3, 224, 224)."""
+        # batch_size = x.size(0)
+
         if self.num_channels == 1:
             # Convert single channel to 3 channels by repeating
             x = x.repeat(1, 3, 1, 1)

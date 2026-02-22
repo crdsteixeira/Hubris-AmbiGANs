@@ -18,5 +18,5 @@ def configure_logging(level: str = "INFO") -> None:
     logging.basicConfig(
         level=logging_level,
         format="%(levelname)s - %(asctime)s - %(name)s - %(message)s",
-        handlers=[logging.FileHandler("app.log"), logging.StreamHandler()],  # Prints logs to the console
+        handlers=[logging.FileHandler("app.log"), logging.StreamHandler()],
     )

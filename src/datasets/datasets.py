@@ -19,10 +19,11 @@ logger = logging.getLogger(__name__)
 
 def get_mnist(params: DatasetParams) -> Dataset:
     """Retrieve the MNIST dataset."""
+    train = params.split == "train"
     dataset = torchvision.datasets.MNIST(
         root=params.dataroot,
         download=True,
-        train=params.train,
+        train=train,
         transform=torchvision.transforms.Compose(
             [
                 torchvision.transforms.Grayscale(num_output_channels=1),
@@ -37,10 +38,11 @@ def get_mnist(params: DatasetParams) -> Dataset:
 
 def get_fashion_mnist(params: DatasetParams) -> Dataset:
     """Retrieve the FASHION-MNIST dataset."""
+    train = params.split == "train"
     dataset = torchvision.datasets.FashionMNIST(
         root=params.dataroot,
         download=True,
-        train=params.train,
+        train=train,
         transform=torchvision.transforms.Compose(
             [
                 torchvision.transforms.Grayscale(num_output_channels=1),
@@ -55,10 +57,11 @@ def get_fashion_mnist(params: DatasetParams) -> Dataset:
 
 def get_cifar10(params: DatasetParams) -> Dataset:
     """Retrieve the CIFAR-10 dataset."""
+    train = params.split == "train"
     dataset = torchvision.datasets.CIFAR10(
         root=params.dataroot,
         download=True,
-        train=params.train,
+        train=train,
         transform=torchvision.transforms.Compose(
             [
                 torchvision.transforms.ToTensor(),
@@ -72,10 +75,9 @@ def get_cifar10(params: DatasetParams) -> Dataset:
 
 def get_chest_xray(params: DatasetParams) -> Dataset:
     """Retrieve the CHEST-XRAY dataset."""
-    split = "train" if params.train else "test"
-
+    split = params.split
     # If the `pytesting` flag is set to True, download only 10% of the data
-    if params.train and params.pytesting:
+    if params.pytesting:
         split = "test[:30%]"
 
     ds = load_dataset("keremberke/chest-xray-classification", name="full", split=split)
@@ -548,9 +550,11 @@ def _find_companion_dataset_images(  # pylint: disable=too-many-branches,too-man
                 logger.warning(
                     f"Requested {n_samples_per_subset} samples from {entry} but only {len(image_files)} available. Using all available."
                 )
+                selected_indices = list(range(len(image_files)))
                 selected_from_subset = image_files
             else:
-                selected_from_subset = list(np.random.choice(image_files, size=n_samples_per_subset, replace=False))
+                selected_indices = list(np.random.choice(len(image_files), size=n_samples_per_subset, replace=False))
+                selected_from_subset = [image_files[i] for i in selected_indices]
 
             # Add images and their corresponding ground truth labels
             all_images.extend(selected_from_subset)
@@ -580,7 +584,12 @@ def get_companion_mnist(params: DatasetParams) -> Dataset:
         ]
     )
 
-    return CompanionDataset(image_paths, color_mode="RGB", labels=labels, transform=transform)
+    return CompanionDataset(
+        image_paths,
+        color_mode="RGB",
+        labels=labels,
+        transform=transform,
+    )
 
 
 def get_companion_fmnist(params: DatasetParams) -> Dataset:
@@ -595,7 +604,12 @@ def get_companion_fmnist(params: DatasetParams) -> Dataset:
         ]
     )
 
-    return CompanionDataset(image_paths, color_mode="RGB", labels=labels, transform=transform)
+    return CompanionDataset(
+        image_paths,
+        color_mode="RGB",
+        labels=labels,
+        transform=transform,
+    )
 
 
 def get_companion_chest_xray(params: DatasetParams) -> Dataset:
@@ -610,7 +624,12 @@ def get_companion_chest_xray(params: DatasetParams) -> Dataset:
         ]
     )
 
-    return CompanionDataset(image_paths, color_mode="RGB", labels=labels, transform=transform)
+    return CompanionDataset(
+        image_paths,
+        color_mode="RGB",
+        labels=labels,
+        transform=transform,
+    )
 
 
 def _find_synthetic_dataset_images(dataroot: str, dataset_name: str) -> list[str]:  # noqa: C901

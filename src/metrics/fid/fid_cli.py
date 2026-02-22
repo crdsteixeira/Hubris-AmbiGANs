@@ -86,7 +86,7 @@ def main() -> None:
             dataset_name=config.dataset_name,
             pos_class=config.pos_class,
             neg_class=config.neg_class,
-            train=True,
+            split="train",
             pytesting=False,
         )
     )

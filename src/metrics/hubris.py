@@ -61,6 +61,23 @@ class Hubris(Metric):
 
         return 1.0 - torch.exp(-(amb_kl / ref_kl)).item()
 
+    def compute_improved(self, preds: Tensor, ref_preds: Tensor | None = None) -> float:
+        """Compute the improved hubris score based on the given predictions and reference predictions."""
+        binary_preds = torch.hstack((preds, 1.0 - preds))
+
+        if ref_preds is not None:
+            reference = ref_preds.clone()
+            reference = torch.hstack((reference, 1.0 - reference))
+        else:
+            reference = torch.full_like(binary_preds, fill_value=0.50)
+
+        predictions_full = torch.distributions.Categorical(probs=binary_preds)
+        reference_full = torch.distributions.Categorical(probs=reference)
+
+        amb_kl = torch.distributions.kl.kl_divergence(predictions_full, reference_full).mean()
+
+        return (amb_kl / torch.log(torch.tensor(2.0))).item()
+
     def finalize(self) -> float:
         """Finalize the metric computation and return the result."""
         self.result = self.compute(self.preds)

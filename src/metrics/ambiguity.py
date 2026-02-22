@@ -15,12 +15,16 @@ def compute_entropy(predictions: torch.Tensor) -> float:
         predictions: Tensor of shape (n_samples, n_classes) with probabilities
 
     Returns:
-        Mean entropy across samples
+        Mean entropy across samples (in nats, using natural logarithm)
 
     """
-    epsilon = 1e-7
-    predictions = torch.clamp(predictions, epsilon, 1 - epsilon)
-    entropy = -(predictions * torch.log2(predictions)).sum(dim=1)
+    epsilon = 1e-10
+    # Clamp predictions to valid probability range [epsilon, 1-epsilon]
+    predictions = torch.clamp(predictions, epsilon, 1.0 - epsilon)
+    # Ensure probabilities sum to 1 for each sample (renormalize after clamping)
+    predictions = predictions / predictions.sum(dim=1, keepdim=True)
+    # Compute entropy: H(X) = -Σ p(x) * log(p(x))
+    entropy = -(predictions * torch.log(predictions)).sum(dim=1)
 
     return entropy.mean().item()
 

@@ -1,76 +1,23 @@
-# Advanced Fashion-MNIST Configuration - Per-Classifier Hyperparameters
-# Fashion-MNIST is moderately complex, requires balanced regularization
-# Different architectures need different amounts of training
-
 data_dir: data
 out_dir: models
 device: cuda:1
-seed: 42
+seed: 34
 
 datasets:
   training: fashion-mnist
   evaluation:
     - fashion-mnist
-    - synthetic-fashion-mnist
-    - ambiguess-fashion-mnist
-    - companion-fashion-mnist
+    #- synthetic-fashion-mnist
+    #- ambiguess-fashion-mnist
+    #- companion-fashion-mnist
 
 classifiers:
   - cnn
-  - vgg16
+  - fully-connected
+  - resnet
   - densenet
-  - resnet50
-  - vit
 
-# Default training parameters (for Fashion-MNIST)
 training:
-  batch_size: 64
-  epochs: 50
-  lr: 0.0005
-  optimizer: adam
-  momentum: 0.9
-  weight_decay: 0.00001
-  lr_schedule: none
-  warmup_epochs: 0
-  dropout: 0.5
-
-# Per-classifier hyperparameters optimized for Fashion-MNIST
-per_classifier_training:
-  # CNN: Simple architecture, light-moderate regularization
-  cnn:
-    dropout: 0.3
-    weight_decay: 0.000001
-    epochs: 40
-    lr: 0.001
-
-  # VGG16: Deep, needs regularization to avoid overfitting
-  vgg16:
-    dropout: 0.5
-    weight_decay: 0.00005
-    epochs: 60
-    lr: 0.0005
-
-  # DenseNet: Efficient gradients, memory-conscious batch size
-  densenet:
-    dropout: 0.3
-    weight_decay: 0.00001
-    batch_size: 32
-    epochs: 50
-    lr: 0.0005
-
-  # ResNet50: Stable with skip connections, moderate training
-  resnet50:
-    dropout: 0.4
-    weight_decay: 0.00001
-    epochs: 50
-    lr: 0.0005
-
-  # ViT: Transformer needs warmup and slower learning
-  vit:
-    batch_size: 32
-    epochs: 75
-    lr: 0.0003
-    warmup_epochs: 3
-    lr_schedule: cosine
-    dropout: 0.2
-    weight_decay: 0.0001
+  batch_size: 30
+  epochs: 20
+  lr: 0.0002

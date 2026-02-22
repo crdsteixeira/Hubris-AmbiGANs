@@ -2,13 +2,12 @@
 
 from torch import nn
 
-from src.classifier.densenet import Classifier as DenseNetClassifier
+from src.classifier.densenet import Classifier as DenseNet
 from src.classifier.ensemble import Ensemble
+from src.classifier.fully_connected import Classifier as FullyConnected
 from src.classifier.my_mlp import Classifier as MyMLP
-from src.classifier.resnet50 import Classifier as ResNet50Classifier
+from src.classifier.resnet import Classifier as ResNet
 from src.classifier.simple_cnn import Classifier as SimpleCNN
-from src.classifier.vgg16 import Classifier as VGG16Classifier
-from src.classifier.vit import Classifier as ViTClassifier
 from src.enums import ClassifierType, EnsembleType
 from src.models import TrainClassifierArgs
 
@@ -19,14 +18,12 @@ def construct_classifier(params: TrainClassifierArgs) -> nn.Module:
         C = SimpleCNN(params)
     elif params.type == ClassifierType.mlp:
         C = MyMLP(params)
-    elif params.type == ClassifierType.vgg16:
-        C = VGG16Classifier(params)
+    elif params.type == ClassifierType.fully_connected:
+        C = FullyConnected(params)
+    elif params.type == ClassifierType.resnet:
+        C = ResNet(params)
     elif params.type == ClassifierType.densenet:
-        C = DenseNetClassifier(params)
-    elif params.type == ClassifierType.resnet50:
-        C = ResNet50Classifier(params)
-    elif params.type == ClassifierType.vit:
-        C = ViTClassifier(params)
+        C = DenseNet(params)
     elif params.type == ClassifierType.ensemble:
         # Directly pass the entire params object to the Ensemble class
         C = Ensemble(params)

@@ -1,4 +1,4 @@
-"""Pydantic moels validation and settings management."""
+"""Pydantic models validation and settings management."""
 
 from __future__ import annotations
 
@@ -279,26 +279,6 @@ class ConfigTrainingParams(BaseModel):
     batch_size: int = Field(default=64, description="Batch size for training")
     epochs: int = Field(default=30, description="Number of training epochs")
     lr: float = Field(default=0.001, description="Learning rate")
-    optimizer: str = Field(default="adam", description="Optimizer type (adam or sgd)")
-    momentum: float = Field(default=0.9, description="Momentum for SGD optimizer")
-    weight_decay: float = Field(default=0.0, description="L2 regularization (weight decay)")
-    lr_schedule: str = Field(default="none", description="Learning rate schedule (none, cosine, step)")
-    warmup_epochs: int = Field(default=0, description="Number of warmup epochs")
-    dropout: float = Field(default=0.3, description="Dropout rate for regularization")
-
-
-class ConfigPerClassifierTraining(BaseModel):
-    """Per-classifier training parameter overrides."""
-
-    batch_size: int | None = Field(default=None, description="Override batch size for this classifier")
-    epochs: int | None = Field(default=None, description="Override epochs for this classifier")
-    lr: float | None = Field(default=None, description="Override learning rate for this classifier")
-    optimizer: str | None = Field(default=None, description="Override optimizer for this classifier")
-    momentum: float | None = Field(default=None, description="Override momentum for this classifier")
-    weight_decay: float | None = Field(default=None, description="Override weight decay for this classifier")
-    lr_schedule: str | None = Field(default=None, description="Override LR schedule for this classifier")
-    warmup_epochs: int | None = Field(default=None, description="Override warmup epochs for this classifier")
-    dropout: float | None = Field(default=None, description="Override dropout for this classifier")
 
 
 class ConfigMulticlassTrain(BaseModel):
@@ -309,9 +289,6 @@ class ConfigMulticlassTrain(BaseModel):
         ..., description="List of classifier types to train (e.g., 'cnn', 'vgg16', 'resnet50')"
     )
     training: ConfigTrainingParams = Field(..., description="Default training hyperparameters")
-    per_classifier_training: dict[str, ConfigPerClassifierTraining] | None = Field(
-        default=None, description="Per-classifier hyperparameter overrides"
-    )
     data_dir: str = Field(
         default=f"{os.environ.get('FILESDIR', '/tmp')}/data",
         description="Path to datasets",
@@ -446,9 +423,15 @@ class DatasetParams(BaseModel):
     """Parameters for configuring dataset loading."""
 
     dataroot: str = Field(..., description="Directory where the dataset is stored.")
-    train: bool = Field(default=True, description="Indicates whether to load the training set or the test set.")
     pytesting: bool = Field(
         default=False, description="Indicates whether to load only a fraction of the dataset for pytesting purpose."
+    )
+    # train: bool = Field(default=True, description="Indicates whether to load the training set or the test set.")
+    split: str = Field(
+        default="train",
+        description=(
+            "Dataset split to load. Can be 'train', 'test', 'val', or a specific percentage (e.g., 'train[:80%]') for partial loading."
+        ),
     )
 
 
@@ -674,9 +657,15 @@ class CLAmbiguityArgs(BaseModel):
     seed: int | None = Field(default=None, description="Random seed for reproducibility")
     training_dataset: str = Field(..., description="Dataset used for training models")
     balanced: bool = Field(default=False, description="Enable class balancing for datasets that support it")
+    estimator_path: str | None = Field(
+        default=None, description="Path to ambiguity estimator checkpoint for computing confusion distance"
+    )
     eval_sample_size: int | None = Field(
         default=None,
         description="Limit evaluation dataset size for faster metrics computation (optional, None means use full dataset)",
+    )
+    training_params: ConfigTrainingParams = Field(
+        default_factory=ConfigTrainingParams, description="Training hyperparameters for classifier training"
     )
 
 

@@ -1,15 +1,17 @@
 """Module for pre-trained evaluation."""
 
-import gc
+import logging
 
 import torch
+import wandb
 from torch import nn
-from torch.nn import BCEWithLogitsLoss
-from torch.optim import Adam
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.nn import BCELoss
+from torch.nn.functional import sigmoid
+from torch.optim import Adam, AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
+    AutoConfig,
     AutoImageProcessor,
     AutoModelForImageClassification,
     ConvNextConfig,
@@ -21,75 +23,71 @@ from transformers import (
 
 from src.enums import DeviceType
 
+logger = logging.getLogger(__name__)
+
 
 class HuggingFaceModel(nn.Module):
-    """HuggingFace model class."""
+    """
+    Base class for HuggingFace pre-trained models.
 
-    def _freeze_backbone(self, freeze_ratio: float = 0.8) -> None:
-        """
-        Freeze backbone layers for efficient fine-tuning.
-
-        Args:
-            freeze_ratio: Fraction of model parameters to freeze (0-1)
-
-        """
-        params = list(self.model.parameters())
-        num_to_freeze = int(len(params) * freeze_ratio)
-        for param in params[:num_to_freeze]:
-            param.requires_grad = False
+    Provides common functionality for loading and retraining HuggingFace image classification models.
+    """
 
     def retrain(self, dataloader: DataLoader, epochs: int = 10, device: DeviceType = DeviceType.cpu) -> None:
         """
-        Retrain pre-trained model with optimized training strategy.
+        Retrain pre-trained model with optional wandb logging.
 
-        Uses mixed precision training, learning rate scheduling, and selective parameter
-        freezing for faster convergence.
+        Args:
+            dataloader: DataLoader for training data
+            epochs: Number of epochs to train
+            device: Device to use for training
+
         """
         self.model.to(device)
-
-        # Freeze 80% of backbone - only fine-tune top layers
-        self._freeze_backbone(freeze_ratio=0.8)
-
-        # Only optimize trainable parameters
-        trainable_params = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = Adam(trainable_params, lr=0.0001)
-        scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
-        criterion = BCEWithLogitsLoss()
-
+        optimizer = Adam(self.model.parameters())
+        criterion = BCELoss()
         pbar = tqdm(range(epochs))
-
-        for _ in pbar:
+        for epoch in pbar:
             self.model.train()
-            batch_loss = 0
+            epoch_loss = 0
             num_batches = 0
-
             for images, labels in dataloader:
                 images = images.to(device)
                 labels = labels.to(device)
 
-                # Use autocast for mixed precision training
-                with torch.autocast(device_type=str(device).split(":", maxsplit=1)[0], dtype=torch.float16):
-                    # Forward pass
-                    preds = self.forward(images)
-                    loss = criterion(preds.squeeze(), labels.float())
+                # Forward pass
+                preds = self.forward(images)
+                loss = criterion(preds, labels.float())
 
                 # Backward pass
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-                batch_loss += loss.item()
+                batch_loss = loss.item()
+                epoch_loss += batch_loss
                 num_batches += 1
 
-            # Step scheduler after each epoch
-            scheduler.step()
+                # Log batch-level metrics if wandb is enabled
+                wandb.log(
+                    {
+                        "batch_loss": batch_loss,
+                        "epoch": epoch,
+                    }
+                )
 
-            # Cleanup memory only once per epoch (not per batch)
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            gc.collect()
+            # Compute average loss for epoch
+            avg_epoch_loss = epoch_loss / num_batches
+            pbar.set_postfix(Loss=avg_epoch_loss)
 
-            pbar.set_postfix(BatchLoss=batch_loss / max(num_batches, 1))
+            # Log epoch-level metrics if wandb is enabled
+            wandb.log(
+                {
+                    "epoch_loss": avg_epoch_loss,
+                    "epoch": epoch,
+                }
+            )
+            logger.info(f"Epoch {epoch + 1}/{epochs} - Loss: {avg_epoch_loss:.6f}")
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """Forward method for ConvNext wrapper."""
@@ -100,20 +98,7 @@ class HuggingFaceModel(nn.Module):
 
         inputs = self.processor(images, return_tensors="pt", do_rescale=False).to(images.device)
         logits = self.model(**inputs).logits
-
-        # Ensure output is always [batch_size, num_classes]
-        if logits.dim() == 1:
-            logits = logits.unsqueeze(-1)
-
-        return logits
-
-    def predict(self, images: torch.Tensor) -> torch.Tensor:
-        """Get probability predictions for inference (applies sigmoid to logits)."""
-        with torch.no_grad():
-            logits = self.forward(images)
-            probs = torch.sigmoid(logits)
-            # Return 1D tensor for compatibility with evaluation code
-            return probs.squeeze(-1)
+        return sigmoid(logits).squeeze()
 
 
 class ConvNext(HuggingFaceModel):
@@ -136,15 +121,21 @@ class ConvNext(HuggingFaceModel):
 
 
 class ViT(HuggingFaceModel):
-    """Vit wrapper class."""
+    """Vision Transformer (ViT) wrapper class for CXR classification."""
 
     def __init__(self) -> None:
-        """Vit wrapper initialization."""
+        """Initialize ViT model for chest X-ray classification."""
         super().__init__()
         self.processor, self.model = self._load_vit()
 
     def _load_vit(self) -> tuple[AutoImageProcessor, AutoModelForImageClassification]:
-        """Vit model from pretrained HuggingFace location."""
+        """
+        Load ViT model from HuggingFace Hub for CXR classification.
+
+        Returns:
+            Tuple containing the image processor and pre-trained model.
+
+        """
         config = ViTConfig.from_pretrained("NeuronZero/CXR-Classifier")
         config.num_labels = 1
         processor = AutoImageProcessor.from_pretrained("NeuronZero/CXR-Classifier")
@@ -152,6 +143,33 @@ class ViT(HuggingFaceModel):
             "NeuronZero/CXR-Classifier", config=config, ignore_mismatched_sizes=True
         )
         return processor, model
+
+    def retrain(self, dataloader: DataLoader, epochs: int = 10, device: DeviceType = DeviceType.cpu) -> None:
+        """
+        Retrain ViT model with AdamW optimizer.
+
+        Args:
+            dataloader: DataLoader for training data
+            epochs: Number of epochs to train
+            device: Device to use for training
+
+        """
+        self.model.to(device)
+        optimizer = AdamW(self.model.parameters(), lr=5e-5, weight_decay=0.05)
+        criterion = BCELoss()  # keep same output (probabilities)
+
+        for _ in range(epochs):
+            self.model.train()
+            for images, labels in dataloader:
+                images = images.to(device)
+                labels = labels.to(device)
+
+                preds = self.forward(images)  # still sigmoid probs
+                loss = criterion(preds, labels.float())
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
 
 class EfficientNetV2(HuggingFaceModel):
@@ -173,22 +191,59 @@ class EfficientNetV2(HuggingFaceModel):
 
 
 class Swin(HuggingFaceModel):
-    """Swin Transformer wrapper class."""
+    """Swin Transformer wrapper class for image classification."""
 
     def __init__(self) -> None:
-        """Swin Transformer wrapper initialization."""
+        """Initialize Swin Transformer model."""
         super().__init__()
         self.processor, self.model = self._load_swin()
 
     def _load_swin(self) -> tuple[AutoImageProcessor, AutoModelForImageClassification]:
-        """Load Swin Transformer model from HuggingFace Hub."""
-        model_id = "microsoft/swin-tiny-patch4-window7-224"
+        """
+        Load Swin Transformer model from HuggingFace Hub.
+
+        Returns:
+            Tuple containing the image processor and pre-trained model.
+
+        """
+        model_id = "microsoft/swinv2-tiny-patch4-window8-256"
+        config = AutoConfig.from_pretrained(model_id)
+        config.num_labels = 1
         processor = AutoImageProcessor.from_pretrained(model_id)
-        model = AutoModelForImageClassification.from_pretrained(model_id, ignore_mismatched_sizes=True)
-
-        # Explicitly replace the classifier head for binary classification
-        num_features = model.classifier.in_features
-        model.classifier = torch.nn.Linear(num_features, 1)
-        model.config.num_labels = 1
-
+        model = AutoModelForImageClassification.from_pretrained(model_id, config=config, ignore_mismatched_sizes=True)
         return processor, model
+
+    def retrain(self, dataloader: DataLoader, epochs: int = 10, device: DeviceType = DeviceType.cpu) -> None:
+        """
+        Retrain Swin model with AdamW optimizer.
+
+        Args:
+            dataloader: DataLoader for training data
+            epochs: Number of epochs to train
+            device: Device to use for training
+
+        """
+        self.model.to(device)
+        optimizer = AdamW(self.model.parameters(), lr=5e-5, weight_decay=0.05)  # Swin-specific
+        criterion = BCELoss()  # keep identical outputs to other models
+
+        pbar = tqdm(range(epochs))
+        for _ in pbar:
+            self.model.train()
+            epoch_loss, num_batches = 0.0, 0
+            for images, labels in dataloader:
+                images = images.to(device)
+                labels = labels.to(device)
+
+                preds = self.forward(images)  # still sigmoid probs
+                loss = criterion(preds, labels.float())
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                epoch_loss += loss.item()
+                num_batches += 1
+
+            avg = epoch_loss / max(1, num_batches)
+            pbar.set_postfix(Loss=avg)

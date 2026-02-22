@@ -359,7 +359,7 @@ def main(config: ConfigGAN | None = None) -> None:
             dataroot=config.data_dir,
             pos_class=config.dataset.binary.pos,
             neg_class=config.dataset.binary.neg,
-            train=True,
+            split="train",
         )
     )
 

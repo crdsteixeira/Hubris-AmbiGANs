@@ -78,14 +78,8 @@ def main() -> None:  # pylint: disable=too-many-statements,broad-exception-caugh
 
     # Train all classifiers on the dataset
     for classifier in classifiers:
-        # Get default training parameters from config
+        # Get training parameters from config
         train_params = ConfigTrainingParams(**config.training.model_dump())
-
-        # Override with classifier-specific config if available
-        if config.per_classifier_training and classifier in config.per_classifier_training:
-            classifier_specific = config.per_classifier_training[classifier]
-            classifier_dict = classifier_specific.model_dump(exclude_none=True)
-            train_params = ConfigTrainingParams(**{**config.training.model_dump(), **classifier_dict})
 
         try:
             metrics = train_single_multiclass_classifier(

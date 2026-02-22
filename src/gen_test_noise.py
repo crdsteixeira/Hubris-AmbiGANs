@@ -1,4 +1,4 @@
-"""Modure to generate test noise."""
+"""Module to generate test noise."""
 
 import logging
 import os

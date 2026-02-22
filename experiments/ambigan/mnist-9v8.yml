@@ -85,10 +85,3 @@ train:
       - gaussian:
           - alpha: 0.50 # 1.5, 1.0
             var: 0.10 # 0.01
-
-# evaluate latest run with first parameter setup
-evaluation:
-  n_samples: 2500
-  model: convnext
-  epochs: 10
-  batch_size: 64

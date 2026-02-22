@@ -62,7 +62,7 @@ def load_dataset(params: LoadDatasetParams) -> tuple[Dataset, int, ImageParams]:
         raise e
 
     download_function = get_function(params.dataset_name)
-    download_params = DatasetParams(dataroot=params.dataroot, train=params.train, pytesting=params.pytesting)
+    download_params = DatasetParams(dataroot=params.dataroot, split=params.split, pytesting=params.pytesting)
     dataset = download_function(download_params)
 
     # Check if the dataset is empty and log an error
