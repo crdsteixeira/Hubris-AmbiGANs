@@ -1,6 +1,7 @@
 """Image quality metric helpers."""
 
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -15,9 +16,12 @@ from pymdma.image.measures.synthesis_val import (
 )
 from pymdma.image.models.features import ExtractorFactory
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-from src.enums import DeviceType
+from src.datasets.load import load_dataset
+from src.enums import DatasetNames, DeviceType
 from src.metrics.fid.fid import FID
+from src.models import LoadDatasetParams
 
 logger = logging.getLogger(__name__)
 
@@ -194,3 +198,169 @@ def compute_pymdma_metrics_from_images(
         metrics_dict[col] = pymdma_df[col].values[0]
 
     return metrics_dict
+
+
+def generate_fid_stats(  # pylint: disable=too-many-statements
+    dataroot: str,
+    dataset_name: str,
+    batch_size: int = 64,
+    num_workers: int = 6,
+    device: DeviceType | str = "cpu",
+    use_test_set: bool = True,
+    n_samples: int = 10000,
+) -> str:
+    """
+    Generate and save FID statistics for a dataset.
+
+    IMPORTANT: This uses InceptionV3-based feature extraction (inception_fid) which is compatible
+    with FrechetInceptionDistance. Do NOT use DINO or other extractors for FID statistics.
+
+    Args:
+        dataroot: Root directory where datasets are stored
+        dataset_name: Name of the dataset (e.g., 'mnist', 'companion-mnist')
+        batch_size: Batch size for processing
+        num_workers: Number of worker processes for data loading
+        device: Device to use ('cpu' or 'cuda:X')
+        use_test_set: If True, use test set; if False, use training set
+        n_samples: Maximum number of samples to use for statistics (None for all)
+
+    Returns:
+        Path to the generated FID statistics file
+
+    """
+    stats_dir = Path(dataroot) / "fid-stats"
+    stats_dir.mkdir(parents=True, exist_ok=True)
+
+    stats_file = stats_dir / f"stats.{dataset_name}.npz"
+
+    # If stats already exist, return the path
+    if stats_file.exists():
+        logger.info(f"FID statistics already exist at {stats_file}")
+        return str(stats_file)
+
+    logger.info(f"Generating FID statistics for {dataset_name}...")
+
+    split = "test" if use_test_set else "train"
+    # Load dataset
+    try:
+        dataset, _, _ = load_dataset(
+            LoadDatasetParams(
+                dataroot=dataroot,
+                dataset_name=DatasetNames(dataset_name),
+                pos_class=None,
+                neg_class=None,
+                split=split,
+                pytesting=False,
+            )
+        )
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error(f"Failed to load dataset {dataset_name}: {e}")
+        raise
+
+    logger.info(f"Dataset size: {len(dataset)}")
+
+    # Sample down if necessary
+    if n_samples is not None and len(dataset) > n_samples:
+        logger.info(f"Sampling {n_samples} images from {len(dataset)} total")
+        indices = np.random.choice(len(dataset), size=n_samples, replace=False)
+        # Convert numpy indices to Python ints (HuggingFace datasets don't accept numpy.int64)
+        indices = indices.tolist()
+        dataset = torch.utils.data.Subset(dataset, indices)
+    else:
+        if n_samples is not None:
+            logger.info(f"Using all {len(dataset)} images (less than requested {n_samples})")
+
+    # Create DataLoader
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    # Initialize FID metric (use repo's FID class to compute reference stats)
+    device_obj = DeviceType(device) if isinstance(device, str) else device
+    device_str = device_obj.value if isinstance(device_obj, DeviceType) else str(device_obj)
+    fid = FID(fid_stats_file=None, dims=2048, n_images=len(dataset), device=device_obj)
+
+    # Initialize feature extractor for FID (use InceptionV3-based FID extractor, not DINO)
+    # inception_fid produces 2048-dimensional features compatible with FID
+    logger.info("Loading InceptionV3 extractor for FID computation...")
+
+    inception_extractor = ExtractorFactory.model_from_name(name="inception_fid")
+    inception_extractor = inception_extractor.to(device_str)
+    inception_extractor.eval()
+
+    # Also initialize DINO extractor for pymdma metrics reference
+    logger.info("Loading DINO ViT extractor for pymdma metrics...")
+    dino_extractor = ExtractorFactory.model_from_name(name="dino_vits8")
+    dino_extractor = dino_extractor.to(device_str)
+    dino_extractor.eval()
+    all_features = []
+
+    # Calculate FID statistics
+    logger.info("Computing FID statistics...")
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Computing FID stats"):
+            images = batch[0]
+
+            if images.ndim < 2:
+                raise ValueError(
+                    f"Images must have at least two dimensions (batch size and channel), got {images.ndim}D tensor."
+                )
+
+            # Convert to RGB by repeating across the channel dimension if needed
+            if images.shape[1] != 3:
+                images = images.repeat(1, 3, 1, 1)
+
+            images = images.to(device_str)
+
+            # NOTE: Directly update fid.fid with is_real=True to accumulate reference statistics
+            # We bypass FID.update() because it always uses is_real=False
+            # Convert from [-1, 1] to [0, 1] for InceptionV3
+            images_normalized = (images + 1.0) / 2.0
+            fid.fid.update(images_normalized, is_real=True)
+
+            # Extract DINO features for pymdma metrics reference (on normalized images)
+            features = dino_extractor(images_normalized).detach().cpu().numpy()
+            all_features.append(features)
+
+    # Extract statistics from FID instance
+    # Compute mean and covariance from accumulated statistics
+    m = fid.fid.real_sum / fid.fid.num_real_images
+    s = fid.fid.real_cov_sum - fid.fid.num_real_images * torch.outer(m, m)
+
+    # Save statistics
+    logger.info(f"Saving FID statistics to {stats_file}...")
+    with open(f"{stats_file}", "wb") as f:
+        np.savez(
+            f,
+            mu=m.cpu().numpy(),
+            sigma=s.cpu().numpy(),
+            real_sum=fid.fid.real_sum.cpu().numpy(),
+            real_cov_sum=fid.fid.real_cov_sum.cpu().numpy(),
+            num_real_images=fid.fid.num_real_images.cpu().numpy(),
+            all_features=np.concatenate(all_features, axis=0),
+        )
+
+    logger.info(f"FID statistics saved to {stats_file}")
+    return str(stats_file)
+
+
+def find_fid_stats(dataroot: str, dataset_name: str) -> str | None:
+    """
+    Find FID statistics file for a dataset.
+
+    Args:
+        dataroot: Root directory where datasets are stored
+        dataset_name: Name of the dataset
+
+    Returns:
+        Path to FID stats file if found, None otherwise
+
+    """
+    fid_stats_dir = Path(dataroot) / "fid-stats"
+    if not fid_stats_dir.exists():
+        return None
+
+    # Look for stats file matching the dataset name
+    stats_file = fid_stats_dir / f"stats.{dataset_name}.npz"
+    if stats_file.exists():
+        return str(stats_file)
+
+    return None

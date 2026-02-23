@@ -40,7 +40,7 @@ def parse_args() -> CLMulticlassTrain:
         raise
 
 
-def main() -> None:  # pylint: disable=too-many-statements,broad-exception-caught
+def main() -> None:  # pylint: disable=too-many-statements
     """Train multiple classifier architectures on a single dataset."""
     load_dotenv()
 

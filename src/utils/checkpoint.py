@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 import torch
 import torchvision.utils as vutils
@@ -207,3 +208,30 @@ def checkpoint_image(image: torch.Tensor, epoch: int, output_dir: str | None = N
     path = os.path.join(directory, f"{epoch:02d}.png")
 
     vutils.save_image(image, path)
+
+
+def find_checkpoint(out_dir: str, training_dataset: str, classifier_type: str, seed: int) -> os.PathLike | None:
+    """
+    Find checkpoint file for a trained classifier.
+
+    Args:
+        out_dir: Output directory where models are stored
+        training_dataset: Training dataset name (subdirectory)
+        classifier_type: Type of classifier (e.g., 'cnn', 'vgg16')
+        seed: Random seed used for training
+
+    Returns:
+        Path to checkpoint if found, None otherwise
+
+    """
+    checkpoint_dir = Path(out_dir) / training_dataset
+
+    if not checkpoint_dir.exists():
+        return None
+
+    # Look for checkpoint files: {classifier_type}_{seed} or {classifier_type}_{seed}.pt
+    for pattern in [f"{classifier_type}_{seed}.pt", f"{classifier_type}_{seed}"]:
+        for checkpoint_file in checkpoint_dir.glob(pattern):
+            return checkpoint_file
+
+    return None

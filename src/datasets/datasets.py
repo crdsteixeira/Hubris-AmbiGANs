@@ -507,7 +507,7 @@ def _find_companion_dataset_images(  # pylint: disable=too-many-branches,too-man
             continue
 
         # Parse ground truth from directory name
-        ground_truth = _parse_ground_truth_from_dirname(entry, dataset_name)
+        ground_truth = _parse_ground_truth_from_dirname(entry, dataset_dir_name)
         if not ground_truth:
             logger.warning(f"Skipping {entry}: could not parse ground truth labels")
             continue

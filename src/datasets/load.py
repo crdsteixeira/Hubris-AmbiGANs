@@ -1,13 +1,16 @@
 """Module for loading the datasets."""
 
+import json
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset
 
 from src.datasets.datasets import (
+    CompanionDataset,
     get_ambiguess_fmnist,
     get_ambiguess_mnist,
     get_ambiguous_mnist,
@@ -87,3 +90,181 @@ def load_dataset(params: LoadDatasetParams) -> tuple[Dataset, int, ImageParams]:
         dataset = BinaryDataset(dataset, params)
 
     return dataset, num_classes, ImageParams(image_size=image_size)
+
+
+def _enum_to_str(value: Any) -> str:
+    """Convert enum to string value, handling both enum and string inputs."""
+    return value.value if hasattr(value, "value") else str(value)
+
+
+def get_binary_classes(
+    balanced: bool,
+    dataset_name: DatasetNames | str,
+) -> tuple[int | None, int | None]:
+    """Get binary classes if dataset supports balancing and it's enabled."""
+    if not balanced:
+        return None, None
+    binary_datasets = {
+        "chest-xray": (1, 0),
+        "synthetic-chest-xray": (1, 0),
+    }
+    dataset_str = _enum_to_str(dataset_name)
+    return binary_datasets.get(dataset_str, (None, None))
+
+
+def save_companion_dataset_metadata(dataset: Any, dataset_name: str, dataroot: str) -> None:
+    """
+    Save companion dataset metadata (image paths and labels) to a JSON file.
+
+    Args:
+        dataset: The loaded dataset object (should be CompanionDataset if applicable)
+        dataset_name: Name of the dataset (e.g., 'companion-mnist')
+        dataroot: Root data directory
+
+    """
+    # Only save if this is a CompanionDataset
+    if not isinstance(dataset, CompanionDataset):
+        return
+
+    # Create data directory if it doesn't exist
+    data_dir = Path(dataroot) / ".." / "data"
+    data_dir = data_dir.resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create metadata file
+    metadata = {
+        "dataset_name": dataset_name,
+        "num_samples": len(dataset.image_paths),
+        "image_paths": dataset.image_paths,
+        "labels": dataset.labels,
+    }
+
+    output_file = data_dir / f"companion-{dataset_name}.json"
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+
+    logger.info(f"✓ Saved companion dataset metadata to {output_file}")
+
+
+def collate_with_ground_truth(batch: list[tuple[Any, Any]]) -> tuple[torch.Tensor, list]:
+    """
+    Preserve ground truth labels as lists in batch collation.
+
+    For ambiguous datasets (ambiguess, companion), labels are lists of class indices.
+    This collate function stacks images into a tensor but keeps labels as a list of lists.
+
+    Args:
+        batch: List of (image, label) tuples from the dataset.
+
+    Returns:
+        Tuple of (stacked_images, list_of_labels).
+
+    """
+    images = []
+    labels = []
+
+    for image, label in batch:
+        images.append(image)
+        labels.append(label)
+
+    # Stack images into a tensor
+    stacked_images = torch.stack(images)
+
+    # Keep labels as a list (don't convert to tensor)
+    # This preserves list[list[int]] for ambiguous datasets
+    return stacked_images, labels
+
+
+def load_datasets_for_evaluation(
+    dataroot: str,
+    dataset_name: DatasetNames,
+    balanced: bool = False,
+    batch_size: int = 32,
+) -> tuple[DataLoader, dict[str, Any]]:
+    """
+    Load dataset for evaluating ambiguity metrics.
+
+    For most datasets: Uses test set split into 50/10/40, returns only held-out 40% eval portion.
+    For chest x-ray: Uses validation set split into 80/20, returns only held-out 20% eval portion.
+
+    Args:
+        dataroot: Root directory where datasets are stored
+        dataset_name: Name of the dataset to load (using DatasetNames enum)
+        balanced: Whether to load balanced binary classification version
+        seed: Random seed for reproducibility
+        batch_size: Batch size for DataLoader
+
+    Returns:
+        Tuple of (Test DataLoader, metadata dict with companion metrics if applicable)
+
+    """
+    dataset_str = _enum_to_str(dataset_name)
+    logger.info("Loading %s dataset...", dataset_str)
+
+    # Load dataset
+    pos_class, neg_class = get_binary_classes(balanced, dataset_name)
+
+    test_dataset, num_classes, _ = load_dataset(
+        LoadDatasetParams(
+            dataroot=dataroot,
+            dataset_name=dataset_name,
+            pos_class=pos_class,
+            neg_class=neg_class,
+            split="test",
+            pytesting=False,
+        )
+    )
+
+    # Use custom collate function for datasets with ground truth labels (ambiguess, companion)
+    # This preserves labels as lists instead of converting to tensors
+    collate_fn = None
+    if dataset_name in (
+        DatasetNames.ambiguess_mnist,
+        DatasetNames.ambiguess_fmnist,
+        DatasetNames.companion_mnist,
+        DatasetNames.companion_fmnist,
+        DatasetNames.companion_chest_xray,
+    ):
+        collate_fn = collate_with_ground_truth
+
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    logger.info("  ✓ Loaded %s with %d classes", dataset_str, num_classes)
+
+    # Save companion dataset metadata if applicable
+    save_companion_dataset_metadata(test_dataset, dataset_str, dataroot)
+
+    dataset_metadata: dict[str, Any] = {}
+
+    return test_dataloader, dataset_metadata
+
+
+def extract_ground_truth_labels(dataloader: DataLoader) -> list | None:
+    """
+    Extract ground truth labels from a dataloader.
+
+    Returns flattened ground truth labels if available (for ambiguous/companion datasets),
+    None otherwise.
+
+    Args:
+        dataloader: DataLoader to extract labels from
+
+    Returns:
+        Flattened list of ground truth labels, or None if labels are not lists
+
+    """
+    all_labels = []
+    for _, labels in dataloader:
+        all_labels.append(labels)
+
+    if not all_labels or not isinstance(all_labels[0], list):
+        return None
+
+    # Flatten all ground truth labels
+    ground_truth = []
+    for label_batch in all_labels:
+        if isinstance(label_batch, torch.Tensor):
+            ground_truth.extend(label_batch.cpu().numpy().tolist())
+        else:
+            ground_truth.extend(label_batch)
+
+    return ground_truth

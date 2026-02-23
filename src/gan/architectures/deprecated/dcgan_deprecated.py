@@ -1,6 +1,7 @@
-import numpy as np
-from torch import nn, Tensor
 from typing import Tuple
+
+import numpy as np
+from torch import Tensor, nn
 
 
 def weights_init(m: nn.Module) -> None:

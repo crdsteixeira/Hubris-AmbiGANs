@@ -173,12 +173,7 @@ def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, Dat
     Load training, test, and companion datasets.
 
     For fine-tuning pretrained models, uses different splits by dataset:
-    - Chest X-ray: Uses VALIDATION split to avoid data leakage
-    - Other datasets (MNIST, Fashion-MNIST): Uses TEST split
-
-    This avoids data leakage since AmbiGAN was trained on the training set.
-    The loaded dataset is split into 70/30 (train for fine-tuning / test for evaluation).
-    Evaluation uses ONLY the held-out 30% test portion (never seen by fine-tuned models).
+    - Chest X-ray: Uses VALIDATION because it has more images
     """
     finetune_train_set, _, _ = load_dataset(
         LoadDatasetParams(
@@ -190,6 +185,13 @@ def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, Dat
             pytesting=False,
         )
     )
+    # Use only 50% of training data
+    num_train_samples = len(finetune_train_set)
+    half_size = num_train_samples // 2
+    finetune_train_set, _ = torch.utils.data.random_split(
+        finetune_train_set, [half_size, num_train_samples - half_size]
+    )
+
     finetune_test_set, _, _ = load_dataset(
         LoadDatasetParams(
             dataroot=config.dataroot,
@@ -382,9 +384,74 @@ def train_model(
     return model
 
 
+def _log_evaluation_to_wandb(df: pd.DataFrame, config: "CLEvaluationArgs") -> None:
+    """Log evaluation metrics to wandb."""
+    wandb.log(
+        {
+            "hubris_a_original": df[df["dataset"] == f"{config.dataset_name} Original"]["absolute_hubris"].values[0],
+            "hubris_a_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["absolute_hubris"].values[0],
+            "hubris_improved_original": df[df["dataset"] == f"{config.dataset_name} Original"][
+                "improved_hubris"
+            ].values[0],
+            "hubris_improved_companion": df[df["dataset"] == f"{config.dataset_name} Companion"][
+                "improved_hubris"
+            ].values[0],
+            "hubris_r_original": (
+                df[df["dataset"] == f"{config.dataset_name} Original"]["relative_hubris"].values[0]
+                if "relative_hubris" in df.columns
+                else None
+            ),
+            "hubris_r_companion": (
+                df[df["dataset"] == f"{config.dataset_name} Companion"]["relative_hubris"].values[0]
+                if "relative_hubris" in df.columns
+                else None
+            ),
+            "hubris_improved_r_original": (
+                df[df["dataset"] == f"{config.dataset_name} Original"]["improved_relative_hubris"].values[0]
+                if "improved_relative_hubris" in df.columns
+                else None
+            ),
+            "hubris_improved_r_companion": (
+                df[df["dataset"] == f"{config.dataset_name} Companion"]["improved_relative_hubris"].values[0]
+                if "improved_relative_hubris" in df.columns
+                else None
+            ),
+            "acd_original": df[df["dataset"] == f"{config.dataset_name} Original"]["acd"].values[0],
+            "acd_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["acd"].values[0],
+            "accuracy": df[df["dataset"] == f"{config.dataset_name} Original"]["accuracy"].values[0],
+            "precision_original": df[df["dataset"] == f"{config.dataset_name} Original"]["precision"].values[0],
+            "recall_original": df[df["dataset"] == f"{config.dataset_name} Original"]["recall"].values[0],
+            "f1_original": df[df["dataset"] == f"{config.dataset_name} Original"]["f1_score"].values[0],
+        }
+    )
+
+
+def _log_companion_metrics(config: "CLEvaluationArgs") -> None:
+    """Log companion dataset metrics to wandb."""
+    metrics_csv_pattern = os.path.join(config.companion_dataroot, "ambi", "*_metrics.csv")
+    metrics_csv_files = glob.glob(metrics_csv_pattern)
+
+    if not metrics_csv_files:
+        logger.info("No metrics CSV found in companion_dataset folder")
+        return
+
+    # Read the most recent metrics CSV
+    metrics_csv = sorted(metrics_csv_files)[-1]
+    logger.info("Reading metrics from: %s", metrics_csv)
+    try:
+        metrics_df = pd.read_csv(metrics_csv)
+        # Log all metrics from CSV to wandb
+        for col in metrics_df.columns:
+            value = metrics_df[col].iloc[0]
+            if pd.notna(value):  # Only log non-null values
+                wandb.log({f"{col}_companion": value})
+        logger.info("Dataset metrics logged to wandb")
+    except (FileNotFoundError, pd.errors.ParserError, ValueError) as e:
+        logger.warning("Could not read metrics CSV: %s", e)
+
+
 def main() -> None:  # pylint: disable=too-many-nested-blocks
     """Calculate and save model statistics based on the provided CLI arguments."""
-    # pylint: disable=too-many-nested-blocks
     logger.info("Model evaluation is starting...")
 
     args = parser.parse_args()
@@ -445,70 +512,11 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
         logger.info("Evaluation results saved to CSV: %s", csv_path)
 
         # log results to wandb
-        wandb.log(
-            {
-                "hubris_a_original": df[df["dataset"] == f"{config.dataset_name} Original"]["absolute_hubris"].values[
-                    0
-                ],
-                "hubris_a_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["absolute_hubris"].values[
-                    0
-                ],
-                "hubris_improved_original": df[df["dataset"] == f"{config.dataset_name} Original"][
-                    "improved_hubris"
-                ].values[0],
-                "hubris_improved_companion": df[df["dataset"] == f"{config.dataset_name} Companion"][
-                    "improved_hubris"
-                ].values[0],
-                "hubris_r_original": (
-                    df[df["dataset"] == f"{config.dataset_name} Original"]["relative_hubris"].values[0]
-                    if "relative_hubris" in df.columns
-                    else None
-                ),
-                "hubris_r_companion": (
-                    df[df["dataset"] == f"{config.dataset_name} Companion"]["relative_hubris"].values[0]
-                    if "relative_hubris" in df.columns
-                    else None
-                ),
-                "hubris_improved_r_original": (
-                    df[df["dataset"] == f"{config.dataset_name} Original"]["improved_relative_hubris"].values[0]
-                    if "improved_relative_hubris" in df.columns
-                    else None
-                ),
-                "hubris_improved_r_companion": (
-                    df[df["dataset"] == f"{config.dataset_name} Companion"]["improved_relative_hubris"].values[0]
-                    if "improved_relative_hubris" in df.columns
-                    else None
-                ),
-                "acd_original": df[df["dataset"] == f"{config.dataset_name} Original"]["acd"].values[0],
-                "acd_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["acd"].values[0],
-                "accuracy": df[df["dataset"] == f"{config.dataset_name} Original"]["accuracy"].values[0],
-                "precision_original": df[df["dataset"] == f"{config.dataset_name} Original"]["precision"].values[0],
-                "recall_original": df[df["dataset"] == f"{config.dataset_name} Original"]["recall"].values[0],
-                "f1_original": df[df["dataset"] == f"{config.dataset_name} Original"]["f1_score"].values[0],
-            }
-        )
+        _log_evaluation_to_wandb(df, config)
 
         # Try to read existing metrics CSV from companion_dataset folder (only once per run)
         if model_enum == config.models[0]:  # Only log dataset metrics once
-            metrics_csv_pattern = os.path.join(config.companion_dataroot, "ambi", "*_metrics.csv")
-            metrics_csv_files = glob.glob(metrics_csv_pattern)
-
-            if metrics_csv_files:
-                # Read the most recent metrics CSV
-                metrics_csv = sorted(metrics_csv_files)[-1]
-                logger.info("Reading metrics from: %s", metrics_csv)
-                try:
-                    metrics_df = pd.read_csv(metrics_csv)
-                    # Log all metrics from CSV to wandb
-                    for col in metrics_df.columns:
-                        value = metrics_df[col].iloc[0]
-                        if pd.notna(value):  # Only log non-null values
-                            wandb.log({f"{col}_companion": value})
-                    logger.info("Dataset metrics logged to wandb")
-                except (FileNotFoundError, pd.errors.ParserError, ValueError) as e:
-                    logger.warning("Could not read metrics CSV: %s", e)
-            else:
-                logger.info("No metrics CSV found in companion_dataset folder")
+            _log_companion_metrics(config)
 
         checkpoint(model, model_enum.value, None, None, None, output_dir=config.out_dir, optimizer=None)
         logger.info("Model %s evaluation completed", model_enum.value)
