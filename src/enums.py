@@ -12,6 +12,7 @@ class ClassifierType(StrEnum):
     fully_connected = "fully-connected"
     densenet = "densenet"
     resnet = "resnet"
+    vgg = "vgg"
 
 
 class EnsembleType(StrEnum):

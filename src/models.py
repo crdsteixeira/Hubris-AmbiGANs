@@ -278,16 +278,13 @@ class ConfigTrainingParams(BaseModel):
 
     batch_size: int = Field(default=64, description="Batch size for training")
     epochs: int = Field(default=30, description="Number of training epochs")
-    lr: float = Field(default=0.001, description="Learning rate")
 
 
 class ConfigMulticlassTrain(BaseModel):
     """Configuration for multiclass classifier training from YAML."""
 
     dataset: str = Field(..., description="Name of the dataset to train on")
-    classifiers: list[str] = Field(
-        ..., description="List of classifier types to train (e.g., 'cnn', 'vgg16', 'resnet50')"
-    )
+    classifiers: list[str] = Field(..., description="List of classifier types to train (e.g., 'cnn', 'densenet', ...)")
     training: ConfigTrainingParams = Field(..., description="Default training hyperparameters")
     data_dir: str = Field(
         default=f"{os.environ.get('FILESDIR', '/tmp')}/data",

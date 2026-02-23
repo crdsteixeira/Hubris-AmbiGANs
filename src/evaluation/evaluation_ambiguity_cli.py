@@ -16,8 +16,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classifier.multiclass_train_utils import (
-    split_test_set_for_classifier_training,
-    split_validation_set_for_ambiguity_evaluation,
     train_single_multiclass_classifier,
 )
 from src.datasets.datasets import CompanionDataset
@@ -147,7 +145,6 @@ def parse_args() -> CLAmbiguityArgs:
     training_params = ConfigTrainingParams(
         batch_size=training_config.get("batch_size", 64),
         epochs=training_config.get("epochs", 30),
-        lr=training_config.get("lr", 0.001),
     )
 
     args_dict = {
@@ -203,22 +200,17 @@ def ensure_models_trained(config: "CLAmbiguityArgs", training_dataset: str) -> N
     """
     seed = config.seed if config.seed is not None else 42
 
-    training_dataset_enum = DatasetNames(training_dataset)
-    pos_class, neg_class = _get_binary_classes(config, training_dataset_enum)
-
     for classifier in config.models:
-        classifier_str = _enum_to_str(classifier)
-
         # Check if checkpoint exists
+        classifier_str = _enum_to_str(classifier)
         checkpoint_path = find_checkpoint(config.out_dir, training_dataset, classifier_str, seed)
 
         if checkpoint_path is None:
             logger.info(
-                "Training %s on %s with epochs=%d, lr=%f...",
+                "Training %s on %s with epochs=%d...",
                 classifier_str,
                 training_dataset,
                 config.training_params.epochs,
-                config.training_params.lr,
             )
             train_single_multiclass_classifier(
                 dataset_name=training_dataset,
@@ -227,11 +219,8 @@ def ensure_models_trained(config: "CLAmbiguityArgs", training_dataset: str) -> N
                 out_dir=config.out_dir,
                 batch_size=config.training_params.batch_size,
                 epochs=config.training_params.epochs,
-                lr=config.training_params.lr,
                 device=config.device,
                 seed=config.seed,
-                pos_class=pos_class,
-                neg_class=neg_class,
             )
         else:
             logger.info("Found trained %s on %s: %s", classifier_str, training_dataset, checkpoint_path)
@@ -290,7 +279,7 @@ def load_datasets_for_evaluation(
     dataset_str = _enum_to_str(dataset_name)
     logger.info("Loading %s dataset...", dataset_str)
 
-    # Load dataset (validation split for chest x-ray, test split for others)
+    # Load dataset
     pos_class, neg_class = _get_binary_classes(config, dataset_name)
 
     test_dataset, num_classes, _ = load_dataset(
@@ -304,17 +293,6 @@ def load_datasets_for_evaluation(
         )
     )
 
-    # Split dataset based on dataset type
-    # For chest x-ray: validation split into 80/20 (train/eval for ambiguity metrics)
-    # For others: test split into 50/10/40 (train/val/eval for ambiguity metrics)
-    seed = config.seed if config.seed is not None else 42
-    if dataset_name == DatasetNames.chest_xray:
-        # Use 80/20 split for chest x-ray, return 20% held-out eval portion
-        _, eval_split = split_validation_set_for_ambiguity_evaluation(test_dataset, seed=seed)
-    else:
-        # Use 50/10/40 split for other datasets, return 40% held-out eval portion
-        _, _, eval_split = split_test_set_for_classifier_training(test_dataset, seed=seed)
-
     # Use custom collate function for datasets with ground truth labels (ambiguess, companion)
     # This preserves labels as lists instead of converting to tensors
     collate_fn = None
@@ -327,7 +305,7 @@ def load_datasets_for_evaluation(
     ):
         collate_fn = collate_with_ground_truth
 
-    test_dataloader = DataLoader(eval_split, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
     logger.info("  ✓ Loaded %s with %d classes", dataset_str, num_classes)
 
     # Save companion dataset metadata if applicable
@@ -954,12 +932,8 @@ def evaluate_single_model(  # pylint: disable=too-many-locals,too-many-statement
         # Compute classifier-specific metrics (entropy - depends on model predictions)
         logger.info("  Computing classifier-specific metrics...")
         softmax_preds = get_model_predictions(model, test_dataloader, config.device)
-        logger.info(
-            f"    Probabilities shape: {softmax_preds.shape}, min: {softmax_preds.min():.4f}, max: {softmax_preds.max():.4f}"
-        )
 
-        # IMPORTANT: Entropy MUST be computed fresh for each classifier-dataset pair
-        # Do NOT reuse entropy from previous evaluations
+        # Entropy MUST be computed fresh for each classifier-dataset pair
         entropy = compute_entropy(softmax_preds)
         logger.info(f"    ✓ Computed entropy for {classifier_str} on {dataset_str}: {entropy:.6f}")
 
@@ -1071,9 +1045,9 @@ def run_evaluation_loop(
     for dataset in eval_datasets:
         dataset_str = _enum_to_str(dataset)
 
-        # Skip computing FID/pymdma metrics if evaluating on training dataset
+        # Skip computing FID/pymdma metrics if evaluating on test dataset
         if dataset_str == config.training_dataset:
-            logger.info(f"\nEvaluating on training dataset {dataset_str} (skipping FID/pymdma metrics)")
+            logger.info(f"\nEvaluating on test dataset {dataset_str} (skipping FID/pymdma metrics)")
             dataset_fid = None
             dataset_metrics: dict[str, Any] = {}
             real_features = None
@@ -1131,7 +1105,6 @@ def main() -> None:  # pylint: disable=too-many-statements
     logger.info(separator)
 
     # Run evaluation loop - training features will be extracted per evaluation dataset
-    # with size matching the evaluation dataset (or 10k if evaluating on training dataset itself)
     run_evaluation_loop(config, eval_datasets)
 
     logger.info(separator)

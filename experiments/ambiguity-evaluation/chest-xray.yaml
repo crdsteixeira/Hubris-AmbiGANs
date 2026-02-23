@@ -1,7 +1,7 @@
 data_dir: data
 out_dir: models
 device: cuda:1
-seed: 26
+seed: 1 # do not change
 
 datasets:
   training: chest-xray
@@ -13,11 +13,11 @@ datasets:
 
 classifiers:
   - cnn
-  - fully-connected
   - resnet
   - densenet
+  - fully-connected
+  - vgg
 
 training:
-  batch_size: 32
-  epochs: 40
-  lr: 0.0001
+  batch_size: 8
+  epochs: 25

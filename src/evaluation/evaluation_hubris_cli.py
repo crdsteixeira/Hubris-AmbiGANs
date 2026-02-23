@@ -180,62 +180,32 @@ def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, Dat
     The loaded dataset is split into 70/30 (train for fine-tuning / test for evaluation).
     Evaluation uses ONLY the held-out 30% test portion (never seen by fine-tuned models).
     """
-    if config.dataset_name == DatasetNames.chest_xray:
-        # For chest_xray, use validation set instead of test set
-        finetune_train_set, _, _ = load_dataset(
-            LoadDatasetParams(
-                dataroot=config.dataroot,
-                dataset_name=config.dataset_name,
-                pos_class=config.pos_class,
-                neg_class=config.neg_class,
-                split="validation",
-                pytesting=False,
-            )
+    finetune_train_set, _, _ = load_dataset(
+        LoadDatasetParams(
+            dataroot=config.dataroot,
+            dataset_name=config.dataset_name,
+            pos_class=config.pos_class,
+            neg_class=config.neg_class,
+            split="train",
+            pytesting=False,
         )
-        finetune_test_set, _, _ = load_dataset(
-            LoadDatasetParams(
-                dataroot=config.dataroot,
-                dataset_name=config.dataset_name,
-                pos_class=config.pos_class,
-                neg_class=config.neg_class,
-                split="test",
-                pytesting=False,
-            )
+    )
+    finetune_test_set, _, _ = load_dataset(
+        LoadDatasetParams(
+            dataroot=config.dataroot,
+            dataset_name=config.dataset_name,
+            pos_class=config.pos_class,
+            neg_class=config.neg_class,
+            split="validation" if config.dataset_name == DatasetNames.chest_xray.value else "test",
+            pytesting=False,
         )
-        transform = finetune_test_set.transform
-    else:
-        # Load dataset to use for fine-tuning (avoid data leakage from AmbiGAN training)
-        test_dataset, _, _ = load_dataset(
-            LoadDatasetParams(
-                dataroot=config.dataroot,
-                dataset_name=config.dataset_name,
-                pos_class=config.pos_class,
-                neg_class=config.neg_class,
-                split="test",
-                pytesting=False,
-            )
-        )
-
-        # Split test set into 70/30 (train for fine-tuning / test for evaluation)
-        # Use deterministic seed to ensure reproducibility
-        train_size = int(0.7 * len(test_dataset))
-        test_size = len(test_dataset) - train_size
-
-        generator = torch.Generator()
-        generator.manual_seed(config.seed if config.seed is not None else 42)
-        finetune_train_set, finetune_test_set = torch.utils.data.random_split(
-            test_dataset, [train_size, test_size], generator=generator
-        )
-
-        transform = test_dataset.transform
+    )
 
     # Load companion dataset for evaluation
-    ambi_dataset = ImageFolder(root=config.companion_dataroot, transform=transform)
+    ambi_dataset = ImageFolder(root=config.companion_dataroot, transform=finetune_test_set.transform)
 
     # Create dataloaders
-    # Fine-tuning uses 70% portion of test set
     train_dataloader = DataLoader(finetune_train_set, batch_size=config.batch_size, shuffle=True)
-    # Evaluation uses held-out 30% portion (never seen by fine-tuned models)
     test_dataloader = DataLoader(finetune_test_set, batch_size=config.batch_size, shuffle=False)
     ambi_dataloader = DataLoader(ambi_dataset, batch_size=config.batch_size, shuffle=False)
 

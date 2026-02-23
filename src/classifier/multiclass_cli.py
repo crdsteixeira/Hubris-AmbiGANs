@@ -89,7 +89,6 @@ def main() -> None:  # pylint: disable=too-many-statements,broad-exception-caugh
                 out_dir=config.out_dir,
                 batch_size=train_params.batch_size,
                 epochs=train_params.epochs,
-                lr=train_params.lr,
                 device=config.device,
                 seed=seed,
                 entity=config.entity,

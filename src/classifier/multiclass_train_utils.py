@@ -1,11 +1,13 @@
 """Utilities for multiclass classifier training."""
 
+import gc
 import logging
 import os
+from collections.abc import Callable
 
 import torch
 import wandb
-from torch import Callable, nn
+from torch import nn
 from torch.utils.data import DataLoader
 
 from src.classifier.construct_classifier import construct_classifier
@@ -22,74 +24,6 @@ from src.models import (
 from src.utils.checkpoint import construct_classifier_from_checkpoint
 
 logger = logging.getLogger(__name__)
-
-
-def split_test_set_for_classifier_training(
-    dataset: torch.utils.data.Dataset,
-    seed: int | None = None,
-) -> tuple[torch.utils.data.Subset, torch.utils.data.Subset, torch.utils.data.Subset]:
-    """
-    Split test set into train/val/eval (50/10/40) with deterministic seed.
-
-    This ensures that:
-    - Classifier training uses 50% of test data
-    - Classifier validation uses 10% of test data
-    - Ambiguity evaluation (entropy, top_pairs) uses held-out 40% on different distribution
-
-    Args:
-        dataset: The test dataset to split
-        seed: Random seed for reproducibility (default: use torch default)
-
-    Returns:
-        Tuple of (train_subset, val_subset, eval_subset)
-
-    """
-    # Use deterministic seed for splitting
-    train_size = int(0.5 * len(dataset))
-    val_size = int(0.1 * len(dataset))
-    eval_size = len(dataset) - train_size - val_size
-
-    generator = torch.Generator()
-    if seed is not None:
-        generator.manual_seed(seed)
-
-    train_set, val_set, eval_set = torch.utils.data.random_split(
-        dataset, [train_size, val_size, eval_size], generator=generator
-    )
-
-    return train_set, val_set, eval_set
-
-
-def split_validation_set_for_ambiguity_evaluation(
-    dataset: torch.utils.data.Dataset,
-    seed: int | None = None,
-) -> tuple[torch.utils.data.Subset, torch.utils.data.Subset]:
-    """
-    Split validation set into train/eval (80/20) with deterministic seed.
-
-    Used for chest x-ray ambiguity evaluation. This ensures that:
-    - Model training uses 80% of validation data
-    - Ambiguity evaluation uses held-out 20% portion
-
-    Args:
-        dataset: The validation dataset to split
-        seed: Random seed for reproducibility (default: use torch default)
-
-    Returns:
-        Tuple of (train_subset, eval_subset)
-
-    """
-    # Use deterministic seed for splitting
-    train_size = int(0.8 * len(dataset))
-    eval_size = len(dataset) - train_size
-
-    generator = torch.Generator()
-    if seed is not None:
-        generator.manual_seed(seed)
-
-    train_set, eval_set = torch.utils.data.random_split(dataset, [train_size, eval_size], generator=generator)
-
-    return train_set, eval_set
 
 
 def evaluate_with_top_k_accuracy(
@@ -124,7 +58,7 @@ def evaluate_with_top_k_accuracy(
             X = X.to(device)
             y = y.to(device).long()
 
-            outputs = model(X, output_feature_maps=False)
+            outputs = model(X)
             loss = criterion(outputs, y)
 
             running_loss += loss.item() * X.shape[0]
@@ -152,13 +86,10 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
     out_dir: str,
     batch_size: int = 64,
     epochs: int = 50,
-    lr: float = 5e-4,
     device: DeviceType = DeviceType.cuda,
     seed: int | None = None,
     entity: str | None = None,
     project: str = "multiclass-classifiers",
-    pos_class: int | None = None,
-    neg_class: int | None = None,
 ) -> dict:
     """
     Train a single multiclass classifier on a dataset.
@@ -203,88 +134,72 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
             "classifier": classifier_type_value,
             "batch_size": batch_size,
             "epochs": epochs,
-            "lr": lr,
             "seed": seed,
         },
     )
 
     try:
-        # Load dataset - Use TEST set to avoid data leakage from AmbiGAN training
-        # Exception: For chest x-ray, use VALIDATION split instead of test
-        # Classifiers are trained independently on held-out data and split into train/val/eval
+        # Load dataset
         load_params = LoadDatasetParams(
             dataroot=data_dir,
             dataset_name=dataset_enum,
-            pos_class=pos_class,
-            neg_class=neg_class,
-            split=(
-                "val" if dataset_enum == DatasetNames.chest_xray else "test"
-            ),  # Use validation for chest_xray, test otherwise
+            pos_class=1 if dataset_enum == DatasetNames.chest_xray else None,
+            neg_class=0 if dataset_enum == DatasetNames.chest_xray else None,
+            split="validation" if dataset_enum == DatasetNames.chest_xray else "train",
             pytesting=False,
         )
         dataset, num_classes, img_size = load_dataset(load_params)
         logger.info("Dataset: %s | Classes: %s | Image Size: %s", dataset_name_value, num_classes, img_size.image_size)
 
-        binary_mode = pos_class is not None and neg_class is not None and num_classes == 2
-
         # Prepare output directory
         dataset_out_dir = os.path.join(out_dir, dataset_name_value)
         os.makedirs(dataset_out_dir, exist_ok=True)
 
-        # Split dataset using deterministic seed (50-10-40 train-val-eval)
-        # 50% for training, 10% for validation, 40% held-out for ambiguity evaluation
-        train_set, val_set, eval_set = split_test_set_for_classifier_training(dataset, seed=seed)
+        train_size = int(0.8 * len(dataset))
+        val_size = len(dataset) - train_size
+        generator = torch.Generator()
+        if seed is not None:
+            generator.manual_seed(seed)
+        train_set, val_set = torch.utils.data.random_split(dataset, [train_size, val_size], generator=generator)
+        # Create data loaders (num_workers=0 for chest-xray to avoid memory issues with large images)
+        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
-        # Create data loaders
-        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
-        val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
-        test_loader = DataLoader(eval_set, batch_size=batch_size, shuffle=False, num_workers=4)
+        # Log dataset sizes
+        logger.info("Dataset sizes - Train: %d | Val: %d", len(train_set), len(val_set))
 
         # Create training arguments
+        common_args = {
+            "data_dir": data_dir,
+            "out_dir": dataset_out_dir,
+            "dataset_name": dataset_enum,
+            "pos_class": 1 if dataset_enum == DatasetNames.chest_xray else None,
+            "neg_class": 0 if dataset_enum == DatasetNames.chest_xray else None,
+            "batch_size": batch_size,
+            "c_type": classifier_enum,
+            "epochs": epochs,
+            "early_stop": None,
+            "early_acc": 1.0,
+            "seed": seed,
+            "nf": [32, 64],
+            "device": device,
+            "n_classes": num_classes,
+            "ensemble_type": None,
+            "name": f"{classifier_type_value}_{seed}",
+        }
+
         args = TrainClassifierArgs(
             type=classifier_enum,
-            data_dir=data_dir,
-            out_dir=dataset_out_dir,
-            name=f"{classifier_type_value}_{seed}",
-            dataset_name=dataset_enum,
-            pos_class=None,
-            neg_class=None,
-            batch_size=batch_size,
-            c_type=classifier_enum,
-            epochs=epochs,
-            early_stop=None,
-            early_acc=1.0,
-            lr=lr,
-            seed=seed,
-            nf=2,  # Base filter size for CNN; hidden dim for others
-            device=device,
             img_size=img_size.image_size,
-            n_classes=num_classes,
-            ensemble_type=None,
             output_method=None,
+            **common_args,  # type: ignore[arg-type]
         )
 
         cl_args = CLTrainArgs(
-            data_dir=data_dir,
-            out_dir=dataset_out_dir,
-            dataset_name=dataset_enum,
-            pos_class=None,
-            neg_class=None,
-            batch_size=batch_size,
-            c_type=classifier_enum,
-            epochs=epochs,
-            early_stop=None,
-            early_acc=1.0,
-            lr=lr,
-            seed=seed,
-            nf=2,
-            device=device,
-            n_classes=num_classes,
-            ensemble_type=None,
             ensemble_output_method=None,
             entity=entity,
             project=project,
-            name=f"{classifier_type_value}_{seed}",
+            **common_args,  # type: ignore[arg-type]
         )
 
         # Construct classifier
@@ -293,7 +208,7 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
 
         acc_fun: Callable
         # Loss function and accuracy function
-        if binary_mode:
+        if num_classes == 2:
             criterion = nn.BCELoss()
             acc_fun = binary_accuracy
         else:
@@ -312,12 +227,29 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
         )
         logger.info(f"Model saved to: {cp_path}")
 
+        del val_loader, train_loader, C
+        torch.cuda.empty_cache()
+        gc.collect()
+
         # Load best checkpoint
         best_C = construct_classifier_from_checkpoint(cp_path, device=device)[0]
         logger.info(f"\nLoading best model from checkpoint: {cp_path}")
 
+        # load test set for evaluation
+        eval_set, _, _ = load_dataset(
+            LoadDatasetParams(
+                dataroot=data_dir,
+                dataset_name=dataset_enum,
+                pos_class=1 if dataset_enum == DatasetNames.chest_xray else None,
+                neg_class=0 if dataset_enum == DatasetNames.chest_xray else None,
+                split="test" if dataset_enum == DatasetNames.chest_xray else "test[:25%]",
+                pytesting=False,
+            )
+        )
+        test_loader = DataLoader(eval_set, batch_size=batch_size, shuffle=False)
+
         # Evaluate on test set
-        if binary_mode:
+        if num_classes == 2:
             eval_params = EvaluateParams(
                 device=device,
                 verbose=False,
@@ -362,8 +294,12 @@ def train_single_multiclass_classifier(  # pylint: disable=too-many-positional-a
         )
 
         # Save predictions
-        save_predictions(best_C, train_loader, args, TrainingStage.train, cp_path)
+        # save_predictions(best_C, train_loader, args, TrainingStage.train, cp_path)
         save_predictions(best_C, test_loader, args, TrainingStage.test, cp_path)
+
+        del test_loader, best_C
+        torch.cuda.empty_cache()
+        gc.collect()
 
         wandb_run.finish()
 

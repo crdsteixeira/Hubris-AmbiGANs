@@ -1,5 +1,6 @@
 """Module to train Classifiers."""
 
+import gc
 import logging
 import os
 from collections.abc import Callable
@@ -45,6 +46,7 @@ def evaluate(
     for data in seq:
         X, y = data
         X = X.to(params.device.value)
+        y = y.to(params.device.value)
 
         with torch.no_grad():
             accuracies = []
@@ -106,8 +108,8 @@ def default_train_fn(
     loss = crit(y_hat, Y)
     acc = acc_fun(y_hat, Y, avg=False).cpu()
 
-    if params.early_acc > (acc / len(Y)):
-        loss.backward()
+    # Always compute gradients for training
+    loss.backward()
 
     return loss, acc
 
@@ -199,6 +201,12 @@ def train(
                 cp_path=cp_path,
                 cl_args=cl_args,
             )
+
+            # Clear GPU memory between epochs to prevent OOM on deep models
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+
             if stats.early_stop_tracker == train_classifier_args.early_stop:
                 break
 
@@ -226,8 +234,8 @@ def execute_epoch(
     params: TrainClassifierArgs,
 ) -> tuple[float, float]:
     """Execute one training epoch and return the training loss and accuracy."""
-    running_loss = torch.tensor(0.0, dtype=torch.float32)
-    running_accuracy = torch.tensor(0.0, dtype=torch.float32)
+    running_loss = 0.0
+    running_accuracy = 0.0
 
     for data in tqdm(loader, desc="Training"):
         X, y = data
@@ -238,13 +246,17 @@ def execute_epoch(
         loss, acc = C_fn(C, X, y, crit, acc_fun, params.early_acc, params)
         opt.step()
 
-        running_accuracy += acc.cpu()
-        running_loss += loss.cpu() * X.shape[0]
+        # Detach to break computation graph and prevent memory accumulation
+        running_accuracy += acc.detach().cpu().item()
+        running_loss += loss.detach().cpu().item() * X.shape[0]
+
+        # Explicit cleanup
+        del loss, acc, X, y
 
     train_loss = running_loss / len(loader.dataset)
     train_acc = running_accuracy / len(loader.dataset)
 
-    return train_loss.item(), train_acc.item()
+    return train_loss, train_acc
 
 
 def validate(

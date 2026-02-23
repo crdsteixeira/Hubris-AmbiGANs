@@ -39,11 +39,11 @@ class Classifier(nn.Module):
         # We'll use the feature extraction part (everything before avgpool)
         self.feature_extractor = nn.Sequential(*list(resnet.children())[:-2])
 
-        # Add global average pooling to get fixed-size features
-        self.blocks.append(nn.AdaptiveAvgPool2d((1, 1)))
-
-        # Add the feature extractor as a block
+        # Add the feature extractor as a block (MUST come before pooling)
         self.blocks.append(self.feature_extractor)
+
+        # Add global average pooling to get fixed-size features (after feature extraction)
+        self.blocks.append(nn.AdaptiveAvgPool2d((1, 1)))
 
         # Custom FC layers: Dense(256) + Dropout(0.2) + Dense(125) + Dropout(0.2)
         fc_block_1 = nn.Sequential(
@@ -68,7 +68,8 @@ class Classifier(nn.Module):
         )
         self.blocks.append(output_block)
 
-        # Freeze ResNet50 weights
+        # Freeze ResNet50 backbone - only train FC layers
+        # Unfreezing residual blocks causes excessive gradient memory usage
         for param in self.feature_extractor.parameters():
             param.requires_grad = False
 
@@ -78,8 +79,8 @@ class Classifier(nn.Module):
         x = self.blocks[0](x)
 
         # Apply feature extractor
-        x = self.blocks[1](x)  # AdaptiveAvgPool2d
-        x = self.blocks[2](x)  # ResNet50 feature extractor
+        x = self.blocks[1](x)  # ResNet50 feature extractor
+        x = self.blocks[2](x)  # AdaptiveAvgPool2d
         x = x.view(x.size(0), -1)  # Flatten
 
         # Apply FC layers and output

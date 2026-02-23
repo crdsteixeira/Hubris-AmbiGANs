@@ -14,7 +14,7 @@ class Classifier(nn.Module):
         super().__init__()
         num_channels, height, width = params.img_size
         input_size = num_channels * height * width
-        num_classes = params.n_classes
+        self.num_classes = params.n_classes
 
         self.model = nn.Sequential(
             nn.Flatten(),
@@ -27,10 +27,16 @@ class Classifier(nn.Module):
             nn.Linear(512, 64),
             nn.ReLU(),
             nn.Dropout(0.2),
-            nn.Linear(64, 1 if num_classes == 2 else num_classes),
-            nn.Sigmoid() if num_classes == 2 else nn.Softmax(dim=1),
+            nn.Linear(64, 1 if self.num_classes == 2 else self.num_classes),
+            nn.Sigmoid() if self.num_classes == 2 else nn.Softmax(dim=1),
         )
+
+        self.is_binary = self.num_classes == 2
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the Fully Connected classifier."""
-        return self.model(x)
+        output = self.model(x)
+        # Squeeze binary output from [batch_size, 1] to [batch_size] for BCELoss compatibility
+        if self.is_binary:
+            output = output.squeeze(-1)
+        return output

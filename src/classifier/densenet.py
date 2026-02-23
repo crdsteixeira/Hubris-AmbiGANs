@@ -44,11 +44,11 @@ class Classifier(nn.Module):
         # Get the number of output features from DenseNet121 (last conv layer has 1024 channels)
         num_features = densenet.classifier.in_features
 
-        # Add global average pooling
-        self.blocks.append(nn.AdaptiveAvgPool2d((1, 1)))
-
-        # Add the feature extractor as a block
+        # Add the feature extractor as a block (MUST come before pooling)
         self.blocks.append(self.feature_extractor)
+
+        # Add global average pooling (after feature extraction)
+        self.blocks.append(nn.AdaptiveAvgPool2d((1, 1)))
 
         # Custom FC layers with lower dropout (0.1 as in the Keras code, though using 0.2 for consistency with other models)
         fc_block_1 = nn.Sequential(
@@ -73,7 +73,8 @@ class Classifier(nn.Module):
         )
         self.blocks.append(output_block)
 
-        # Freeze DenseNet121 backbone
+        # Freeze DenseNet121 backbone - only train FC layers
+        # Unfreezing dense blocks causes excessive gradient memory usage
         for param in self.feature_extractor.parameters():
             param.requires_grad = False
 
@@ -83,8 +84,8 @@ class Classifier(nn.Module):
         x = self.blocks[0](x)
 
         # Apply feature extractor
-        x = self.blocks[1](x)  # AdaptiveAvgPool2d
-        x = self.blocks[2](x)  # DenseNet121 feature extractor
+        x = self.blocks[1](x)  # DenseNet121 feature extractor
+        x = self.blocks[2](x)  # AdaptiveAvgPool2d
         x = x.view(x.size(0), -1)  # Flatten
 
         # Apply FC layers and output

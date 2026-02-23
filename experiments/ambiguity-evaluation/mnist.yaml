@@ -1,7 +1,7 @@
 data_dir: data
 out_dir: models
 device: cuda:1
-seed: 26
+seed: 10 # do not change
 
 datasets:
   training: mnist
@@ -16,9 +16,9 @@ classifiers:
   - cnn
   - fully-connected
   - resnet
+  - vgg
   - densenet
 
 training:
-  batch_size: 64
-  epochs: 20
-  lr: 0.0001
+  batch_size: 32
+  epochs: 15

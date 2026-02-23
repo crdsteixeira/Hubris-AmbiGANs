@@ -1,23 +1,23 @@
 data_dir: data
 out_dir: models
 device: cuda:1
-seed: 34
+seed: 4 # do not change
 
 datasets:
   training: fashion-mnist
   evaluation:
     - fashion-mnist
-    #- synthetic-fashion-mnist
-    #- ambiguess-fashion-mnist
-    #- companion-fashion-mnist
+    - synthetic-fashion-mnist
+    - ambiguess-fashion-mnist
+    - companion-fashion-mnist
 
 classifiers:
   - cnn
   - fully-connected
   - resnet
+  - vgg
   - densenet
 
 training:
-  batch_size: 30
+  batch_size: 32
   epochs: 20
-  lr: 0.0002
