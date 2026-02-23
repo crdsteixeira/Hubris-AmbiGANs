@@ -13,9 +13,9 @@ num_runs: 1
 # Configuration
 gen_test_noise: false
 gen_pairwise_inception: false
-gen_classifiers: true
-gen_gan: true
-gen_dataset: true
+gen_classifiers: false
+gen_gan: false
+gen_dataset: false
 run_hubris_evaluation: true
 
 # Dataset parameters, including positive and negative class.
@@ -81,3 +81,14 @@ train:
       - gaussian:
           - alpha: 1.50
             var: 0.1
+
+evaluation:
+  companion_n_samples: 2500
+  hubris:
+    models: 
+      - convnext
+      - vit
+      - efficientnetv2
+      - swin
+    epochs: 3
+    batch_size: 32

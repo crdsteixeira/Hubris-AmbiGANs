@@ -2,6 +2,7 @@
 
 import argparse
 import gc
+import json
 import logging
 import os
 import subprocess
@@ -30,7 +31,7 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 
-def find_latest_gan_path(config: ConfigMain) -> str:
+def find_latest_gan_estimator_paths(config: ConfigMain) -> tuple[str, str | None]:
     """Find latest run executed for this specific subset."""
     # For inherently binary datasets (chest-xray), don't append the binary class suffix
     # For multi-class datasets where we select a binary subset (mnist-1v0), do append it
@@ -50,8 +51,28 @@ def find_latest_gan_path(config: ConfigMain) -> str:
     if not subdirs:
         raise ValueError(f"No subdirectories found in {gan_root}")
 
+    estimator_name = None
+    try:
+        if getattr(config, "train", None) and getattr(config.train, "step_2", None):
+            classifier_list = getattr(config.train.step_2, "classifier")
+            if classifier_list:
+                estimator_name = classifier_list[0]
+    except (AttributeError, IndexError, TypeError):
+        estimator_name = None
+
+    estimator_path = (
+        os.path.join(
+            config.out_dir,
+            "models",
+            f"{config.dataset.name}.{config.dataset.binary.pos}v{config.dataset.binary.neg}",
+            estimator_name,
+        )
+        if estimator_name
+        else None
+    )
+
     # select the most recently modified subdirectory
-    return max(subdirs, key=os.path.getmtime)
+    return max(subdirs, key=os.path.getmtime), estimator_path
 
 
 def gen_test_noise(config: ConfigMain) -> None:
@@ -204,7 +225,9 @@ def gen_gan(config: ConfigMain, fid_stats_path: str, test_noise: str) -> None:
     gc.collect()
 
 
-def gen_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -> None:
+def gen_dataset(
+    config: ConfigMain, fid_stats_path: str, latest_gan_path: str, estimator_path: str | None = None
+) -> None:
     """Generate dataset using config parameters."""
     # search for the directory that matches the first classifier, and select the last epoch
     gan_path = None
@@ -231,6 +254,7 @@ def gen_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -
         gan_path=gan_path,
         device=config.device,
         fid_stats_path=fid_stats_path,
+        estimator_path=estimator_path,
     )
 
     # Skip if companion dataset already exists
@@ -255,6 +279,8 @@ def gen_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -
         "--fid-stats-path",
         str(fid_stats_path),
     ]
+    if params.estimator_path is not None:
+        args.extend(["--estimator-path", str(params.estimator_path)])
 
     subprocess.run(args, check=True, env=os.environ.copy())
     # Clean up CUDA memory after dataset generation completes
@@ -264,9 +290,17 @@ def gen_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -
 
 
 def gen_synthetic_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_path: str) -> None:
-    """Generate synthetic dataset from step_1/50 using config parameters."""
-    # Use step_1/50 checkpoint directly from the latest GAN path
-    gan_path = os.path.join(latest_gan_path, "step_1", "50")
+    """Generate synthetic dataset from step_1 checkpoint using config parameters."""
+    # Use step_1 checkpoint directly from the latest GAN path
+    step_1_path = os.path.join(latest_gan_path, "step_1")
+
+    # Read train_state.json to extract the epoch
+    train_state_path = os.path.join(step_1_path, "train_state.json")
+    with open(train_state_path, encoding="utf-8") as f:
+        train_state = json.load(f)
+        epoch = train_state.get("epoch")
+
+    gan_path = os.path.join(step_1_path, str(epoch))
 
     if not config.evaluation:
         raise ValueError("evaluation config is required for gen_synthetic_dataset")
@@ -286,6 +320,7 @@ def gen_synthetic_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_pa
         gan_path=gan_path,
         device=config.device,
         fid_stats_path=fid_stats_path,
+        estimator_path=None,
     )
 
     # Skip if synthetic dataset already exists
@@ -311,6 +346,8 @@ def gen_synthetic_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_pa
         str(fid_stats_path),
         "--skip-stats",
     ]
+    if params.estimator_path is not None:
+        args.extend(["--estimator-path", str(params.estimator_path)])
 
     subprocess.run(args, check=True, env=os.environ.copy())
     # Clean up CUDA memory after dataset generation completes
@@ -319,13 +356,8 @@ def gen_synthetic_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_pa
     gc.collect()
 
 
-def run_hubris_evaluation(config: ConfigMain, latest_gan_path: str) -> None:
+def run_hubris_evaluation(config: ConfigMain, latest_gan_path: str, estimator_path: str | None = None) -> None:
     """Run evaluation CLI with parameters from `config` and `latest_gan_path`."""
-    # Clean up CUDA memory before starting evaluation
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    gc.collect()
-
     # Extract GAN ID from path
     gan_id = os.path.basename(latest_gan_path.rstrip("/")).split("_")[-1]
 
@@ -337,36 +369,12 @@ def run_hubris_evaluation(config: ConfigMain, latest_gan_path: str) -> None:
     if not config_hubris:
         raise ValueError("evaluation config is required for run_hubris_evaluation")
 
-    estimator_name = None
-    try:
-        if getattr(config, "train", None) and getattr(config.train, "step_2", None):
-            classifier_list = getattr(config.train.step_2, "classifier")
-            if classifier_list:
-                estimator_name = classifier_list[0]
-    except (AttributeError, IndexError, TypeError):
-        estimator_name = None
-
-    estimator_path = (
-        os.path.join(
-            config.out_dir,
-            "models",
-            f"{config.dataset.name}.{config.dataset.binary.pos}v{config.dataset.binary.neg}",
-            estimator_name,
-        )
-        if estimator_name
-        else None
-    )
-
-    # Use a smaller batch size for evaluation to reduce memory usage during model training
-    # The config batch_size is for inference, but retraining large models needs smaller batches
-    eval_batch_size = min(config_hubris.batch_size, 32)
-
     params = CLEvaluationArgs(
         device=config.device,
         seed=config.test_noise_seed,
         companion_dataroot=os.path.join(latest_gan_path, "companion_dataset"),
         models=config_hubris.models,
-        batch_size=eval_batch_size,
+        batch_size=config_hubris.batch_size,
         epochs=config_hubris.epochs,
         out_dir=os.path.join(latest_gan_path, "evaluation"),
         estimator_path=estimator_path,
@@ -410,11 +418,9 @@ def run_hubris_evaluation(config: ConfigMain, latest_gan_path: str) -> None:
     ]
 
     subprocess.run(args, check=True, env=os.environ.copy())
-
-    # Aggressive memory cleanup after evaluation completes
+    # Clean up CUDA memory to avoid OOM in subsequent steps
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-        torch.cuda.synchronize()
     gc.collect()
 
 
@@ -486,21 +492,19 @@ def main() -> None:
                 for c_path in config.train.step_2.classifier
             ]
         gen_gan(config, fid_stats_path=fid_stats_path, test_noise=test_noise)
-    gan_path = find_latest_gan_path(config)
 
-    # generate companion dataset
+    # new paths
+    gan_path, estimator_path = find_latest_gan_estimator_paths(config)
+
     if config.gen_dataset:
-        gen_dataset(config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path)
-        # Generate synthetic dataset from step_1/50
+        # generate companion dataset
+        gen_dataset(config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path, estimator_path=estimator_path)
+        # Generate synthetic dataset from step_1/latest
         gen_synthetic_dataset(config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path)
-        # Additional cleanup before evaluation
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
 
     # evaluate binary classifier
     if config.run_hubris_evaluation:
-        run_hubris_evaluation(config, latest_gan_path=gan_path)
+        run_hubris_evaluation(config, latest_gan_path=gan_path, estimator_path=estimator_path)
 
 
 if __name__ == "__main__":

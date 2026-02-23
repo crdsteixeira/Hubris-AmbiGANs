@@ -18,7 +18,10 @@ from tqdm import tqdm
 from src.metrics.fid.fid import FID
 from src.metrics.image_quality import calculate_pymdma_metrics
 from src.models import CLDatasetArgs
-from src.utils.checkpoint import construct_gan_from_checkpoint
+from src.utils.checkpoint import (
+    construct_classifier_from_checkpoint,
+    construct_gan_from_checkpoint,
+)
 from src.utils.logging import configure_logging
 from src.utils.utility_functions import gen_seed, setup_reprod
 
@@ -37,7 +40,6 @@ def main() -> None:  # pylint: disable=too-many-statements
     logger.info(config)
 
     config.seed = gen_seed() if config.seed is None else config.seed
-
     setup_reprod(config.seed)
 
     # Check if companion dataset already exists
@@ -48,6 +50,9 @@ def main() -> None:  # pylint: disable=too-many-statements
         logger.info("Skipping dataset generation.")
         return
 
+    os.makedirs(config.out_dir, exist_ok=True)
+
+    # load generator
     G, _, _, _ = construct_gan_from_checkpoint(config.gan_path, device=config.device)
     G.eval()
     G.to(config.device)
@@ -58,15 +63,33 @@ def main() -> None:  # pylint: disable=too-many-statements
         extractor = ExtractorFactory.model_from_name(name="dino_vits8")
         all_synt_features = []
 
-    os.makedirs(config.out_dir, exist_ok=True)
+    # Load estimator once if provided
+    estimator = None
+    if config.estimator_path is not None:
+        estimator, _, _, _, _ = construct_classifier_from_checkpoint(config.estimator_path, device=config.device)
+        estimator.eval()
+        logger.info("Estimator loaded successfully.")
+    confusion_distance_sum = 0.0
+    confusion_distance_count = 0
+
     with torch.no_grad():
         for i in tqdm(range(config.n_samples)):
             noise = torch.randn((1, G.params.z_dim), device=config.device)
-            gen_image = G(noise).cpu()
+            gen_image = G(noise)  # .cpu()
+
+            # Calculate confusion distance for this image if estimator is provided
+            if estimator is not None:
+                prob = estimator(gen_image)[0].item()
+                confusion_distance_sum += abs(0.5 - prob)
+                confusion_distance_count += 1
             if config.fid_stats_path is not None:
                 fid.update(gen_image, (0, 0))
+
+            # move to CPU and normalize to [0, 1] for saving and feature extraction
+            gen_image = gen_image.cpu()
             gen_image.clamp_(min=-1.0, max=1.0)
             gen_image.sub_(-1.0).div_(max(1.0 - (-1.0), 1e-5))
+
             # for pymdma
             if config.fid_stats_path is not None:
                 pymdma_images = gen_image
@@ -91,6 +114,13 @@ def main() -> None:  # pylint: disable=too-many-statements
         all_real_features = fid.data["all_features"]
         pymdma_metrics = calculate_pymdma_metrics(all_real_features, all_synt_features)
         pymdma_metrics = pymdma_metrics.assign(fid=[dataset_fid])
+
+        # Add average confusion distance if it was calculated
+        if confusion_distance_count > 0:
+            avg_confusion_distance = confusion_distance_sum / confusion_distance_count
+            pymdma_metrics = pymdma_metrics.assign(avg_confusion_distance=[avg_confusion_distance])
+            logger.info(f"Added average confusion distance to metrics: {avg_confusion_distance:.6f}")
+
         pymdma_metrics.to_csv(
             path_or_buf=os.path.join(config.out_dir, f"{datetime.now():%Y%m%d_%H%M}_{config.seed}_metrics.csv"),
             index=False,
@@ -101,6 +131,10 @@ def main() -> None:  # pylint: disable=too-many-statements
         del all_synt_features
         del all_real_features
         del extractor
+
+    # Clean up estimator if it was loaded
+    if estimator is not None:
+        del estimator
 
     # Delete generator and collect garbage
     del G
@@ -123,6 +157,13 @@ def parse_args() -> CLDatasetArgs:
     parser.add_argument("--device", type=str, default="cpu", help="Device to use, cuda or cpu")
     parser.add_argument(
         "--fid-stats-path", dest="fid_stats_path", type=str, default=None, help="Path to FID statistics file"
+    )
+    parser.add_argument(
+        "--estimator-path",
+        dest="estimator_path",
+        type=str,
+        default=None,
+        help="Path to ambiguity estimator checkpoint for computing confusion distance",
     )
     parser.add_argument(
         "--skip-stats", dest="calculate_stats", action="store_false", help="Skip calculating and saving metrics"

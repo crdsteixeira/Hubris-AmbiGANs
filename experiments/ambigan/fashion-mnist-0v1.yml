@@ -8,11 +8,11 @@ device: cuda:1
 
 num_runs: 1
 
-gen_test_noise: false
-gen_pairwise_inception: false
-gen_classifiers: false
-gen_gan: false
-gen_dataset: false
+gen_test_noise: true
+gen_pairwise_inception: true
+gen_classifiers: true
+gen_gan: true
+gen_dataset: true
 run_hubris_evaluation: true
 
 dataset:

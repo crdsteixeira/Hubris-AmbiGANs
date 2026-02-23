@@ -1,37 +1,38 @@
 # Global definitions
 project: AmbiGAN
-name: fashion-mnist-3v0
+name: fashion-mnist-0v3
 out_dir: out
 data_dir: data
 fixed_noise: 128
 test_noise_seed: 15
-device: cuda
-num_workers: 0
+device: cuda:1
 
 # Number of runs to perform using same parameters but different seeds.
-num_runs: 3
+num_runs: 1
 
 # Configuration
-gen_test_noise: true
+gen_test_noise: false
 gen_pairwise_inception: true
 gen_classifiers: true
 gen_gan: true
+gen_dataset: true
+run_hubris_evaluation: false
 
 # Dataset parameters, including positive and negative class.
 dataset:
   name: fashion-mnist
   binary:
-    pos: 3
-    neg: 0
+    pos: 0
+    neg: 3
 
 # Classifier list to be generated.
 classifiers:
-  - name: ensemble_mean_32_fashion_200_3v0_balanced
+  - name: ensemble_mean_32_fashion_50_0v3_balanced
     c_type: ensemble
     batch_size: 800
-    epochs: 200
+    epochs: 50
     lr: 0.001
-    nf: 50
+    nf: 50 # ablation: 10, 25, 75
     seed: 32
     ensemble_type: cnn
     ensemble_output_method: mean
@@ -39,12 +40,8 @@ classifiers:
 # Seed parameters for each run (step1 and step2).
 step_1_seeds:
   - 42
-  - 43
-  - 44
 step_2_seeds:
   - 34
-  - 35
-  - 36
 
 # GAN model parameters
 model:
@@ -67,30 +64,31 @@ optimizer:
 # GAN training parameters
 train:
   step_1:
-    epochs: 100
-    checkpoint_every: 100
+    epochs: 50
+    checkpoint_every: 10
     disc_iters: 1
     batch_size: 32
   step_2:
     epochs: 50
-    checkpoint_every: 50
+    checkpoint_every: 10
     disc_iters: 1
     batch_size: 32
     step_1_epochs:
       - last
     classifier:
-      - ensemble_mean_32_fashion_200_3v0_balanced
+      - ensemble_mean_32_fashion_50_0v3_balanced
     weight:
       - gaussian:
           - alpha: 1.50
             var: 0.01
+          - alpha: 1.00
+            var: 0.01
           - alpha: 0.50
             var: 0.01
           - alpha: 1.00
-            var: 0.01
-          - alpha: 1.50
             var: 0.10
           - alpha: 0.50
             var: 0.10
-          - alpha: 1.00
-            var: 0.10
+
+evaluation:
+  companion_n_samples: 2500

@@ -8,8 +8,7 @@ import torch
 from pymdma.image.models.features import ExtractorFactory
 from torch.utils.data import DataLoader
 
-from src.datasets.evaluation import extract_ground_truth_labels
-from src.datasets.load import load_dataset
+from src.datasets.load import extract_ground_truth_labels, load_dataset
 from src.enums import DatasetNames, DeviceType
 from src.metrics.ambiguity import compute_entropy, compute_top_pairs
 from src.metrics.image_quality import (
@@ -28,11 +27,6 @@ PYMDMA_METRIC_NAMES = [
     "density",
     "coverage",
 ]
-
-
-def _enum_to_str(value: Any) -> str:
-    """Convert enum to string value, handling both enum and string inputs."""
-    return value.value if hasattr(value, "value") else str(value)
 
 
 def get_model_predictions(

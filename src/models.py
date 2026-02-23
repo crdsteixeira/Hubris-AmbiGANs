@@ -891,6 +891,9 @@ class CLDatasetArgs(BaseModel):
     device: DeviceType = Field(default=DeviceType.cpu, description="Device to use, cuda or cpu")
     fid_stats_path: str | None = Field(default=None, description="Path to FID statistics file.")
     calculate_stats: bool = Field(default=True, description="Whether to calculate and save metrics")
+    estimator_path: str | None = Field(
+        default=None, description="Path to ambiguity estimator checkpoint for computing confusion distance"
+    )
 
 
 class CLEvaluationArgs(DatasetClasses):

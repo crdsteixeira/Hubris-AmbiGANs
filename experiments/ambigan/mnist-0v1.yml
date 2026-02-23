@@ -61,7 +61,7 @@ train:
     batch_size: 32
   step_2:
     epochs: 50
-    checkpoint_every: 20
+    checkpoint_every: 10
     disc_iters: 1
     batch_size: 32
     step_1_epochs:
@@ -83,4 +83,3 @@ evaluation:
       - swin
     epochs: 3
     batch_size: 32
-  
