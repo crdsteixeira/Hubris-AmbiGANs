@@ -43,7 +43,8 @@ class OutputsHistogram(Metric):
         """Update histogram with new batch of images."""
         start_idx, batch_size = batch
 
-        self.hubris.update(images, batch)
+        if self.output_clfs:
+            self.hubris.update(images, batch)
 
         with torch.no_grad():
             c_output, c_all_output = self.C.get(images, start_idx, batch_size, output_feature_maps=True)

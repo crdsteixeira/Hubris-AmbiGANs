@@ -161,7 +161,8 @@ def evaluate_and_checkpoint(
         plot_img = None
         if params.c_out_hist is not None:
             plot_img = params.c_out_hist.plot_clfs()
-            eval_metrics.log_image("plot", plot_img)
+            if plot_img is not None:
+                eval_metrics.log_image("plot", plot_img)
 
     train_metrics.finalize_epoch()
     # Evaluate GAN

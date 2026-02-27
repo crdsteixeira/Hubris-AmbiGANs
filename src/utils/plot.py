@@ -65,16 +65,7 @@ def plot_fid(data: dict, out_path: str) -> None:
 
 
 def plot_additional_metrics(data: dict, out_path: str) -> None:
-    """Plot additional metrics if available (FOCD, confusion distance)."""
-    if "focd" in data:
-        plt.plot(data["focd"], label="F*D")
-        plt.xlabel("epoch")
-        plt.ylabel("f*d")
-        plt.title("f*d")
-        plt.legend()
-        plt.savefig(os.path.join(out_path, "f*d.png"))
-        plt.clf()
-
+    """Plot additional metrics if available (confusion distance)."""
     if "conf_dist" in data:
         plt.plot(data["conf_dist"], label="conf_dist")
         plt.xlabel("epoch")

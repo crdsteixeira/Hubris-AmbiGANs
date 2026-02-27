@@ -26,7 +26,7 @@ from src.models import (
 )
 from src.utils.checkpoint import checkpoint, construct_classifier_from_checkpoint
 from src.utils.logging import configure_logging
-from src.utils.utility_functions import generate_cnn_configs, setup_reprod
+from src.utils.utility_functions import generate_cnn_configs, parse_nf, setup_reprod
 
 configure_logging()
 
@@ -48,7 +48,9 @@ def parse_args() -> CLTrainArgs:
     parser.add_argument("--early_stop", type=int, help="Early stopping criteria (optional)")
     parser.add_argument("--early_acc", type=float, default=1.0, help="Early accuracy threshold for backpropagation")
     parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate for the optimizer")
-    parser.add_argument("--nf", type=int, default=2, help="Number of filters or features in the model")
+    parser.add_argument(
+        "--nf", type=parse_nf, default=2, help="Number of filters or features in the model (int or list like '[4,8]')"
+    )
     parser.add_argument("--seed", type=int, help="Random seed for reproducibility")
     parser.add_argument("--device", type=str, default="cuda", help="Device for computation")
     parser.add_argument("--dataset_name", type=str, required=True, help="Name of the dataset to use")

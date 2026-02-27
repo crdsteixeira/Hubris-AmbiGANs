@@ -203,13 +203,17 @@ def generate_cnn_configs(nf: int | list[int] | list[list[int]] | None) -> list[l
 
     if isinstance(nf, int):
         cnns_count = nf
-        cnn_nfs = [
-            [np.random.randint(1, high=6) for _ in range(np.random.randint(2, high=5))] for _ in range(cnns_count)
-        ]
+        # Generate CNNs with random filter configurations
+        for _ in range(cnns_count):
+            # Each CNN config is a list of random filter counts
+            cnn = [np.random.randint(1, high=6) for _ in range(np.random.randint(1, high=5))]
+            cnn_nfs.append(cnn)
     elif isinstance(nf, list):
         for n in nf:
             if isinstance(n, int):
-                cnn = [np.random.randint(1, high=n) for _ in range(np.random.randint(1, high=5))]
+                # Ensure high > low for randint (numpy requires low < high)
+                high = max(2, n) if n > 0 else 2
+                cnn = [np.random.randint(1, high=high) for _ in range(np.random.randint(1, high=5))]
             elif isinstance(n, list):
                 cnn = [int(c) for c in n]
             else:
@@ -274,18 +278,25 @@ def handle_subprocess_output(proc: subprocess.CompletedProcess) -> None:
             logger.info(line.decode())
 
 
-def parse_nf(value: str) -> list[int] | int:
-    """Parse the value for --nf, which can be either an int or a list of ints."""
+def parse_nf(value: str) -> list[int] | int | list[list[int]]:
+    """Parse the value for --nf, which can be an int, a list of ints, or a list of lists."""
     try:
         # Try parsing the value as a list using ast.literal_eval
         parsed_value = ast.literal_eval(value)
         if isinstance(parsed_value, int):
-            return [parsed_value]
-        if isinstance(parsed_value, list) and all(isinstance(i, int) for i in parsed_value):
             return parsed_value
+        if isinstance(parsed_value, list):
+            # Check if it's a list of lists (for explicit CNN architectures)
+            if all(isinstance(i, list) for i in parsed_value):
+                return parsed_value
+            # Check if it's a flat list of integers
+            if all(isinstance(i, int) for i in parsed_value):
+                return parsed_value
         raise ValueError
     except (ValueError, SyntaxError) as e:
-        raise argparse.ArgumentTypeError(f"Invalid value for --nf: '{value}', must be an int or list of ints.") from e
+        raise argparse.ArgumentTypeError(
+            f"Invalid value for --nf: '{value}', must be an int, list of ints, or list of lists."
+        ) from e
 
 
 def construct_weights(

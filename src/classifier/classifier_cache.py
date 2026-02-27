@@ -51,10 +51,14 @@ class ClassifierCache:
         if batch_idx != self.last_batch_idx or batch_size != self.last_batch_size:
             output = self.C(x, output_feature_maps=True)
 
-            # Check if the classifier returns both feature maps and output
-            if isinstance(output, tuple) and len(output) > 1:
-                self.last_output_feature_maps = output[-1]
-                self.last_output = output[-2]
+            # Check if the classifier returns a tuple (output, feature_maps) - used by ensemble
+            if isinstance(output, tuple) and len(output) == 2:
+                self.last_output = output[0]
+                self.last_output_feature_maps = output[1]
+            # Check if the classifier returns a list (feature maps + output) - used by simple_cnn
+            elif isinstance(output, list) and len(output) > 1:
+                self.last_output = output[-1]
+                self.last_output_feature_maps = output[:-1]  # All elements except the last (which is the output)
             else:
                 self.last_output = output
                 self.last_output_feature_maps = None  # No feature maps returned

@@ -42,14 +42,6 @@ def main() -> None:  # pylint: disable=too-many-statements
     config.seed = gen_seed() if config.seed is None else config.seed
     setup_reprod(config.seed)
 
-    # Check if companion dataset already exists
-    companion_dataset_exists = os.path.isdir(config.out_dir)
-
-    if companion_dataset_exists:
-        logger.info(f"✓ Companion dataset exists at {config.out_dir}")
-        logger.info("Skipping dataset generation.")
-        return
-
     os.makedirs(config.out_dir, exist_ok=True)
 
     # load generator

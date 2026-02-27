@@ -629,8 +629,8 @@ class ConfigTrain(BaseModel):
 class ConfigEvaluation(BaseModel):
     """Configuration for each step."""
 
-    companion_n_samples: int = Field(..., description="Number of samples to evaluate.")
-    hubris: ConfigHubrisEvaluation = Field(..., description="Configuration for Hubris evaluation.")
+    companion_n_samples: int | None = Field(default=None, description="Number of samples to evaluate.")
+    hubris: ConfigHubrisEvaluation | None = Field(default=None, description="Configuration for Hubris evaluation.")
 
 
 class ConfigHubrisEvaluation(BaseModel):
@@ -709,7 +709,6 @@ class FIDMetricsParams(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     fid: FID | None = Field(default=None, description="List of FID values during training stage")
-    focd: FID | None = Field(default=None, description="List of FOCD values during training stage")
     conf_dist: LossSecondTerm | None = Field(default=None, description="List of CD values during training stage")
     hubris: Hubris | None = Field(default=None, description="List of Hubris values during training stage")
 

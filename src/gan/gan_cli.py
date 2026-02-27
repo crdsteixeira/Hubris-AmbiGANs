@@ -22,7 +22,6 @@ from src.gan.train import train
 from src.gan.update_g import UpdateGeneratorGAN
 from src.metrics.c_output_hist import OutputsHistogram
 from src.metrics.fid.fid import FID
-from src.metrics.focd import FOCD
 from src.metrics.hubris import Hubris
 from src.metrics.loss_term import LossSecondTerm
 from src.models import (
@@ -191,7 +190,6 @@ def train_step2_gan(
         class_cache = ClassifierCache(C)
         fid_metrics = FIDMetricsParams(
             fid=original_fid,
-            focd=FOCD(params.test_noise.size(0), config, class_cache, params.dataset),
             conf_dist=LossSecondTerm(class_cache),
             hubris=Hubris(class_cache, params.test_noise.size(0)),
         )

@@ -225,10 +225,13 @@ def gen_gan(config: ConfigMain, fid_stats_path: str, test_noise: str) -> None:
     gc.collect()
 
 
-def gen_dataset(
-    config: ConfigMain, fid_stats_path: str, latest_gan_path: str, estimator_path: str | None = None
+def gen_companion_dataset(
+    config: ConfigMain, fid_stats_path: str, latest_gan_path: str, estimator_path: str | None
 ) -> None:
     """Generate dataset using config parameters."""
+    if not config.evaluation:
+        raise ValueError("evaluation config is required for gen_companion_dataset")
+
     # search for the directory that matches the first classifier, and select the last epoch
     gan_path = None
     try:
@@ -240,16 +243,13 @@ def gen_dataset(
     except (OSError, IndexError) as e:
         logger.warning(f"Could not find classifier directory: {e}")
 
-    if not config.evaluation:
-        raise ValueError("evaluation config is required for gen_dataset")
-
     if not gan_path:
         raise ValueError("Could not determine GAN path from classifier directory")
 
+    n_samples = config.evaluation.companion_n_samples or 2500
     params = CLDatasetArgs(
         seed=config.test_noise_seed,
-        # img_size=config.img_size, (default)
-        n_samples=config.evaluation.companion_n_samples,
+        n_samples=n_samples,
         out_dir=os.path.join(latest_gan_path, "companion_dataset", "ambi"),
         gan_path=gan_path,
         device=config.device,
@@ -257,7 +257,6 @@ def gen_dataset(
         estimator_path=estimator_path,
     )
 
-    # Skip if companion dataset already exists
     if os.path.exists(params.out_dir) and len(os.listdir(params.out_dir)) > 0:
         logger.info(f"Companion dataset already exists at {params.out_dir}, skipping generation")
         return
@@ -310,7 +309,7 @@ def gen_synthetic_dataset(config: ConfigMain, fid_stats_path: str, latest_gan_pa
 
     # For chest-xray, use same number of samples as companion dataset
     # For other datasets, use 200 samples
-    n_samples = config.evaluation.companion_n_samples if config.dataset.name == "chest-xray" else 200
+    n_samples = (config.evaluation.companion_n_samples or 2500) if config.dataset.name == "chest-xray" else 200
 
     params = CLDatasetArgs(
         seed=config.test_noise_seed,
@@ -498,7 +497,9 @@ def main() -> None:
 
     if config.gen_dataset:
         # generate companion dataset
-        gen_dataset(config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path, estimator_path=estimator_path)
+        gen_companion_dataset(
+            config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path, estimator_path=estimator_path
+        )
         # Generate synthetic dataset from step_1/latest
         gen_synthetic_dataset(config, fid_stats_path=fid_stats_path, latest_gan_path=gan_path)
 

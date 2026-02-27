@@ -78,7 +78,6 @@ def load_dataset(params: LoadDatasetParams) -> tuple[Dataset, int, ImageParams]:
     if len(image_size) == 2:
         image_size = (1, *image_size)
 
-    # TODO: check is this is the correct way to change from HWC to CHW
     elif len(image_size) == 3 and image_size[2] == 3:
         image_size = (image_size[2], image_size[0], image_size[1])
 
