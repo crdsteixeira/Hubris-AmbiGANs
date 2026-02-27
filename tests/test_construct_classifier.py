@@ -144,7 +144,7 @@ def test_construct_ensemble(ensemble_params: TrainClassifierArgs) -> None:
 
 def test_invalid_classifier_type() -> None:
     """Test construction with an invalid classifier type."""
-    with pytest.raises(ValueError, match="Input should be 'cnn', 'mlp' or 'ensemble'"):
+    with pytest.raises(ValueError, match="Input should be 'cnn', 'mlp', 'ensemble'"):
         construct_classifier(
             TrainClassifierArgs(
                 type="invalid_type",  # Invalid classifier type

@@ -12,7 +12,6 @@ from src.gan.gan_cli import parse_args, train_step1_gan, train_step2_gan
 from src.gan.loss import GeneratorLoss
 from src.gan.update_g import UpdateGenerator, UpdateGeneratorGAN
 from src.metrics.fid.fid import FID
-from src.metrics.focd import FOCD
 from src.models import (
     CLAmbigan,
     ConfigCD,
@@ -173,11 +172,9 @@ def test_train_step1_gan(
 @patch("src.gan.gan_cli.construct_optimizers")
 @patch("torch.save")
 @patch("src.gan.gan_cli.train")
-@patch("src.gan.gan_cli.FOCD")
 @patch("src.gan.gan_cli.plot_metrics")
 def test_train_step2_gan(
     mock_plot_metrics: MagicMock,
-    mock_focd: MagicMock,
     mock_train: MagicMock,
     mock_torch_save: MagicMock,
     mock_construct_optimizers: MagicMock,
@@ -206,7 +203,6 @@ def test_train_step2_gan(
     # Mock the construct_optimizers return value with mock optimizers
     mock_construct_optimizers.return_value = (g_opt, d_opt)
     mock_train.return_value = ({}, None, None, mock_stats)
-    mock_focd.return_value = MagicMock(spec=FOCD)
 
     original_fid = MagicMock(spec=FID)
     mock_step2_args.g_crit = MagicMock(spec=GeneratorLoss)
