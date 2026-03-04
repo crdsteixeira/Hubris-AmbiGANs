@@ -47,9 +47,8 @@ def read_main_config(path: str) -> ConfigMain:
     with open(path, encoding="utf-8") as file:
         config_data = yaml.safe_load(file)
 
-    # Add base paths using FILESDIR
-    files_dir = os.environ.get("FILESDIR", None)
-    if files_dir is not None:
-        config_data["out_dir"] = files_dir
+    out_dir = config_data.get("out_dir")
+    if isinstance(out_dir, str) and not os.path.isabs(out_dir):
+        config_data["out_dir"] = os.path.join(os.getcwd(), out_dir)
 
     return ConfigMain(**config_data)

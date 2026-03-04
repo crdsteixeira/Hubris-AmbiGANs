@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torchvision import transforms
 from transformers import AutoModel, AutoModelForImageClassification
+from transformers.modeling_utils import PreTrainedModel
 
 from src.models import ClassifierParams
 
@@ -74,7 +75,27 @@ class ClassifierMLP(nn.Module):
         super().__init__()
         out_features = 1 if params.n_classes == 2 else params.n_classes
         self.device = params.device
-        self.model = AutoModel.from_pretrained("dacorvo/mnist-mlp", trust_remote_code=True)
+
+        original_mark_tied = PreTrainedModel.mark_tied_weights_as_initialized
+
+        # Create a patched version that handles missing attribute
+        def patched_mark_tied(self: PreTrainedModel) -> None:
+            if not hasattr(self, "all_tied_weights_keys"):
+                # For custom models without this attribute, use _tied_weights_keys if available
+                if hasattr(self, "_tied_weights_keys"):
+                    self.all_tied_weights_keys = {}  # Empty dict is safe for models without tied weights
+                else:
+                    return None  # Skip if neither attribute exists
+            return original_mark_tied(self)
+
+        # Apply monkey patch temporarily
+        PreTrainedModel.mark_tied_weights_as_initialized = patched_mark_tied
+
+        try:
+            self.model = AutoModel.from_pretrained("dacorvo/mnist-mlp", trust_remote_code=True)
+        finally:
+            # Restore original method
+            PreTrainedModel.mark_tied_weights_as_initialized = original_mark_tied
 
         for p in self.model.parameters():
             p.requires_grad = False

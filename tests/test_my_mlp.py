@@ -140,7 +140,7 @@ def test_mlp_device_compatibility() -> None:
 
     # Test on GPU (if available)
     if torch.cuda.is_available():
-        model.cuda()
+        model.to(DeviceType.cuda.value)
         output_gpu = model(x.to(DeviceType.cuda.value))
         assert output_gpu is not None, "Output on GPU should not be None"
 

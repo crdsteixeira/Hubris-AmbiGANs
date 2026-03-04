@@ -229,7 +229,7 @@ def test_parse_nf() -> None:
     parsed_value = parse_nf("[2, 4, 8]")
     assert parsed_value == [2, 4, 8]
     parsed_value = parse_nf("5")
-    assert parsed_value == [5]
+    assert parsed_value == 5
     with pytest.raises(ArgumentTypeError):
         parse_nf("invalid")
 
