@@ -1,5 +1,5 @@
 default_language_version:
-  python: python3.10
+  python: python3.11
 
 
 exclude: 'src/gan/architectures/deprecated/.*|.*_deprecated.*\.py|tests/.*$|src/utils/huggingface\.py'
