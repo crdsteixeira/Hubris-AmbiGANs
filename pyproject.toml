@@ -6,7 +6,7 @@ authors = ["Catia Teixeira <catia.rds.teixeira@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12, <3.13"
+python = ">=3.11,<3.13"
 matplotlib = "<3.10.0"
 # numpy = "^2.1.2"
 numpy = "<2.0.0"
