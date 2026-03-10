@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 # Resolve project root from script location
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 # Change to project root directory
 cd "$ROOT_DIR" || exit 1
 
 # Run the classifier script
-mamba run -n hubris python -m src.classifier.classifier_cli \
+python -m src.classifier.classifier_cli \
     --data_dir="$ROOT_DIR/data" \
     --out_dir="$ROOT_DIR/out" \
     --name="test_classifier_cicd" \
