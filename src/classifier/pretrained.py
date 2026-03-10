@@ -94,10 +94,9 @@ class ClassifierMLP(nn.Module):
                     return self
 
                 def bound_method(loading_info: object = None) -> None:
-                    del loading_info  # noqa: unused argument
                     if not hasattr(obj, "all_tied_weights_keys"):
                         obj.all_tied_weights_keys = {}
-                    return self.original(obj)
+                    return self.original(obj, loading_info)
 
                 return bound_method
 
