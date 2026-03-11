@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 # Resolve project root from script location
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -7,5 +7,5 @@ ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT_DIR" || exit 1
 
 # Run the gen_test_noise script
-python -m src \
+poetry run python -m src \
     --config="./scripts/cicd/config_main_test.yml"

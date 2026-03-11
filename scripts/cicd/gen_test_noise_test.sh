@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 # Resolve project root from script location
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT_DIR" || exit 1
 
 # Run the gen_test_noise script
-python -m src.gen_test_noise \
+poetry run python -m src.gen_test_noise \
     --out-dir="$ROOT_DIR/data" \
     --seed=42 \
     --nz=10 \
