@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Resolve script directory
-SCRIPT_DIR="$(dirname "$0")"
+# Resolve script directory (absolute path)
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 # Run the gen_test_noise script
 python -m src \
