@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 
 # Resolve project root from script location
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-
-# Change to project root directory
-cd "$ROOT_DIR" || exit 1
+SCRIPT_DIR="$(dirname "$0")"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Run the classifier script
 python -m src.classifier.classifier_cli \
