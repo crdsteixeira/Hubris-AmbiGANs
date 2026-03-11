@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 
-# Resolve project root from script location (absolute path)
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Get the project root (current directory when running from container)
+ROOT_DIR="$(pwd)"
 
 # Run the classifier script
 python -m src.classifier.classifier_cli \
