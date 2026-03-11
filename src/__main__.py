@@ -33,17 +33,10 @@ logger = logging.getLogger(__name__)
 
 def find_latest_gan_estimator_paths(config: ConfigMain) -> tuple[str, str | None]:
     """Find latest run executed for this specific subset."""
-    # For inherently binary datasets (chest-xray), don't append the binary class suffix
-    # For multi-class datasets where we select a binary subset (mnist-1v0), do append it
-    if config.dataset.name == "chest-xray":
-        dataset_dir = config.dataset.name.value
-    else:
-        dataset_dir = f"{config.dataset.name.value}-{config.dataset.binary.pos}v{config.dataset.binary.neg}"
-
     gan_root = os.path.join(
         config.out_dir,
-        "AmbiGAN",
-        dataset_dir,
+        config.project,
+        config.name,
     )
 
     subdirs = [os.path.join(gan_root, d) for d in os.listdir(gan_root) if os.path.isdir(os.path.join(gan_root, d))]
