@@ -14,9 +14,7 @@ ENV PATH="/root/.local/bin:$PATH"
 # Disable Poetry's automatic virtual environment creation
 RUN poetry config virtualenvs.create false
 
-# Copy entire project
-COPY . /app
+# Install libraries
+COPY pyproject.toml /app/pyproject.toml
 WORKDIR /app
-
-# Install project with dependencies
-RUN poetry install --no-cache --with dev
+RUN poetry install --no-root --no-cache --with dev
