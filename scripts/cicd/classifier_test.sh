@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 
-# Get the project root (current directory when running from container)
-ROOT_DIR="$(pwd)"
-
 # Run the classifier script
 python -m src.classifier.classifier_cli \
-    --data_dir="$ROOT_DIR/data" \
-    --out_dir="$ROOT_DIR/out" \
+    --data_dir="$FILESDIR/data" \
+    --out_dir="$FILESDIR/out" \
     --name="test_classifier_cicd" \
     --batch_size=64 \
     --c_type="ensemble" \
