@@ -58,7 +58,7 @@ train:
     step_1_epochs:
       - last
     classifier:
-      - models/mnist.7v1/ensemble_mean_1
+      - out/models/mnist.7v1/ensemble_mean_1
     weight:
       - gaussian:
           - alpha: 0.50
