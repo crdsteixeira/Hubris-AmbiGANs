@@ -48,7 +48,7 @@ def read_main_config(path: str) -> ConfigMain:
         config_data = yaml.safe_load(file)
 
     files_dir = os.environ.get("FILESDIR", "")
-    out_dir = config_data.get("out_dir")
+    out_dir = config_data["out_dir"]
     if isinstance(out_dir, str) and not os.path.isabs(out_dir):
         config_data["out_dir"] = os.path.join(files_dir, out_dir)
 
