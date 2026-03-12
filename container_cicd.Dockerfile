@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
 # Add /root/.local/bin to PATH directly in Docker for Poetry
 ENV PATH="/root/.local/bin:$PATH"
-ENV FILESDIR="/root/.local/bin:$PATH"
+ENV FILESDIR=PATH
 
 # Disable Poetry's automatic virtual environment creation
 RUN poetry config virtualenvs.create false
