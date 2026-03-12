@@ -1,4 +1,4 @@
-"""Pydantic moels validation and settings management."""
+"""Pydantic models validation and settings management."""
 
 from __future__ import annotations
 
@@ -111,11 +111,17 @@ class ClassifierParams(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_nf(self) -> ClassifierParams:
+    def check_nf(self) -> ClassifierParams:  # noqa: C901
         """Validate nf based on classifier type and ensemble type."""
         if self.type == ClassifierType.cnn:
-            if not isinstance(self.nf, list) or any(not isinstance(n, int) for n in self.nf):
-                raise ValueError("For cnn type, nf must be a list of integers.")
+            if isinstance(self.nf, int):
+                # Single integer is fine - will be converted to filter progression
+                pass
+            elif isinstance(self.nf, list) and all(isinstance(n, int) for n in self.nf):
+                # List of integers is also fine (for custom filter sizes)
+                pass
+            else:
+                raise ValueError("For cnn type, nf must be an integer or a list of integers.")
         elif self.type == ClassifierType.mlp:
             if not isinstance(self.nf, int):
                 raise ValueError("For mlp type, nf must be a single integer.")
@@ -261,22 +267,63 @@ class TrainingStats(BaseModel):
     test_loss: float = Field(default=0.0, description="List of test losses for each epoch.")
 
 
+class CLMulticlassTrain(BaseModel):
+    """Command-line arguments for multiclass classifier training."""
+
+    config_path: str = Field(..., description="Path to YAML configuration file")
+
+
+class ConfigTrainingParams(BaseModel):
+    """Configuration for training hyperparameters."""
+
+    batch_size: int = Field(default=64, description="Batch size for training")
+    epochs: int = Field(default=30, description="Number of training epochs")
+
+
+class ConfigMulticlassTrain(BaseModel):
+    """Configuration for multiclass classifier training from YAML."""
+
+    dataset: str = Field(..., description="Name of the dataset to train on")
+    classifiers: list[str] = Field(..., description="List of classifier types to train (e.g., 'cnn', 'densenet', ...)")
+    training: ConfigTrainingParams = Field(..., description="Default training hyperparameters")
+    data_dir: str = Field(
+        default=f"{os.environ.get('FILESDIR', '/tmp')}/data",
+        description="Path to datasets",
+    )
+    out_dir: str = Field(
+        default=f"{os.environ.get('FILESDIR', '/tmp')}/models",
+        description="Output directory for models",
+    )
+    device: DeviceType = Field(default=DeviceType.cuda, description="Device for computation ('cpu' or 'cuda')")
+    seed: int | None = Field(default=None, description="Random seed for reproducibility")
+    entity: str | None = Field(default=None, description="WandB entity name")
+    project: str = Field(default="multiclass-classifiers", description="WandB project name")
+
+
 class DatasetClasses(BaseModel):
     """Arguments for Dataset Classes."""
 
     dataset_name: DatasetNames = Field(..., description="Name of the dataset.")
-    pos_class: int = Field(..., description="Positive class for binary classification.")
-    neg_class: int = Field(..., description="Negative class for binary classification.")
+    pos_class: int | None = Field(
+        None, description="Positive class for binary classification (optional for multiclass)."
+    )
+    neg_class: int | None = Field(
+        None, description="Negative class for binary classification (optional for multiclass)."
+    )
 
     @model_validator(mode="after")
     def validate_classes_for_binary_datasets(self) -> DatasetClasses:
         """Validate that pos_class and neg_class are provided and valid for the dataset."""
-        # If positive or negative class is specified, ensure both are given
-        if self.pos_class is None or self.neg_class is None:
+        # If one is specified, ensure both are given (for binary classification)
+        if (self.pos_class is None) != (self.neg_class is None):
             raise ValueError(
-                f"""Both pos_class and neg_class must be provided for"""
-                f"""binary classification with dataset {self.dataset_name}."""
+                "Both pos_class and neg_class must be provided together for "
+                "binary classification, or both should be None for multiclass."
             )
+
+        # If neither is specified, we're doing multiclass classification
+        if self.pos_class is None or self.neg_class is None:
+            return self  # Skip validation for multiclass
 
         # Define valid classes for each dataset
         dataset_class_mapping = {
@@ -328,6 +375,8 @@ class ClassifierClasses(BaseModel):
     ensemble_output_method: OutputMethod | None = Field(
         default=None, description="Output method for ensemble when applicable"
     )
+    entity: str | None = Field(default=None, description="WandB entity name")
+    project: str = Field(default="binary-classifiers", description="WandB project name")
 
 
 class CLTrainArgs(DatasetClasses, ClassifierClasses):
@@ -371,9 +420,15 @@ class DatasetParams(BaseModel):
     """Parameters for configuring dataset loading."""
 
     dataroot: str = Field(..., description="Directory where the dataset is stored.")
-    train: bool = Field(default=True, description="Indicates whether to load the training set or the test set.")
     pytesting: bool = Field(
         default=False, description="Indicates whether to load only a fraction of the dataset for pytesting purpose."
+    )
+    # train: bool = Field(default=True, description="Indicates whether to load the training set or the test set.")
+    split: str = Field(
+        default="train",
+        description=(
+            "Dataset split to load. Can be 'train', 'test', 'val', or a specific percentage (e.g., 'train[:80%]') for partial loading."
+        ),
     )
 
 
@@ -571,6 +626,46 @@ class ConfigTrain(BaseModel):
     step_2: ConfigStep2 = Field(..., description="Configuration for step 2 training.")
 
 
+class ConfigEvaluation(BaseModel):
+    """Configuration for each step."""
+
+    companion_n_samples: int | None = Field(default=None, description="Number of samples to evaluate.")
+    hubris: ConfigHubrisEvaluation | None = Field(default=None, description="Configuration for Hubris evaluation.")
+
+
+class ConfigHubrisEvaluation(BaseModel):
+    """Configuration for Hubris evaluation."""
+
+    models: list[PretrainedModels] = Field(..., description="Pretrained models to be evaluated")
+    epochs: int = Field(..., description="Number of epochs for fine tuning model.")
+    batch_size: int = Field(..., description="Batch size for fine tuning model.")
+
+
+class CLAmbiguityArgs(BaseModel):
+    """CLI arguments for ambiguity evaluation."""
+
+    dataroot: str = Field(..., description="Directory with dataset")
+    out_dir: str = Field(..., description="Output directory for ambiguity evaluation")
+    models: list[ClassifierType] = Field(..., description="Models to evaluate")
+    datasets: list[DatasetNames] = Field(
+        default=[], description="Datasets to evaluate on (optional, defaults to training dataset)"
+    )
+    device: DeviceType = Field(default=DeviceType.cpu, description="Device to use")
+    seed: int | None = Field(default=None, description="Random seed for reproducibility")
+    training_dataset: str = Field(..., description="Dataset used for training models")
+    balanced: bool = Field(default=False, description="Enable class balancing for datasets that support it")
+    estimator_path: str | None = Field(
+        default=None, description="Path to ambiguity estimator checkpoint for computing confusion distance"
+    )
+    eval_sample_size: int | None = Field(
+        default=None,
+        description="Limit evaluation dataset size for faster metrics computation (optional, None means use full dataset)",
+    )
+    training_params: ConfigTrainingParams = Field(
+        default_factory=ConfigTrainingParams, description="Training hyperparameters for classifier training"
+    )
+
+
 class ConfigGAN(BaseModel):
     """Full configuration for GAN training."""
 
@@ -614,7 +709,6 @@ class FIDMetricsParams(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     fid: FID | None = Field(default=None, description="List of FID values during training stage")
-    focd: FID | None = Field(default=None, description="List of FOCD values during training stage")
     conf_dist: LossSecondTerm | None = Field(default=None, description="List of CD values during training stage")
     hubris: Hubris | None = Field(default=None, description="List of Hubris values during training stage")
 
@@ -779,7 +873,10 @@ class ConfigMain(ConfigGAN):
     gen_test_noise: bool = Field(..., description="Generate test noise files.")
     gen_classifiers: bool = Field(..., description="Generate classifiers models.")
     gen_gan: bool = Field(..., description="Generate and train AmbiGAN model.")
-    classifiers: list[ClassifierClasses] | None = Field(None, description="List of classifiers to generate.")
+    gen_dataset: bool = Field(default=False, description="Generate companion dataset for most recent GAN checkpoint.")
+    run_hubris_evaluation: bool = Field(default=False, description="Evaluate the pair <companion dataset, classifier>.")
+    classifiers: list[ClassifierClasses] | None = Field(default=None, description="List of classifiers to generate.")
+    evaluation: ConfigEvaluation | None = Field(default=None, description="Evaluation configuration.")
 
 
 class CLDatasetArgs(BaseModel):
@@ -792,6 +889,10 @@ class CLDatasetArgs(BaseModel):
     gan_path: str = Field(..., description="Directory for pre-trained AmbiGAN location")
     device: DeviceType = Field(default=DeviceType.cpu, description="Device to use, cuda or cpu")
     fid_stats_path: str | None = Field(default=None, description="Path to FID statistics file.")
+    calculate_stats: bool = Field(default=True, description="Whether to calculate and save metrics")
+    estimator_path: str | None = Field(
+        default=None, description="Path to ambiguity estimator checkpoint for computing confusion distance"
+    )
 
 
 class CLEvaluationArgs(DatasetClasses):
@@ -799,7 +900,7 @@ class CLEvaluationArgs(DatasetClasses):
 
     dataroot: str = Field(default=f"{os.environ['FILESDIR']}/data", description="Directory with dataset")
     companion_dataroot: str = Field(..., description="Directory with companion dataset")
-    model: PretrainedModels = Field(..., description="Pretrained model to be evaluated")
+    models: list[PretrainedModels] = Field(..., description="Pretrained models to be evaluated")
     batch_size: int = Field(default=64, description="Batch size to use")
     estimator_path: str | None = Field(
         default=None, description="Path to estimator. If None, does not calculate relative Hubris"

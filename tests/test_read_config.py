@@ -23,7 +23,7 @@ def sample_config_data() -> dict:
         "fixed_noise": 100,
         "test_noise": "test_noise.yaml",
         "compute_fid": True,
-        "device": "cuda",
+        "device": "cuda:1",
         "num_workers": 4,
         "num_runs": 2,
         "step_1_seeds": [42, 43],

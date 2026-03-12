@@ -144,9 +144,13 @@ def test_ensemble_pretrained_nf_none() -> None:
 
 
 def test_invalid_cnn_nf() -> None:
-    """Test invalid nf parameter for CNN classifier."""
-    with pytest.raises(ValueError):
-        ClassifierParams(type="cnn", img_size=(3, 64, 64), n_classes=10, nf=32)
+    """Test valid nf parameter for CNN classifier."""
+    # CNN accepts both integer and list of integers
+    params1 = ClassifierParams(type="cnn", img_size=(3, 64, 64), n_classes=10, nf=32)
+    assert params1.nf == 32
+    
+    params2 = ClassifierParams(type="cnn", img_size=(3, 64, 64), n_classes=10, nf=[32, 64])
+    assert params2.nf == [32, 64]
 
 
 def test_invalid_mlp_nf() -> None:

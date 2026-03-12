@@ -148,6 +148,10 @@ def test_construct_classifier_from_checkpoint(
     mock_cl_train_args: MagicMock,
 ) -> None:
     """Test constructing a classifier model from a saved checkpoint."""
+    mock_model = MagicMock(spec=nn.Module)
+    mock_model.to.return_value = mock_model
+    mock_construct_classifier.return_value = mock_model
+    
     mock_load.return_value = {
         "name": "mock_classifier",
         "params": mock_train_classifier_args,
@@ -160,7 +164,7 @@ def test_construct_classifier_from_checkpoint(
     model, model_params, _, args, optimizer = construct_classifier_from_checkpoint("mock_path")
 
     mock_construct_classifier.assert_called_once()
-    assert model == mock_construct_classifier.return_value
+    assert model == mock_model
     assert isinstance(model_params, TrainClassifierArgs)
     assert isinstance(args, CLTrainArgs)
     assert optimizer is None or isinstance(optimizer, optim.Optimizer)

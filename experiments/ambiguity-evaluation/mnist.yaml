@@ -1,0 +1,24 @@
+data_dir: data
+out_dir: models
+device: cuda:1
+seed: 10 # do not change
+
+datasets:
+  training: mnist
+  evaluation:
+    - mnist
+    - synthetic-mnist
+    - ambiguous-mnist
+    - ambiguess-mnist
+    - companion-mnist
+
+classifiers:
+  - cnn
+  - fully-connected
+  - resnet
+  - vgg
+  - densenet
+
+training:
+  batch_size: 32
+  epochs: 15

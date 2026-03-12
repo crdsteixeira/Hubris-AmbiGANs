@@ -5,15 +5,13 @@
 ![CI](https://github.com/crdsteixeira/Paper-Hubris-AmbiGANs/actions/workflows/main.yml/badge.svg)
 
 
-Hubris benchmarking: a methodology to evaluate overconfidence in machine learning models. The benchmark is based on a novel architecture, ambiguous generative adversarial networks (AmbiGANs), which are trained to synthesize realistic yet ambiguous datasets.
+**Hubris benchmarking**: a methodology to evaluate overconfidence in machine learning models using ambiguous generative adversarial networks (AmbiGANs). This tool synthesizes realistic yet ambiguous images to measure model overconfidence.
 
-We introduce hubris benchmarking, a methodology to evaluate overconfidence in machine learning models. The benchmark is based on a novel architecture, ambiguous generative adversarial networks (AmbiGANs), which are trained to synthesize realistic yet ambiguous datasets. We also propose the hubris metric to quantitatively measure the extent of model overconfidence when faced with these ambiguous images.
-We illustrate the usage of the methodology by estimating the hubris of state-of-the-art pre-trained models (ConvNext and ViT) on binarized versions of public datasets, including MNIST, Fashion-MNIST, and Pneumonia Chest X-ray. We found that, while ConvNext is on average 3\% more accurate than ViT, it often makes excessively confident predictions, on average by 10\% points higher than ViT.
-These results illustrate the usefulness of hubris benchmarking in high-stakes decision processes.
+We also propose the hubris metric to quantitatively measure the extent of model overconfidence when faced with ambiguous images. Testing on state-of-the-art pre-trained models (ConvNext, ViT, EfficientNet and Swin Transformer) using binarized versions of MNIST, Fashion-MNIST, and Pneumonia Chest X-ray datasets.
 
 ## Pre-conditions
 
-* You must [install Poetry](https://python-poetry.org/docs/) for dependecy management.
+* You must [install Poetry](https://python-poetry.org/docs/) for dependency management.
 * You must have a [Weights & Biases account](https://wandb.ai/site) for logging training metrics.
 * You must run the project in a CUDA supported OS.
 
@@ -35,25 +33,38 @@ ENTITY=<wandb-account-name-to-track-experiments>
 HF_HUB_DISABLE_SYMLINKS_WARNING=1
 ```
 
+## Project Structure
+
+```
+src/               # Main source code (gen_test_noise, classifier, gan, metrics, evaluation)
+experiments/       # Configuration files (.yml) for experiments
+data/              # Input datasets (MNIST, Fashion-MNIST, Chest X-ray)
+scripts/           # Utility scripts
+tests/             # Test files
+```
 
 ## Run
 
+## Dataset Information
+
+- **Supported**: MNIST, Fashion-MNIST, Pneumonia Chest X-ray (binary classification)
+- **Format**: Images organized by class in `data/<dataset_name>/` directory
+- **Preparation**: Use official dataset sources; custom datasets must follow same structure
 
 ### 1. Experiment definition
 
-Create a yml file containing the configurations for your experiment in `experiments\` folder. <br>
+Create a yml file containing the configurations for your experiment in `experiments/` folder. <br>
 Example: 
 
 ```yml
 # Global definitions
-project: AmbiGAN-Chest-XRAY
+project: AmbiGAN
 name: chest-xray
 out_dir: out
 data_dir: data
 fixed_noise: 128
 test_noise_seed: 15
 device: cuda
-num_workers: 0
 
 # Number of runs to perform using same parameters but different seeds.
 num_runs: 3
@@ -63,6 +74,8 @@ gen_test_noise: true
 gen_pairwise_inception: true
 gen_classifiers: true
 gen_gan: true
+gen_dataset: true
+run_hubris_evaluation: true
 
 # Dataset parameters, including positive and negative class.
 dataset:
@@ -165,13 +178,52 @@ poetry run python -m src --config experiments/ambigan_upscaling/chest-xray-initi
 | 2.b  | Create with linear output estimator | `poetry run python -m src.classifier.classifier_cli --name="test_classifier" --batch_size=64 --c_type="ensemble" --epochs=20 --lr="0.01"  --nf=5 --seed=42  --device="cuda" --dataset_name="chest-xray" --pos_class=1 --neg_class=0 --ensemble_type="cnn"  --ensemble_output_method="linear"`|
 | 2.c  | Create with meta-learner output estimator | `poetry run python -m src.classifier.classifier_cli --name="test_classifier" --batch_size=64 --c_type="ensemble" --epochs=20 --lr="0.01"  --nf=5 --seed=42  --device="cuda" --dataset_name="chest-xray" --pos_class=1 --neg_class=0 --ensemble_type="cnn"  --ensemble_output_method="meta-learner"` |
 | 2.d | Create with identity output estimator (no output combination) |  `poetry run python -m src.classifier.classifier_cli --name="test_classifier" --batch_size=64 --c_type="ensemble" --epochs=20 --lr="0.01"  --nf=5 --seed=42  --device="cuda" --dataset_name="chest-xray" --pos_class=1 --neg_class=0 --ensemble_type="cnn"  --ensemble_output_method="identity"` | 
-| 3    | Create test noise | `ppoetry run python -m src.gen_test_noise  --seed=42 --nz=128 --z-dim=256` |
+| 3    | Create test noise | `poetry run python -m src.gen_test_noise --seed=42 --nz=128 --z-dim=256` |
 | 4 | Train AmbiGAN | ` poetry run python -m src.gan.gan_cli --config="experiments/config_gan_test.yml"` | 
 
 * In this example, in step 2 5 random CNNs will be created and trained during 20 epochs. Reproducibility of the CNN parameters is guaranteed by using the same random seed (--seed arg).
 * For step 4, you need to create your experiments yml file. See example in `scripts/cicd/config_gan_test.yml`.
 
+## Outputs
+
+- **Generated images**: Saved in `out/<experiment_name>/` directory
+- **Models**: GAN checkpoints and classifiers stored in experiment output folder
+- **Metrics**: FID scores, hubris values, and evaluation results in experiment logs
+- **W&B Logs**: All metrics tracked in Weights & Biases (if configured)
+
 ## Credits
 
 
 This work started with the framework from previous developments of GASTeN from [luispcunha](https://github.com/luispcunha), published as [GASTeN: Generative Adversarial Stress Test Networks](https://link.springer.com/epdf/10.1007/978-3-031-30047-9_8?sharing_token=XGbq9zmVBDFAEaM4r1AAp_e4RwlQNchNByi7wbcMAY55SAL6inraGCkI72KOuzssTzewKWv51v_1pft7j7WJRbiAzL0vaTmG2vf4gs1QhnZ3lV72H7zSKLWQESXZjq5-1pg77WEnt2EHZaN2b51chvHsO6TW3tiGXSVhUgy87Ts%3D)
+
+## All vs all experiments
+
+Generate and run experiments for all combinations of binary classes (available datasets: MNIST, Fashion-MNIST):
+
+```bash
+python generate_configs.py --dataset mnist
+./run_all_experiments.sh
+```
+
+## Ambiguity Evaluation
+
+Evaluate model ambiguity multiclass classifier on companion datasets:
+
+```bash
+python -m src.evaluation.evaluation_ambiguity_cli experiments/ambiguity-evaluation/mnist.yaml
+```
+
+# Citation
+
+```bibtex
+@inproceedings{10.1007/978-3-032-05461-6_31,
+author = {Teixeira, Cátia and Gomes, Inês and Soares, Carlos and van Rijn, Jan N.},
+title = {Hubris Benchmarking with AmbiGANs: Assessing Model Overconfidence with&nbsp;Synthetic Ambiguous Data},
+year = {2025},
+doi = {10.1007/978-3-032-05461-6_31},
+abstract = {The growing deployment of artificial intelligence in critical domains exposes a pressing challenge: how reliably models make predictions for ambiguous data without exhibiting overconfidence. We introduce hubris benchmarking, a methodology to evaluate overconfidence in machine learning models. The benchmark is based on a novel architecture, ambiguous generative adversarial networks (AmbiGANs), which are trained to synthesize realistic yet ambiguous datasets. We also propose the hubris metric to quantitatively measure the extent of model overconfidence when faced with these ambiguous images. We illustrate the usage of the methodology by estimating the hubris of state-of-the-art pre-trained models (ConvNext and ViT) on binarized versions of public datasets, including MNIST, Fashion-MNIST, and Pneumonia Chest X-ray. We found that, while ConvNext is on average 3\% more accurate than ViT, it often makes excessively confident predictions, on average by 10\% points higher than ViT. These results illustrate the usefulness of hubris benchmarking in high-stakes decision processes.},
+booktitle = {Discovery Science: 28th International Conference, DS 2025, Ljubljana, Slovenia, September 23–25, 2025, Proceedings},
+pages = {476–491},
+keywords = {Synthetic Data Generation, Overconfidence, Generative Adversarial Networks, Responsible Artificial Intelligence, Computer Vision}
+}
+```

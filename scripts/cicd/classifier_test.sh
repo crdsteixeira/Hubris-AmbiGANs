@@ -3,7 +3,7 @@
 # Run the classifier script
 python -m src.classifier.classifier_cli \
     --data_dir="$FILESDIR/data" \
-    --out_dir="$FILESDIR/models" \
+    --out_dir="$FILESDIR/out" \
     --name="test_classifier_cicd" \
     --batch_size=64 \
     --c_type="ensemble" \

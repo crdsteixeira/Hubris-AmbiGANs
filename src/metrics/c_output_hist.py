@@ -43,7 +43,8 @@ class OutputsHistogram(Metric):
         """Update histogram with new batch of images."""
         start_idx, batch_size = batch
 
-        self.hubris.update(images, batch)
+        if self.output_clfs:
+            self.hubris.update(images, batch)
 
         with torch.no_grad():
             c_output, c_all_output = self.C.get(images, start_idx, batch_size, output_feature_maps=True)
@@ -167,7 +168,7 @@ class OutputsHistogram(Metric):
 
         # Render and save the picture
         fig.canvas.draw()
-        pil_image = PIL.Image.frombytes("RGB", fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
+        pil_image = PIL.Image.frombytes("RGB", fig.canvas.get_width_height(), fig.canvas.buffer_rgba())
         plt.close()
         return self.to_tensor(pil_image)
 

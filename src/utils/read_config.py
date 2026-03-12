@@ -4,7 +4,20 @@ import os
 
 import yaml
 
-from src.models import ConfigGAN, ConfigMain
+from src.models import ConfigGAN, ConfigMain, ConfigMulticlassTrain
+
+
+def read_training_config(path: str) -> ConfigMulticlassTrain:
+    """Read and parse training configuration from a YAML file."""
+    with open(path, encoding="utf-8") as file:
+        config_data = yaml.safe_load(file)
+
+    files_dir = os.environ.get("FILESDIR", "")
+    for rel_path_key in ["out_dir", "data_dir"]:
+        if rel_path_key in config_data and isinstance(config_data[rel_path_key], str):
+            config_data[rel_path_key] = os.path.join(files_dir, config_data[rel_path_key])
+
+    return ConfigMulticlassTrain(**config_data)
 
 
 def read_config(path: str) -> ConfigGAN:
@@ -34,9 +47,9 @@ def read_main_config(path: str) -> ConfigMain:
     with open(path, encoding="utf-8") as file:
         config_data = yaml.safe_load(file)
 
-    # Add base paths using FILESDIR
-    files_dir = os.environ.get("FILESDIR", None)
-    if files_dir is not None:
-        config_data["out_dir"] = files_dir
+    files_dir = os.environ.get("FILESDIR", "")
+    out_dir = config_data["out_dir"]
+    if isinstance(out_dir, str) and not os.path.isabs(out_dir):
+        config_data["out_dir"] = os.path.join(files_dir, out_dir)
 
     return ConfigMain(**config_data)

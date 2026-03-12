@@ -1,58 +1,55 @@
 # Global definitions
-project: AmbiGAN-FashionMNIST-Nov24
-name: fashion-mnist-3v0
+project: AmbiGAN
+name: mnist-8v9
 out_dir: out
 data_dir: data
 fixed_noise: 128
 test_noise_seed: 15
-device: cuda
-num_workers: 0
+device: cuda:1
 
 # Number of runs to perform using same parameters but different seeds.
-num_runs: 3
+num_runs: 1
 
-# Configuration
-gen_test_noise: true
-gen_pairwise_inception: true
+# Configuration (false if we already have them and don't want to regenerate)
+gen_test_noise: false
+gen_pairwise_inception: false
 gen_classifiers: true
 gen_gan: true
+gen_dataset: false
+run_hubris_evaluation: false
 
 # Dataset parameters, including positive and negative class.
 dataset:
-  name: fashion-mnist
+  name: mnist
   binary:
-    pos: 3
-    neg: 0
+    pos: 8
+    neg: 9
 
-# Classifier list to be generated.
+# Classifier list to be generated
 classifiers:
-  - name: ensemble_mean_32_fashion_200_3v0
+  - name: ensemble_mean_33_mnist_1_8v9_balanced 
     c_type: ensemble
     batch_size: 800
-    epochs: 200
+    epochs: 50
     lr: 0.001
-    nf: 50
-    seed: 32
+    nf: [[1,2]] # ablation
+    seed: 33
     ensemble_type: cnn
     ensemble_output_method: mean
 
 # Seed parameters for each run (step1 and step2).
 step_1_seeds:
-  - 42
   - 43
-  - 44
 step_2_seeds:
-  - 34
   - 35
-  - 36
 
 # GAN model parameters
 model:
   z_dim: 256
   architecture:
     name: dcgan
-    g_filter_dim: 64
-    d_filter_dim: 64
+    g_filter_dim: 512
+    d_filter_dim: 512
     g_num_blocks: 2
     d_num_blocks: 2
   loss:
@@ -60,31 +57,30 @@ model:
 
 # GAN optimizer parameters
 optimizer:
-  lr: 0.0001
+  lr: 0.0002
   beta1: 0.00
   beta2: 0.999
 
 # GAN training parameters
 train:
   step_1:
-    epochs: 100
-    checkpoint_every: 100
+    epochs: 50 # 100
+    checkpoint_every: 50
     disc_iters: 1
     batch_size: 32
   step_2:
-    epochs: 20
-    checkpoint_every: 20
+    epochs: 50
+    checkpoint_every: 50
     disc_iters: 1
     batch_size: 32
     step_1_epochs:
       - last
     classifier:
-      - ensemble_mean_32_fashion_200_3v0
+      - ensemble_mean_33_mnist_1_8v9_balanced #  ablation
     weight:
       - gaussian:
-          - alpha: 0.15
-            var: 0.10
-          - alpha: 0.30
-            var: 0.10
           - alpha: 0.50
-            var: 0.10
+            var: 0.1
+
+evaluation:
+  companion_n_samples: 2500

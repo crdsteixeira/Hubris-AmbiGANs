@@ -1,4 +1,4 @@
-FROM python:3.12.8-slim
+FROM python:3.11-slim
 
 # Install pipx and Poetry
 RUN pip install pipx && \
@@ -14,7 +14,9 @@ ENV PATH="/root/.local/bin:$PATH"
 # Disable Poetry's automatic virtual environment creation
 RUN poetry config virtualenvs.create false
 
-# Install libraries
-COPY pyproject.toml /app/pyproject.toml
+# Copy entire project
+COPY . /app
 WORKDIR /app
-RUN poetry install --no-root --no-cache --with dev
+
+# Install project with dependencies
+RUN poetry install --no-cache --with dev

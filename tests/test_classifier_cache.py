@@ -56,7 +56,9 @@ def test_cache_invalidation() -> None:
 def test_feature_maps_returned() -> None:
     """Test if feature maps and final output are returned correctly when requested."""
     mock_classifier = MockClassifier()
-    mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 10), [torch.randn(1, 3, 64, 64)]])
+    # Return format: [feature_map_1, feature_map_2, ..., final_output]
+    # where feature_maps are all elements except the last, and final output is the last element
+    mock_classifier.forward = MagicMock(return_value=[torch.randn(1, 3, 64, 64), torch.randn(1, 10)])
 
     cache = ClassifierCache(mock_classifier)
 

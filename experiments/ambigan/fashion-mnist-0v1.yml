@@ -1,0 +1,85 @@
+project: AmbiGAN
+name: fashion-mnist-0v1  # <<<<<<
+out_dir: out
+data_dir: data
+fixed_noise: 128
+test_noise_seed: 15
+device: cuda:1
+
+num_runs: 1
+
+gen_test_noise: true
+gen_pairwise_inception: true
+gen_classifiers: true
+gen_gan: true
+gen_dataset: true
+run_hubris_evaluation: true
+
+dataset:
+  name: fashion-mnist
+  binary:
+    pos: 0 # <<<<<<
+    neg: 1 # <<<<<<
+
+classifiers:
+  - name: ensemble_mean_32_fashion_50_0v1_balanced # <<<<<<
+    c_type: ensemble
+    batch_size: 800
+    epochs: 50
+    lr: 0.001
+    nf: 50
+    seed: 32
+    ensemble_type: cnn
+    ensemble_output_method: mean
+
+step_1_seeds:
+  - 2
+step_2_seeds:
+  - 2
+
+model:
+  z_dim: 256
+  architecture:
+    name: dcgan
+    g_filter_dim: 512
+    d_filter_dim: 512
+    g_num_blocks: 2
+    d_num_blocks: 2
+  loss:
+    name: ns
+
+optimizer:
+  lr: 0.0002
+  beta1: 0.00
+  beta2: 0.999
+
+train:
+  step_1:
+    epochs: 50
+    checkpoint_every: 10
+    disc_iters: 1
+    batch_size: 32
+  step_2:
+    epochs: 50
+    checkpoint_every: 10
+    disc_iters: 1
+    batch_size: 32
+    step_1_epochs:
+      - last
+    classifier:
+      - ensemble_mean_32_fashion_50_0v1_balanced # <<<<<<
+    weight:
+      - gaussian:
+          - alpha: 1.50
+            var: 0.1
+
+evaluation:
+  companion_n_samples: 2500
+  hubris:
+    models: 
+      - convnext
+      - vit
+      - efficientnetv2
+      - swin
+    epochs: 3
+    batch_size: 32

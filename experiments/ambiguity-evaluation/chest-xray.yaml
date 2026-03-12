@@ -1,0 +1,23 @@
+data_dir: data
+out_dir: models
+device: cuda:1
+seed: 1 # do not change
+
+datasets:
+  training: chest-xray
+  evaluation:
+    - chest-xray
+    - synthetic-chest-xray
+    - companion-chest-xray
+  balanced: true
+
+classifiers:
+  - cnn
+  - resnet
+  - densenet
+  - fully-connected
+  - vgg
+
+training:
+  batch_size: 8
+  epochs: 25

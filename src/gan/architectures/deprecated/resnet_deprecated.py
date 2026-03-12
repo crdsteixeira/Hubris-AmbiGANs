@@ -1,7 +1,8 @@
+from typing import List, Tuple, Union
+
 import torch
 import torch.nn as nn
 from torch import Tensor
-from typing import Tuple, Union, List
 
 
 class ConvScale(nn.Module):

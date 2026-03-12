@@ -2,7 +2,7 @@
 
 import os
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -66,7 +66,15 @@ def mock_classifier() -> MockClassifier:
     return MockClassifier(model_params)
 
 
-def test_train(mock_dataloader: DataLoader, mock_classifier: MockClassifier, tmp_path: str) -> None:
+@patch("wandb.log")
+@patch("wandb.init")
+def test_train(
+    mock_wandb_init: MagicMock,
+    mock_wandb_log: MagicMock,
+    mock_dataloader: DataLoader,
+    mock_classifier: MockClassifier,
+    tmp_path: str,
+) -> None:
     """Test train function to ensure the model trains correctly."""
 
     def mock_parse_args() -> CLTrainArgs:
@@ -172,7 +180,7 @@ def test_parse_args_valid() -> None:
         "--c_type",
         "cnn",
         "--device",
-        "cuda",
+        "cpu",
     ]
 
     with patch("sys.argv", test_args):
@@ -185,7 +193,7 @@ def test_parse_args_valid() -> None:
         assert args.batch_size == 32
         assert args.epochs == 10
         assert args.c_type == "cnn"
-        assert args.device == "cuda"
+        assert args.device == DeviceType.cpu
 
 
 def test_parse_args_missing_required() -> None:

@@ -4,8 +4,8 @@ name: mnist-7v1
 out_dir: out
 data_dir: data
 fixed_noise: 32
-test_noise: data/z/z_32_10
-fid_stats_path: data/fid-stats/stats.mnist.7v1.npz
+test_noise: out/data/z/z_32_10
+fid_stats_path: out/data/fid-stats/stats.mnist.7v1.npz
 device: cpu
 num_workers: 0
 
@@ -58,7 +58,7 @@ train:
     step_1_epochs:
       - last
     classifier:
-      - models/mnist.7v1/ensemble_mean_1
+      - out/models/mnist.7v1/ensemble_mean_1
     weight:
       - gaussian:
           - alpha: 0.50

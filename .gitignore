@@ -155,3 +155,5 @@ poetry.lock
 checkpoints/
 mock_data/
 mock_dir/
+# all-vs-all YAML files
+experiments/all-vs-all/*.yml

@@ -9,6 +9,10 @@ class ClassifierType(StrEnum):
     cnn = "cnn"
     mlp = "mlp"
     ensemble = "ensemble"
+    fully_connected = "fully-connected"
+    densenet = "densenet"
+    resnet = "resnet"
+    vgg = "vgg"
 
 
 class EnsembleType(StrEnum):
@@ -31,7 +35,7 @@ class DeviceType(StrEnum):
     """Enumerate different types of devices."""
 
     cpu = "cpu"
-    cuda = "cuda"
+    cuda = "cuda:1"
 
 
 class TrainingStage(StrEnum):
@@ -50,6 +54,15 @@ class DatasetNames(StrEnum):
     fashion_mnist = "fashion-mnist"
     cifar10 = "cifar10"
     chest_xray = "chest-xray"
+    ambiguous_mnist = "ambiguous-mnist"
+    ambiguess_mnist = "ambiguess-mnist"
+    ambiguess_fmnist = "ambiguess-fashion-mnist"
+    companion_mnist = "companion-mnist"
+    companion_fmnist = "companion-fashion-mnist"
+    companion_chest_xray = "companion-chest-xray"
+    synthetic_mnist = "synthetic-mnist"
+    synthetic_fmnist = "synthetic-fashion-mnist"
+    synthetic_chest_xray = "synthetic-chest-xray"
 
     @classmethod
     def valid_dataset(cls, name: str) -> bool:
@@ -128,3 +141,5 @@ class PretrainedModels(StrEnum):
 
     convnext = "convnext"
     vit = "vit"
+    efficientnetv2 = "efficientnetv2"
+    swin = "swin"

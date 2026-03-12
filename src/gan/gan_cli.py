@@ -22,7 +22,6 @@ from src.gan.train import train
 from src.gan.update_g import UpdateGeneratorGAN
 from src.metrics.c_output_hist import OutputsHistogram
 from src.metrics.fid.fid import FID
-from src.metrics.focd import FOCD
 from src.metrics.hubris import Hubris
 from src.metrics.loss_term import LossSecondTerm
 from src.models import (
@@ -123,8 +122,9 @@ def train_modified_gan(
             "id": params.run_id,
             "seed": params.seed,
             "weight": weight_name,
-            "train": config.train.step_2.__dict__,
             "step1_epoch": params.s1_epoch,
+            "n_epochs": config.train.step_2.epochs,
+            "train": config.train.step_2.__dict__,
         },
     )
 
@@ -190,7 +190,6 @@ def train_step2_gan(
         class_cache = ClassifierCache(C)
         fid_metrics = FIDMetricsParams(
             fid=original_fid,
-            focd=FOCD(params.test_noise.size(0), config, class_cache, params.dataset),
             conf_dist=LossSecondTerm(class_cache),
             hubris=Hubris(class_cache, params.test_noise.size(0)),
         )
@@ -291,6 +290,7 @@ def train_step1_gan(params: Step1TrainingArgs, config: ConfigGAN) -> tuple[Train
             config={
                 "id": params.run_id,
                 "seed": params.seed,
+                "n_epochs": config.train.step_1.epochs,
                 "gan": config.model,
                 "optim": config.optimizer,
                 "train": config.train.step_1,
@@ -357,7 +357,7 @@ def main(config: ConfigGAN | None = None) -> None:
             dataroot=config.data_dir,
             pos_class=config.dataset.binary.pos,
             neg_class=config.dataset.binary.neg,
-            train=True,
+            split="train",
         )
     )
 
@@ -421,6 +421,7 @@ def main(config: ConfigGAN | None = None) -> None:
         train_step2_gan(
             params=step_2_params, config=config, original_fid=original_fid, step_1_train_state=step_1_train_state
         )
+    torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":

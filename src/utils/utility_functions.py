@@ -12,18 +12,8 @@ import sys
 from datetime import datetime
 
 import numpy as np
-import pandas as pd
 import torch
 import torchvision.utils as vutils
-from pymdma.image.measures.synthesis_val import (
-    GIQA,
-    Coverage,
-    Density,
-    GeometryScore,
-    ImprovedPrecision,
-    ImprovedRecall,
-    MultiScaleIntrinsicDistance,
-)
 from torch import nn
 from torchvision.transforms.functional import resize
 
@@ -213,13 +203,17 @@ def generate_cnn_configs(nf: int | list[int] | list[list[int]] | None) -> list[l
 
     if isinstance(nf, int):
         cnns_count = nf
-        cnn_nfs = [
-            [np.random.randint(1, high=6) for _ in range(np.random.randint(2, high=5))] for _ in range(cnns_count)
-        ]
+        # Generate CNNs with random filter configurations
+        for _ in range(cnns_count):
+            # Each CNN config is a list of random filter counts
+            cnn = [np.random.randint(1, high=6) for _ in range(np.random.randint(1, high=5))]
+            cnn_nfs.append(cnn)
     elif isinstance(nf, list):
         for n in nf:
             if isinstance(n, int):
-                cnn = [np.random.randint(1, high=n) for _ in range(np.random.randint(1, high=5))]
+                # Ensure high > low for randint (numpy requires low < high)
+                high = max(2, n) if n > 0 else 2
+                cnn = [np.random.randint(1, high=high) for _ in range(np.random.randint(1, high=5))]
             elif isinstance(n, list):
                 cnn = [int(c) for c in n]
             else:
@@ -284,18 +278,25 @@ def handle_subprocess_output(proc: subprocess.CompletedProcess) -> None:
             logger.info(line.decode())
 
 
-def parse_nf(value: str) -> list[int] | int:
-    """Parse the value for --nf, which can be either an int or a list of ints."""
+def parse_nf(value: str) -> list[int] | int | list[list[int]]:
+    """Parse the value for --nf, which can be an int, a list of ints, or a list of lists."""
     try:
         # Try parsing the value as a list using ast.literal_eval
         parsed_value = ast.literal_eval(value)
         if isinstance(parsed_value, int):
-            return [parsed_value]
-        if isinstance(parsed_value, list) and all(isinstance(i, int) for i in parsed_value):
             return parsed_value
+        if isinstance(parsed_value, list):
+            # Check if it's a list of lists (for explicit CNN architectures)
+            if all(isinstance(i, list) for i in parsed_value):
+                return parsed_value
+            # Check if it's a flat list of integers
+            if all(isinstance(i, int) for i in parsed_value):
+                return parsed_value
         raise ValueError
     except (ValueError, SyntaxError) as e:
-        raise argparse.ArgumentTypeError(f"Invalid value for --nf: '{value}', must be an int or list of ints.") from e
+        raise argparse.ArgumentTypeError(
+            f"Invalid value for --nf: '{value}', must be an int, list of ints, or list of lists."
+        ) from e
 
 
 def construct_weights(
@@ -359,65 +360,3 @@ def get_epoch_from_state(s1_epoch: int | str, step_1_train_state: TrainingState)
     if s1_epoch == "last":
         return step_1_train_state.epoch
     return s1_epoch
-
-
-def calculate_pymdma_metrics(real_features: np.ndarray, synt_features: np.ndarray) -> pd.DataFrame:
-    """Calculate synthetic validation metrics from pymdma library."""
-    # Improved Precision and Improved Recall
-    logger.info("Calculating Improved Precision and Improved Recall")
-    ip = ImprovedPrecision(k=5)
-    ir = ImprovedRecall(k=5)
-    ip_result = ip.compute(real_features=real_features, fake_features=synt_features)
-    ir_result = ir.compute(real_features=real_features, fake_features=synt_features)
-    precision_dataset, _ = ip_result.value
-    recall_dataset, _ = ir_result.value
-
-    # GIQA QS
-    logger.info("Calculating GIQA QS")
-    giqa_qs = GIQA()
-    giqa_qs_result = giqa_qs.compute(real_features=real_features, fake_features=synt_features)
-    giqa_qs_dataset, _ = giqa_qs_result.value
-
-    # GIQA DS
-    logger.info("Calculating GIQA DS")
-    giqa_ds = GIQA()
-    giqa_ds_result = giqa_ds.compute(real_features=synt_features, fake_features=real_features)
-    giqa_ds_dataset, _ = giqa_ds_result.value
-
-    # Density
-    logger.info("Calculating Density")
-    density = Density()
-    density_result = density.compute(real_features=real_features, fake_features=synt_features)
-    density_dataset, _ = density_result.value
-
-    # Coverage
-    logger.info("Calculating Coverage")
-    coverage = Coverage()
-    coverage_result = coverage.compute(real_features=real_features, fake_features=synt_features)
-    coverage_dataset, _ = coverage_result.value
-
-    # Geometry Score
-    logger.info("Calculating Geometry Score")
-    gs = GeometryScore()
-    gs_result = gs.compute(real_features=real_features, fake_features=synt_features)
-    gs_dataset, _ = gs_result.value
-
-    # Multi-Scale Intrinsic Distance (MSID)
-    logger.info("Calculating Multi-Scale Intrinsic Distance")
-    msid = MultiScaleIntrinsicDistance()
-    msid_result = msid.compute(real_features=real_features, fake_features=synt_features)
-    msid_dataset, _ = msid_result.value
-
-    df = pd.DataFrame().assign(
-        improved_precision=[precision_dataset],
-        improved_recall=[recall_dataset],
-        giqa_qs=[giqa_qs_dataset],
-        giqa_ds=[giqa_ds_dataset],
-        density=[density_dataset],
-        coverage=[coverage_dataset],
-        gs=[gs_dataset],
-        msid=[msid_dataset],
-    )
-    logger.info("Finished PyMDMA metrics calculation")
-
-    return df

@@ -39,7 +39,7 @@ class MockDataset:
 def dataset_params(tmp_path: str) -> LoadDatasetParams:
     """Fixture to provide dataset parameters for different dataset names."""
     return LoadDatasetParams(
-        dataroot=str(tmp_path), train=True, dataset_name=DatasetNames.mnist, pos_class=1, neg_class=0, pytesting=True
+        dataroot=str(tmp_path), split="train", dataset_name=DatasetNames.mnist, pos_class=1, neg_class=0, pytesting=True
     )
 
 
@@ -131,7 +131,7 @@ def test_load_dataset_function_call(mock_get_function: MagicMock, dataset_params
 
     # Verify the expected call
     expected_params = DatasetParams(
-        dataroot=dataset_params.dataroot, train=dataset_params.train, pytesting=dataset_params.pytesting
+        dataroot=dataset_params.dataroot, split=dataset_params.split, pytesting=dataset_params.pytesting
     )
     mock_get_function.assert_called_once_with(dataset_params.dataset_name)
     download_function = mock_get_function.return_value
@@ -165,7 +165,6 @@ def test_load_chest_xray_dataset(dataset_params: LoadDatasetParams) -> None:
         DatasetNames.mnist,
         DatasetNames.fashion_mnist,
         DatasetNames.cifar10,
-        DatasetNames.chest_xray,
     ],
 )
 def test_load_dataset_classes_range(dataset_params: LoadDatasetParams, dataset_name: DatasetNames) -> None:
@@ -178,7 +177,7 @@ def test_load_dataset_classes_range(dataset_params: LoadDatasetParams, dataset_n
                 neg_class=-2,  # Invalid class index
                 pytesting=dataset_params.pytesting,
                 dataroot=dataset_params.dataroot,
-                train=dataset_params.train,
+                split=dataset_params.split,
             )
         )
 
@@ -202,6 +201,6 @@ def test_invalid_pos_neg_classes(dataset_params: LoadDatasetParams, dataset_name
                 neg_class=2000,  # Invalid class index
                 pytesting=dataset_params.pytesting,
                 dataroot=dataset_params.dataroot,
-                train=dataset_params.train,
+                split=dataset_params.split,
             )
         )

@@ -1,9 +1,13 @@
 """Module for creating pretrained models."""
 
+from collections.abc import Callable
+from typing import Any
+
 import torch
 from torch import nn
 from torchvision import transforms
 from transformers import AutoModel, AutoModelForImageClassification
+from transformers.modeling_utils import PreTrainedModel
 
 from src.models import ClassifierParams
 
@@ -74,7 +78,34 @@ class ClassifierMLP(nn.Module):
         super().__init__()
         out_features = 1 if params.n_classes == 2 else params.n_classes
         self.device = params.device
-        self.model = AutoModel.from_pretrained("dacorvo/mnist-mlp", trust_remote_code=True)
+
+        # The custom MLP model requires all_tied_weights_keys attribute for transformers 5.0
+        original_method = PreTrainedModel.mark_tied_weights_as_initialized
+
+        class PatchedMarkTied:
+            """Patcher for mark_tied_weights_as_initialized to handle missing all_tied_weights_keys."""
+
+            def __init__(self, original: Callable[..., None]) -> None:
+                self.original = original
+
+            def __get__(self, obj: Any, objtype: Any = None) -> Any:
+                """Descriptor to bind the method to the instance."""
+                if obj is None:
+                    return self
+
+                def bound_method(loading_info: object = None) -> None:
+                    if not hasattr(obj, "all_tied_weights_keys"):
+                        obj.all_tied_weights_keys = {}
+                    return self.original(obj, loading_info)
+
+                return bound_method
+
+        PreTrainedModel.mark_tied_weights_as_initialized = PatchedMarkTied(original_method)
+
+        try:
+            self.model = AutoModel.from_pretrained("dacorvo/mnist-mlp", trust_remote_code=True)
+        finally:
+            PreTrainedModel.mark_tied_weights_as_initialized = original_method
 
         for p in self.model.parameters():
             p.requires_grad = False
