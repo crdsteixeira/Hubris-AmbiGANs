@@ -15,13 +15,24 @@ import wandb
 from dotenv import load_dotenv
 from pydantic import ValidationError
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.datasets import ImageFolder
 from tqdm import tqdm
 
 from src.datasets.load import DatasetNames, load_dataset
 from src.enums import DeviceType, PretrainedModels
-from src.evaluation.pretrained_models import ConvNext, EfficientNetV2, Swin, ViT
+from src.evaluation.pretrained_models import (
+    CONVNEXT_MODEL_ID,
+    EFFICIENTNETV2_MODEL_ID,
+    SWIN_MODEL_ID,
+    TRAINING_RECIPE_ID,
+    VIT_LEGACY_CXR_MODEL_ID,
+    VIT_MODEL_ID,
+    ConvNext,
+    EfficientNetV2,
+    Swin,
+    ViT,
+)
 from src.metrics.accuracy import binary_accuracy, binary_precision_recall_f1
 from src.metrics.hubris import Hubris
 from src.models import CLEvaluationArgs, LoadDatasetParams
@@ -168,7 +179,51 @@ def setup_wandb_for_model(config: CLEvaluationArgs, model: PretrainedModels, gan
     )
 
 
-def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, DataLoader]:
+def balance_indices(indices: list[int], targets: torch.Tensor) -> list[int]:
+    """Oversample the minority class within `indices` until both classes are equally represented."""
+    pos = [i for i in indices if targets[i] == 1]
+    neg = [i for i in indices if targets[i] == 0]
+    if not pos or not neg or len(pos) == len(neg):
+        return indices
+
+    minority, majority = (pos, neg) if len(pos) < len(neg) else (neg, pos)
+    extra = torch.randint(len(minority), (len(majority) - len(minority),)).tolist()
+    return indices + [minority[i] for i in extra]
+
+
+def split_train_validation(dataset: Dataset, val_fraction: float = 0.5) -> tuple[Subset, Subset]:
+    """
+    Split a training set into fine-tuning and validation halves.
+
+    `BinaryDataset` balances classes by appending duplicates of minority-class samples, so
+    splitting it directly would put copies of the same image on both sides. Split the
+    distinct prefix instead and rebalance each half independently, which keeps the
+    validation signal honest. Falls back to a plain random split for other dataset types.
+
+    Args:
+        dataset: Dataset to split
+        val_fraction: Share of the distinct samples held out for validation
+
+    Returns:
+        Tuple of (fine-tuning subset, validation subset).
+
+    """
+    num_distinct = getattr(dataset, "num_original", None)
+    targets = getattr(dataset, "targets", None)
+    if num_distinct is None or targets is None:
+        half = len(dataset) // 2
+        train_set, val_set = torch.utils.data.random_split(dataset, [half, len(dataset) - half])
+        return train_set, val_set
+
+    shuffled = torch.randperm(num_distinct).tolist()
+    split_at = int(num_distinct * (1.0 - val_fraction))
+    return (
+        Subset(dataset, balance_indices(shuffled[:split_at], targets)),
+        Subset(dataset, balance_indices(shuffled[split_at:], targets)),
+    )
+
+
+def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
     """
     Load training, test, and companion datasets.
 
@@ -185,12 +240,8 @@ def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, Dat
             pytesting=False,
         )
     )
-    # Use only 50% of training data
-    num_train_samples = len(finetune_train_set)
-    half_size = num_train_samples // 2
-    finetune_train_set, _ = torch.utils.data.random_split(
-        finetune_train_set, [half_size, num_train_samples - half_size]
-    )
+    # Half the training data is fine-tuned on, the other half validates for model selection.
+    finetune_train_set, finetune_val_set = split_train_validation(finetune_train_set)
 
     finetune_test_set, _, _ = load_dataset(
         LoadDatasetParams(
@@ -208,15 +259,17 @@ def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, Dat
 
     # Create dataloaders
     train_dataloader = DataLoader(finetune_train_set, batch_size=config.batch_size, shuffle=True)
+    val_dataloader = DataLoader(finetune_val_set, batch_size=config.batch_size, shuffle=False)
     test_dataloader = DataLoader(finetune_test_set, batch_size=config.batch_size, shuffle=False)
     ambi_dataloader = DataLoader(ambi_dataset, batch_size=config.batch_size, shuffle=False)
 
     # Log dataset sizes
     logger.info(f"Training set size: {len(finetune_train_set)}")
+    logger.info(f"Validation set size: {len(finetune_val_set)}")
     logger.info(f"Test set size: {len(finetune_test_set)}")
     logger.info(f"Companion/Ambiguity dataset size: {len(ambi_dataset)}")
 
-    return train_dataloader, test_dataloader, ambi_dataloader
+    return train_dataloader, val_dataloader, test_dataloader, ambi_dataloader
 
 
 def construct_model_path(config: CLEvaluationArgs, model_name: str) -> Path:
@@ -240,6 +293,51 @@ def construct_model_path(config: CLEvaluationArgs, model_name: str) -> Path:
         / model_name
     )
     return model_dir
+
+
+class StaleCheckpointError(Exception):
+    """Raised when a stored checkpoint was finetuned from a different backbone than the one now expected."""
+
+
+EXPECTED_MODEL_IDS = {
+    "convnext": CONVNEXT_MODEL_ID,
+    "vit": VIT_MODEL_ID,
+    "efficientnetv2": EFFICIENTNETV2_MODEL_ID,
+    "swin": SWIN_MODEL_ID,
+}
+
+# Backbone used before checkpoints started recording their model id. Only `vit` differs
+# from EXPECTED_MODEL_IDS: every pre-existing vit checkpoint came from the CXR backbone.
+LEGACY_MODEL_IDS = {**EXPECTED_MODEL_IDS, "vit": VIT_LEGACY_CXR_MODEL_ID}
+
+
+def expected_model_id(model_name: str) -> str:
+    """
+    Return the HuggingFace backbone id a model should be built from.
+
+    Args:
+        model_name: Name of the model (e.g., 'convnext', 'vit')
+
+    Returns:
+        HuggingFace model id.
+
+    """
+    if model_name not in EXPECTED_MODEL_IDS:
+        raise ValueError(f"Unknown pretrained model: {model_name}")
+    return EXPECTED_MODEL_IDS[model_name]
+
+
+def construct_pretrained_model(model_name: str) -> nn.Module:
+    """Build an untrained pretrained-model wrapper."""
+    if model_name == "convnext":
+        return ConvNext()
+    if model_name == "vit":
+        return ViT()
+    if model_name == "efficientnetv2":
+        return EfficientNetV2()
+    if model_name == "swin":
+        return Swin()
+    raise ValueError(f"Unknown pretrained model: {model_name}")
 
 
 def model_exists(config: CLEvaluationArgs, model_name: str) -> bool:
@@ -283,17 +381,24 @@ def load_finetuned_model(
     ):
         model, _, _, _, _ = construct_classifier_from_checkpoint(str(model_checkpoint_dir), device=device_type)
     else:
+        # Refuse checkpoints finetuned from a different backbone: architectures can match
+        # (e.g. both ViT-base/16-224), so strict=False below would silently load wrong weights.
+        expected_id = expected_model_id(model_name)
+        stored_id = checkpoint_data.get("model_id", LEGACY_MODEL_IDS.get(model_name))
+        if stored_id != expected_id:
+            raise StaleCheckpointError(
+                f"Checkpoint at {checkpoint_file} was finetuned from '{stored_id}', but '{expected_id}' is expected."
+            )
+
+        stored_recipe = checkpoint_data.get("recipe_id")
+        if stored_recipe != TRAINING_RECIPE_ID:
+            raise StaleCheckpointError(
+                f"Checkpoint at {checkpoint_file} was finetuned with recipe '{stored_recipe}', "
+                f"but '{TRAINING_RECIPE_ID}' is expected."
+            )
+
         # For pretrained models, create new instance and load state_dict
-        if model_name == "convnext":
-            model = ConvNext()
-        elif model_name == "vit":
-            model = ViT()
-        elif model_name == "efficientnetv2":
-            model = EfficientNetV2()
-        elif model_name == "swin":
-            model = Swin()
-        else:
-            raise ValueError(f"Unknown pretrained model: {model_name}")
+        model = construct_pretrained_model(model_name)
 
         # Load the state_dict into the underlying model
         device_str = device_type.value if isinstance(device_type, DeviceType) else str(device_type)
@@ -321,6 +426,7 @@ def train_model(
     device: DeviceType,
     train_dataloader: DataLoader,
     config: CLEvaluationArgs,
+    val_dataloader: DataLoader | None = None,
 ) -> nn.Module:
     """
     Train or load pretrained model.
@@ -334,6 +440,7 @@ def train_model(
         device: Device to use for training
         train_dataloader: DataLoader for training data
         config: Evaluation configuration
+        val_dataloader: DataLoader used to pick the best epoch
 
     Returns:
         The trained or loaded model
@@ -344,25 +451,15 @@ def train_model(
     # Check if finetuned model already exists
     if model_exists(config, model_name):
         logger.info("Finetuned model found for %s. Loading from disk...", model_name)
-        model = load_finetuned_model(config, model_name, device)
-        return model
+        try:
+            return load_finetuned_model(config, model_name, device)
+        except StaleCheckpointError as e:
+            logger.warning("Discarding stale checkpoint for %s: %s Retraining...", model_name, e)
 
     # Train new model
     logger.info("Retraining model %s...", model_type.value)
-    if model_type == PretrainedModels.convnext:
-        model = ConvNext()
-        model.retrain(train_dataloader, epochs=epochs, device=device)
-    elif model_type == PretrainedModels.vit:
-        model = ViT()
-        model.retrain(train_dataloader, epochs=epochs, device=device)
-    elif model_type == PretrainedModels.efficientnetv2:
-        model = EfficientNetV2()
-        model.retrain(train_dataloader, epochs=epochs, device=device)
-    elif model_type == PretrainedModels.swin:
-        model = Swin()
-        model.retrain(train_dataloader, epochs=epochs, device=device)
-    else:
-        raise ValueError(f"Unknown model type: {model_type}")
+    model = construct_pretrained_model(model_name)
+    model.retrain(train_dataloader, epochs=epochs, device=device, val_dataloader=val_dataloader)
 
     # Save the trained model
     model_dir = construct_model_path(config, model_name)
@@ -377,6 +474,8 @@ def train_model(
     # Save state dict and metadata (save wrapper state_dict to maintain compatibility)
     save_dict = {
         "name": model_name,
+        "model_id": model.model_id,  # backbone the weights were finetuned from
+        "recipe_id": TRAINING_RECIPE_ID,  # fine-tuning recipe that produced the weights
         "state": model.state_dict(),  # Save wrapper state_dict for compatibility
     }
     torch.save(save_dict, model_checkpoint_dir / "classifier.pth")
@@ -472,7 +571,7 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
     os.makedirs(config.out_dir, exist_ok=True)
 
     # Load datasets (only once for all models)
-    train_dataloader, test_dataloader, ambi_dataloader = load_datasets(config)
+    train_dataloader, val_dataloader, test_dataloader, ambi_dataloader = load_datasets(config)
 
     # Get GAN ID for experiment tracking
     gan_id = args_dict.get("gan_id") or "unknown"
@@ -487,7 +586,9 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
         setup_wandb_for_model(config, model_enum, gan_id, config.seed)
 
         # Train or load model
-        model = train_model(model_enum, config.epochs, config.device, train_dataloader, config)
+        model = train_model(
+            model_enum, config.epochs, config.device, train_dataloader, config, val_dataloader=val_dataloader
+        )
 
         df = pd.DataFrame()
         df = pd.concat((df, evaluate(config, model, test_dataloader, name=f"{config.dataset_name} Original")))

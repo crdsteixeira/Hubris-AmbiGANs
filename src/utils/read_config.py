@@ -27,6 +27,7 @@ def read_config(path: str) -> ConfigGAN:
 
     # Add base paths using FILESDIR
     files_dir = os.environ.get("FILESDIR", "")
+    config_data.setdefault("out_dir", "")
     for rel_path_key in ["out_dir", "data_dir", "fid_stats_path", "test_noise"]:
         if rel_path_key in config_data and isinstance(config_data[rel_path_key], str):
             config_data[rel_path_key] = os.path.join(files_dir, config_data[rel_path_key])
@@ -48,7 +49,8 @@ def read_main_config(path: str) -> ConfigMain:
         config_data = yaml.safe_load(file)
 
     files_dir = os.environ.get("FILESDIR", "")
-    out_dir = config_data["out_dir"]
+    # A missing out_dir means "FILESDIR itself"
+    out_dir = config_data.get("out_dir") or ""
     if isinstance(out_dir, str) and not os.path.isabs(out_dir):
         config_data["out_dir"] = os.path.join(files_dir, out_dir)
 

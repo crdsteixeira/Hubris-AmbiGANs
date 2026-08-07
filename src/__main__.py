@@ -31,6 +31,18 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 
+# A complete companion dataset holds 2500 images
+MIN_COMPANION_IMAGES = 2000
+
+
+def _companion_image_count(run_dir: str) -> int:
+    """Count the images in a run's companion dataset, 0 when it has none."""
+    companion = os.path.join(run_dir, "companion_dataset")
+    if not os.path.isdir(companion):
+        return 0
+    return sum(len(files) for _, _, files in os.walk(companion))
+
+
 def find_latest_gan_estimator_paths(config: ConfigMain) -> tuple[str, str | None]:
     """Find latest run executed for this specific subset."""
     gan_root = os.path.join(
@@ -43,6 +55,16 @@ def find_latest_gan_estimator_paths(config: ConfigMain) -> tuple[str, str | None
 
     if not subdirs:
         raise ValueError(f"No subdirectories found in {gan_root}")
+
+    if not config.gen_dataset:
+        # The companion dataset is being consumed. ignore runs whose generation was interrupted
+        complete = [d for d in subdirs if _companion_image_count(d) >= MIN_COMPANION_IMAGES]
+        if complete:
+            if len(complete) != len(subdirs):
+                logger.info("Ignoring %d run(s) with an incomplete companion dataset.", len(subdirs) - len(complete))
+            subdirs = complete
+        else:
+            logger.warning("No run in %s has a complete companion dataset; falling back to the most recent.", gan_root)
 
     estimator_name = None
     try:

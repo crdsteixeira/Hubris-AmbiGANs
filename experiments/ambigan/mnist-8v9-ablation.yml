@@ -1,7 +1,6 @@
 # Global definitions
 project: AmbiGAN
 name: mnist-8v9
-out_dir: out
 data_dir: data
 fixed_noise: 128
 test_noise_seed: 15

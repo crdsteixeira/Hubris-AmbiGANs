@@ -1,6 +1,5 @@
 project: AmbiGAN
 name: fashion-mnist-0v1  # <<<<<<
-out_dir: out
 data_dir: data
 fixed_noise: 128
 test_noise_seed: 15
@@ -8,11 +7,11 @@ device: cuda:1
 
 num_runs: 1
 
-gen_test_noise: true
-gen_pairwise_inception: true
-gen_classifiers: true
-gen_gan: true
-gen_dataset: true
+gen_test_noise: false
+gen_pairwise_inception: false
+gen_classifiers: false
+gen_gan: false
+gen_dataset: false
 run_hubris_evaluation: true
 
 dataset:

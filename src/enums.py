@@ -36,6 +36,7 @@ class DeviceType(StrEnum):
 
     cpu = "cpu"
     cuda = "cuda:1"
+    cuda_0 = "cuda:0"
 
 
 class TrainingStage(StrEnum):
