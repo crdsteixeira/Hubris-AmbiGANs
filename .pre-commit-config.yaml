@@ -36,7 +36,7 @@ repos:
         args: ['--line-length=120']
 
 -   repo: https://github.com/pycqa/pylint
-    rev: v4.0.6
+    rev: v4.0.7
     hooks:
     -   id: pylint
         args:

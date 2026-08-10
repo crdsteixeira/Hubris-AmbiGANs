@@ -572,11 +572,30 @@ def _find_companion_dataset_images(  # pylint: disable=too-many-branches,too-man
     return all_images, all_labels
 
 
-def get_companion_mnist(params: DatasetParams) -> Dataset:
-    """Retrieve the Companion MNIST dataset with ground truth labels."""
-    image_paths, labels = _find_companion_dataset_images(params.dataroot, "mnist")
+def get_companion_transform(dataset_name: str) -> torchvision.transforms.Compose:
+    """
+    Build the transform a companion dataset's estimator was trained with.
 
-    transform = torchvision.transforms.Compose(
+    Args:
+        dataset_name: Dataset the companion images belong to ('mnist', 'fashion-mnist', 'chest-xray').
+
+    Returns:
+        Composed transform pipeline putting images back in the [-1, 1] range the models expect.
+
+    """
+    if dataset_name in {"chest-xray", "chest_xray"}:
+        return torchvision.transforms.Compose(
+            [
+                torchvision.transforms.Resize(128),
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]
+        )
+
+    if dataset_name not in {"mnist", "fashion-mnist", "fashion_mnist"}:
+        raise ValueError(f"No companion transform defined for dataset '{dataset_name}'")
+
+    return torchvision.transforms.Compose(
         [
             torchvision.transforms.Grayscale(num_output_channels=1),
             torchvision.transforms.ToTensor(),
@@ -584,11 +603,16 @@ def get_companion_mnist(params: DatasetParams) -> Dataset:
         ]
     )
 
+
+def get_companion_mnist(params: DatasetParams) -> Dataset:
+    """Retrieve the Companion MNIST dataset with ground truth labels."""
+    image_paths, labels = _find_companion_dataset_images(params.dataroot, "mnist")
+
     return CompanionDataset(
         image_paths,
         color_mode="RGB",
         labels=labels,
-        transform=transform,
+        transform=get_companion_transform("mnist"),
     )
 
 
@@ -596,19 +620,11 @@ def get_companion_fmnist(params: DatasetParams) -> Dataset:
     """Retrieve the Companion FMNIST dataset with ground truth labels."""
     image_paths, labels = _find_companion_dataset_images(params.dataroot, "fashion_mnist")
 
-    transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.Grayscale(num_output_channels=1),
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.5,), (0.5,)),
-        ]
-    )
-
     return CompanionDataset(
         image_paths,
         color_mode="RGB",
         labels=labels,
-        transform=transform,
+        transform=get_companion_transform("fashion_mnist"),
     )
 
 
@@ -616,19 +632,11 @@ def get_companion_chest_xray(params: DatasetParams) -> Dataset:
     """Retrieve the Companion Chest X-ray dataset with ground truth labels."""
     image_paths, labels = _find_companion_dataset_images(params.dataroot, "chest_xray")
 
-    transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.Resize(128),
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ]
-    )
-
     return CompanionDataset(
         image_paths,
         color_mode="RGB",
         labels=labels,
-        transform=transform,
+        transform=get_companion_transform("chest_xray"),
     )
 
 
