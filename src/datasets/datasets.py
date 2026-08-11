@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import ddu_dirty_mnist
@@ -12,6 +13,15 @@ from datasets import load_dataset
 from PIL import Image
 from torch.utils.data import Dataset
 
+from src.datasets.companion_selection import (
+    MAX_CONFUSION_DISTANCE,
+    SelectionOptions,
+    companion_image_count,
+    find_latest_complete_run,
+    is_canonical_pair,
+    select_companion_images,
+)
+from src.datasets.image_dataset import ImageDataset, get_companion_transform
 from src.models import DatasetParams
 
 logger = logging.getLogger(__name__)
@@ -330,58 +340,6 @@ def get_ambiguess_fmnist(params: DatasetParams) -> Dataset:
     return _load_ambiguous_hf_dataset("mweiss/fashion_mnist_ambiguous", transform, params.pytesting)
 
 
-class ImageDataset(Dataset):
-    """Generic dataset for image loading with configurable color mode and labels."""
-
-    def __init__(
-        self,
-        image_paths: list[str],
-        color_mode: str = "RGB",
-        labels: list[list[int]] | list[int] | None = None,
-        transform: Any = None,
-    ) -> None:
-        """
-        Initialize the dataset with image paths, color mode, optional labels, and transform.
-
-        Args:
-            image_paths: List of full paths to image files.
-            color_mode: Color mode for loading images ('RGB' or 'L' for grayscale).
-            labels: Optional labels (list of lists for companion datasets, single value for synthetic).
-            transform: Optional torchvision transform to apply to images.
-
-        """
-        self.image_paths = image_paths
-        self.color_mode = color_mode
-        self.labels = labels if labels is not None else [[0] for _ in image_paths]
-        self.transform = transform
-
-        # Create dummy data attribute for compatibility
-        if image_paths:
-            sample_img = Image.open(image_paths[0]).convert(color_mode)
-            sample_array = np.array(sample_img)
-            self.data = np.zeros((len(image_paths), *sample_array.shape), dtype=sample_array.dtype)
-        else:
-            self.data = np.zeros((0, 28, 28) if color_mode == "L" else (0, 128, 128, 3), dtype=np.uint8)
-
-    def __len__(self) -> int:
-        """Return the number of samples."""
-        return len(self.image_paths)
-
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, Any]:
-        """Load and return image and label at given index."""
-        image = Image.open(self.image_paths[idx]).convert(self.color_mode)
-
-        if self.transform:
-            image = self.transform(image)
-
-        return image, self.labels[idx]
-
-    @property
-    def targets(self) -> torch.Tensor:
-        """Return targets as torch tensor. Base implementation returns zeros."""
-        return torch.zeros(len(self.image_paths), dtype=torch.long)
-
-
 class CompanionDataset(ImageDataset):
     """Dataset for companion images with ground truth labels."""
 
@@ -434,25 +392,20 @@ def _parse_ground_truth_from_dirname(dirname: str, dataset_name: str) -> list[in
         return []
 
 
-def _find_companion_dataset_images(  # pylint: disable=too-many-branches,too-many-statements  # noqa: C901
-    dataroot: str, dataset_name: str, n_samples_per_subset: int = 200
+def _find_companion_dataset_images(  # noqa: C901
+    dataroot: str,
+    dataset_name: str,
+    n_samples_per_subset: int = 200,
+    max_confusion_distance: float | None = None,
 ) -> tuple[list[str], list[list[int]]]:
     """
-    Find and collect companion dataset images from all GAN subsets of a dataset.
+    Collect `n_samples_per_subset` companion images per class pair, with their ground truth labels.
 
-    Args:
-        dataroot: Root directory containing the dataset and AmbiGAN outputs.
-        dataset_name: Name of the dataset (e.g., 'mnist', 'fashion_mnist', 'chest_xray').
-        n_samples_per_subset: Number of random images to select per class subset (default: 200).
-
-    Returns:
-        Tuple of (list of image paths, list of ground truth labels for each image).
-        Where each element in the labels list corresponds to the classes in the companion subset.
-
-    Raises:
-        ValueError: If no companion datasets are found.
-
+    `max_confusion_distance` bounds how ambiguous an image must be to be eligible; None samples the
+    full distribution. Raises ValueError if no companion dataset is found.
     """
+    options = SelectionOptions(max_confusion_distance=max_confusion_distance)
+
     # Convert underscores to hyphens for directory names
     dataset_dir_name = dataset_name.replace("_", "-")
 
@@ -470,40 +423,29 @@ def _find_companion_dataset_images(  # pylint: disable=too-many-branches,too-man
 
     # Special case for inherently binary datasets (chest-xray) without -1v0 suffix
     if dataset_name == "chest_xray":
-        subset_dir = os.path.join(gan_root, dataset_dir_name)
-        if os.path.isdir(subset_dir):
-            # Find the most recent run
-            run_dirs = [
-                os.path.join(subset_dir, d)
-                for d in os.listdir(subset_dir)
-                if os.path.isdir(os.path.join(subset_dir, d))
-            ]
-            if run_dirs:
-                latest_run = max(run_dirs, key=os.path.getmtime)
-                companion_dir = os.path.join(latest_run, "companion_dataset", "ambi")
-                if os.path.exists(companion_dir):
-                    image_files = sorted(
-                        [
-                            os.path.join(companion_dir, f)
-                            for f in os.listdir(companion_dir)
-                            if f.endswith((".png", ".jpg", ".jpeg"))
-                        ]
-                    )
-                    if image_files:
-                        all_images.extend(image_files)
-                        # For chest-xray binary: ground truth is [1, 0]
-                        all_labels.extend([[1, 0]] * len(image_files))
-                        logger.info(f"Found {len(image_files)} companion images for chest-xray")
+        subset_dir = Path(gan_root) / dataset_dir_name
+        if subset_dir.is_dir():
+            latest_run = find_latest_complete_run(subset_dir)
+            if latest_run is not None:
+                # A single subset, so it takes its own dataset size rather than a per-pair quota;
+                # holding that target under a threshold keeps both selections the same size
+                target = companion_image_count(latest_run)
+                image_files = select_companion_images(latest_run, n_samples=target, options=options)
+                if image_files:
+                    all_images.extend(image_files)
+                    # For chest-xray binary: ground truth is [1, 0]
+                    all_labels.extend([[1, 0]] * len(image_files))
+                    logger.info(f"Found {len(image_files)} companion images for chest-xray")
 
         if all_images:
             return all_images, all_labels
 
     # Find all subdirectories matching the pattern {dataset_dir_name}-*
     for entry in os.listdir(gan_root):
-        subset_dir = os.path.join(gan_root, entry)
+        subset_dir = Path(gan_root) / entry
 
         # Check if this is a subdirectory for the correct dataset
-        if not os.path.isdir(subset_dir) or not entry.startswith(f"{dataset_dir_name}-"):
+        if not subset_dir.is_dir() or not entry.startswith(f"{dataset_dir_name}-"):
             continue
 
         # Parse ground truth from directory name
@@ -512,49 +454,19 @@ def _find_companion_dataset_images(  # pylint: disable=too-many-branches,too-man
             logger.warning(f"Skipping {entry}: could not parse ground truth labels")
             continue
 
-        # Find the most recent run (subdirectory) within this subset
+        # Count each pair once: skip self-pairings and the redundant half of `AvB`/`BvA`
+        if not is_canonical_pair(dataset_dir_name, ground_truth[0], ground_truth[-1], subset_dir):
+            continue
+
         try:
-            run_dirs = [
-                os.path.join(subset_dir, d)
-                for d in os.listdir(subset_dir)
-                if os.path.isdir(os.path.join(subset_dir, d))
-            ]
-
-            if not run_dirs:
-                logger.warning(f"No run directories found in {subset_dir}")
+            latest_run = find_latest_complete_run(subset_dir)
+            if latest_run is None:
                 continue
 
-            # Select the most recently modified run
-            latest_run = max(run_dirs, key=os.path.getmtime)
-
-            # Look for the companion dataset
-            companion_dir = os.path.join(latest_run, "companion_dataset", "ambi")
-
-            if not os.path.exists(companion_dir):
-                logger.warning(f"Companion dataset not found for {entry} at {companion_dir}")
+            selected_from_subset = select_companion_images(latest_run, n_samples=n_samples_per_subset, options=options)
+            if not selected_from_subset:
+                logger.warning(f"No eligible companion images available for {entry}")
                 continue
-
-            # Collect all image files from this companion dataset
-            image_files = sorted(
-                [
-                    os.path.join(companion_dir, f)
-                    for f in os.listdir(companion_dir)
-                    if f.endswith((".png", ".jpg", ".jpeg"))
-                ]
-            )
-
-            logger.info(f"Found {len(image_files)} images in {companion_dir}")
-
-            # Randomly select n_samples_per_subset images from this subset
-            if len(image_files) < n_samples_per_subset:
-                logger.warning(
-                    f"Requested {n_samples_per_subset} samples from {entry} but only {len(image_files)} available. Using all available."
-                )
-                selected_indices = list(range(len(image_files)))
-                selected_from_subset = image_files
-            else:
-                selected_indices = list(np.random.choice(len(image_files), size=n_samples_per_subset, replace=False))
-                selected_from_subset = [image_files[i] for i in selected_indices]
 
             # Add images and their corresponding ground truth labels
             all_images.extend(selected_from_subset)
@@ -572,72 +484,50 @@ def _find_companion_dataset_images(  # pylint: disable=too-many-branches,too-man
     return all_images, all_labels
 
 
-def get_companion_transform(dataset_name: str) -> torchvision.transforms.Compose:
-    """
-    Build the transform a companion dataset's estimator was trained with.
+def _build_companion_dataset(
+    params: DatasetParams, dataset_name: str, max_confusion_distance: float | None = None
+) -> Dataset:
+    """Assemble a companion dataset from the AmbiGAN runs of `dataset_name`."""
+    image_paths, labels = _find_companion_dataset_images(
+        params.dataroot, dataset_name, max_confusion_distance=max_confusion_distance
+    )
 
-    Args:
-        dataset_name: Dataset the companion images belong to ('mnist', 'fashion-mnist', 'chest-xray').
-
-    Returns:
-        Composed transform pipeline putting images back in the [-1, 1] range the models expect.
-
-    """
-    if dataset_name in {"chest-xray", "chest_xray"}:
-        return torchvision.transforms.Compose(
-            [
-                torchvision.transforms.Resize(128),
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            ]
-        )
-
-    if dataset_name not in {"mnist", "fashion-mnist", "fashion_mnist"}:
-        raise ValueError(f"No companion transform defined for dataset '{dataset_name}'")
-
-    return torchvision.transforms.Compose(
-        [
-            torchvision.transforms.Grayscale(num_output_channels=1),
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.5,), (0.5,)),
-        ]
+    return CompanionDataset(
+        image_paths,
+        color_mode="RGB",
+        labels=labels,
+        transform=get_companion_transform(dataset_name),
     )
 
 
 def get_companion_mnist(params: DatasetParams) -> Dataset:
-    """Retrieve the Companion MNIST dataset with ground truth labels."""
-    image_paths, labels = _find_companion_dataset_images(params.dataroot, "mnist")
-
-    return CompanionDataset(
-        image_paths,
-        color_mode="RGB",
-        labels=labels,
-        transform=get_companion_transform("mnist"),
-    )
+    """Retrieve the Companion MNIST dataset, sampled from the full companion distribution."""
+    return _build_companion_dataset(params, "mnist")
 
 
 def get_companion_fmnist(params: DatasetParams) -> Dataset:
-    """Retrieve the Companion FMNIST dataset with ground truth labels."""
-    image_paths, labels = _find_companion_dataset_images(params.dataroot, "fashion_mnist")
-
-    return CompanionDataset(
-        image_paths,
-        color_mode="RGB",
-        labels=labels,
-        transform=get_companion_transform("fashion_mnist"),
-    )
+    """Retrieve the Companion FMNIST dataset, sampled from the full companion distribution."""
+    return _build_companion_dataset(params, "fashion_mnist")
 
 
 def get_companion_chest_xray(params: DatasetParams) -> Dataset:
-    """Retrieve the Companion Chest X-ray dataset with ground truth labels."""
-    image_paths, labels = _find_companion_dataset_images(params.dataroot, "chest_xray")
+    """Retrieve the Companion Chest X-ray dataset, sampled from the full companion distribution."""
+    return _build_companion_dataset(params, "chest_xray")
 
-    return CompanionDataset(
-        image_paths,
-        color_mode="RGB",
-        labels=labels,
-        transform=get_companion_transform("chest_xray"),
-    )
+
+def get_companion_ambiguous_mnist(params: DatasetParams) -> Dataset:
+    """Retrieve the Companion MNIST dataset restricted to images the guiding ensemble finds ambiguous."""
+    return _build_companion_dataset(params, "mnist", max_confusion_distance=MAX_CONFUSION_DISTANCE)
+
+
+def get_companion_ambiguous_fmnist(params: DatasetParams) -> Dataset:
+    """Retrieve the Companion FMNIST dataset restricted to images the guiding ensemble finds ambiguous."""
+    return _build_companion_dataset(params, "fashion_mnist", max_confusion_distance=MAX_CONFUSION_DISTANCE)
+
+
+def get_companion_ambiguous_chest_xray(params: DatasetParams) -> Dataset:
+    """Retrieve the Companion Chest X-ray dataset restricted to images the ensemble finds ambiguous."""
+    return _build_companion_dataset(params, "chest_xray", max_confusion_distance=MAX_CONFUSION_DISTANCE)
 
 
 def _find_synthetic_dataset_images(dataroot: str, dataset_name: str) -> list[str]:  # noqa: C901

@@ -10,6 +10,7 @@ datasets:
     - synthetic-fashion-mnist
     - ambiguess-fashion-mnist
     - companion-fashion-mnist
+    - companion-ambiguous-fashion-mnist
 
 classifiers:
   - cnn

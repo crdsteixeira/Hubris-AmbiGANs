@@ -1,11 +1,9 @@
 """CL to compute per-image confusion distance of companion datasets against their guiding ensemble."""
 
 import argparse
-import json
 import logging
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -16,11 +14,18 @@ from dotenv import load_dotenv
 from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
-from torch import nn
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.datasets.datasets import ImageDataset, get_companion_transform
+from src.datasets.companion_selection import (
+    CONFUSION_DISTANCE_CSV,
+    MIN_COMPANION_IMAGES,
+    companion_ambi_dir,
+    companion_image_count,
+    companion_images,
+    compute_confusion_distance,
+    is_canonical_pair,
+    read_run_spec,
+)
 from src.utils.checkpoint import construct_classifier_from_checkpoint
 from src.utils.logging import configure_logging
 
@@ -29,10 +34,6 @@ load_dotenv()
 configure_logging()
 logger = logging.getLogger(__name__)
 
-# A complete companion dataset holds 2500 images; runs below this had their generation interrupted
-MIN_COMPANION_IMAGES = 2000
-
-PER_RUN_CSV = "confusion_distance.csv"
 COMBINED_CSV = "confusion_distance_all.csv"
 
 # Experiments whose run is fixed rather than resolved by modification time. `chest-xray` is the only
@@ -77,38 +78,6 @@ VIOLIN_KWARGS = {
 VIOLIN_FILL_ALPHA = 0.5
 
 
-@dataclass(frozen=True)
-class RunSpec:
-    """What a companion dataset needs to be scored: where it is, and what guided it."""
-
-    run_dir: Path
-    dataset: str
-    pos: int
-    neg: int
-    estimator_path: Path
-
-    @property
-    def pair(self) -> str:
-        """Return the class pair in `<pos>v<neg>` form."""
-        return f"{self.pos}v{self.neg}"
-
-
-def companion_ambi_dir(run_dir: Path) -> Path:
-    """Return the directory holding a run's companion images."""
-    return run_dir / "companion_dataset" / "ambi"
-
-
-def companion_image_count(run_dir: Path) -> int:
-    """Count a run's companion images without materialising their paths."""
-    ambi = companion_ambi_dir(run_dir)
-    return sum(1 for _ in ambi.glob("*.png")) if ambi.is_dir() else 0
-
-
-def companion_images(run_dir: Path) -> list[Path]:
-    """List a run's companion images, sorted by file name."""
-    return sorted(companion_ambi_dir(run_dir).glob("*.png"))
-
-
 def find_run_dir(experiment_dir: Path, pinned_run: str | None = None) -> Path | None:
     """
     Select the run of an experiment whose companion dataset should be used.
@@ -148,97 +117,6 @@ def find_run_dir(experiment_dir: Path, pinned_run: str | None = None) -> Path | 
     return max(complete, key=lambda d: d.stat().st_mtime)
 
 
-def read_run_spec(run_dir: Path, models_root: Path) -> RunSpec | None:
-    """
-    Describe a run from the config its GAN checkpoints carry.
-
-    The checkpoint config is the authoritative source for both the class pair and the guiding
-    ensemble: directory names can drift, and a class pair may have many trained ensembles to choose
-    from. Every checkpoint in a run dumps the same config, so the first one found will do.
-    """
-    config_path = min(run_dir.rglob("config.json"), default=None)
-    if config_path is None:
-        logger.warning("%s: no GAN checkpoint config found", run_dir.name)
-        return None
-
-    with open(config_path, encoding="utf-8") as f:
-        config = json.load(f).get("config", {})
-
-    binary = config.get("dataset", {}).get("binary", {})
-    dataset_name = config.get("dataset", {}).get("name")
-    classifiers = config.get("train", {}).get("step_2", {}).get("classifier") or []
-    if dataset_name is None or "pos" not in binary or not classifiers:
-        logger.warning("%s: incomplete config at %s", run_dir.name, config_path)
-        return None
-
-    estimator = Path(classifiers[0])
-    if not estimator.is_dir():
-        # The run may have been produced under a different FILESDIR; re-anchor it locally
-        relocated = models_root / estimator.parent.name / estimator.name
-        if not relocated.is_dir():
-            logger.warning("%s: estimator %s not found on disk", run_dir.name, estimator)
-            return None
-        logger.info("%s: estimator re-anchored to %s", run_dir.name, relocated)
-        estimator = relocated
-
-    return RunSpec(run_dir, dataset_name, int(binary["pos"]), int(binary["neg"]), estimator)
-
-
-def is_canonical_pair(spec: RunSpec, experiment_dir: Path) -> bool:
-    """
-    Report whether a run is the canonical experiment for its class pair.
-
-    A pair classified against itself is degenerate. Otherwise a run is canonical unless the reverse
-    experiment sits alongside it, in which case only the `pos < neg` half is kept so the pair is not
-    counted twice. Testing for that sibling first, rather than requiring `pos < neg` outright, keeps
-    inherently binary datasets, whose single pair is recorded the other way round as `1v0`.
-    """
-    if spec.pos == spec.neg:
-        logger.info("Skipping %s: degenerate pair %s", experiment_dir.name, spec.pair)
-        return False
-
-    reverse = experiment_dir.parent / f"{spec.dataset}-{spec.neg}v{spec.pos}"
-    if spec.pos > spec.neg and reverse.is_dir() and reverse != experiment_dir:
-        logger.info("Skipping %s: %s covers the same pair", experiment_dir.name, reverse.name)
-        return False
-    return True
-
-
-def compute_confusion_distance(
-    estimator: nn.Module,
-    image_paths: list[Path],
-    dataset_name: str,
-    device: str,
-    batch_size: int,
-    num_workers: int,
-) -> pd.DataFrame:
-    """Run the estimator over every companion image and return its per-image confusion distance."""
-    loader = DataLoader(
-        ImageDataset([str(p) for p in image_paths], color_mode="RGB", transform=get_companion_transform(dataset_name)),
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-    )
-
-    probs = []
-    with torch.inference_mode():
-        for images, _ in loader:
-            output = estimator(images.to(device))
-            if isinstance(output, tuple):
-                output = output[0]
-            probs.append(output.flatten().cpu())
-
-    full_probs = torch.cat(probs)
-
-    return pd.DataFrame(
-        {
-            "image": [p.name for p in image_paths],
-            "prob": full_probs.numpy(),
-            "confusion_distance": (0.50 - full_probs).abs().numpy(),
-        }
-    )
-
-
 def process_experiment(experiment_dir: Path, args: argparse.Namespace) -> pd.DataFrame | None:
     """Compute and persist per-image confusion distances for one experiment's companion dataset."""
     run_dir = find_run_dir(experiment_dir, args.pinned_runs.get(experiment_dir.name))
@@ -247,10 +125,10 @@ def process_experiment(experiment_dir: Path, args: argparse.Namespace) -> pd.Dat
         return None
 
     spec = read_run_spec(run_dir, Path(args.models_root))
-    if spec is None or not is_canonical_pair(spec, experiment_dir):
+    if spec is None or not is_canonical_pair(spec.dataset, spec.pos, spec.neg, experiment_dir):
         return None
 
-    out_csv = companion_ambi_dir(run_dir) / PER_RUN_CSV
+    out_csv = companion_ambi_dir(run_dir) / CONFUSION_DISTANCE_CSV
     if out_csv.is_file() and not args.overwrite:
         logger.info("%s: reusing %s", experiment_dir.name, out_csv)
         df = pd.read_csv(out_csv)
