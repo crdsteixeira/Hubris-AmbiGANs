@@ -7,6 +7,7 @@ import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,12 @@ from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.datasets import ImageFolder
 from tqdm import tqdm
 
+from src.datasets.companion_selection import (
+    MAX_CONFUSION_DISTANCE,
+    SelectionOptions,
+    select_companion_images,
+)
+from src.datasets.image_dataset import ImageDataset
 from src.datasets.load import DatasetNames, load_dataset
 from src.enums import DeviceType, PretrainedModels
 from src.evaluation.pretrained_models import (
@@ -223,9 +230,29 @@ def split_train_validation(dataset: Dataset, val_fraction: float = 0.5) -> tuple
     )
 
 
-def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
+def load_ambiguous_companion(config: CLEvaluationArgs, transform: Any) -> ImageDataset | None:
+    """Load the companion images the guiding estimator was undecided about, None if there are none."""
+    run_dir = Path(config.companion_dataroot).parent
+    options = SelectionOptions(max_confusion_distance=MAX_CONFUSION_DISTANCE, device=config.device)
+    # No quota: hubris is computed over every ambiguous image the run holds, and never generates more
+    image_paths = select_companion_images(run_dir, n_samples=None, options=options)
+    if not image_paths:
+        logger.warning("No companion image within confusion distance %s for %s", MAX_CONFUSION_DISTANCE, run_dir.name)
+        return None
+    # Scalar labels, as ImageFolder gives the unfiltered companion set: hubris reads only the
+    # predictions, and a list-valued label would not collate into a tensor
+    labels: list[int] = [0] * len(image_paths)
+    return ImageDataset(image_paths, color_mode="RGB", labels=labels, transform=transform)
+
+
+def load_datasets(
+    config: CLEvaluationArgs,
+) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader, DataLoader | None]:
     """
     Load training, test, and companion datasets.
+
+    The last loader holds only the companion images within `MAX_CONFUSION_DISTANCE` of the decision
+    boundary, and is None when the run has none.
 
     For fine-tuning pretrained models, uses different splits by dataset:
     - Chest X-ray: Uses VALIDATION because it has more images
@@ -255,21 +282,30 @@ def load_datasets(config: CLEvaluationArgs) -> tuple[DataLoader, DataLoader, Dat
     )
 
     # Load companion dataset for evaluation
-    ambi_dataset = ImageFolder(root=config.companion_dataroot, transform=finetune_test_set.transform)
+    test_transform: Any = getattr(finetune_test_set, "transform", None)
+    ambi_dataset = ImageFolder(root=config.companion_dataroot, transform=test_transform)
+    filtered_dataset = load_ambiguous_companion(config, test_transform)
 
     # Create dataloaders
     train_dataloader = DataLoader(finetune_train_set, batch_size=config.batch_size, shuffle=True)
     val_dataloader = DataLoader(finetune_val_set, batch_size=config.batch_size, shuffle=False)
     test_dataloader = DataLoader(finetune_test_set, batch_size=config.batch_size, shuffle=False)
     ambi_dataloader = DataLoader(ambi_dataset, batch_size=config.batch_size, shuffle=False)
+    filtered_dataloader = (
+        DataLoader(filtered_dataset, batch_size=config.batch_size, shuffle=False)
+        if filtered_dataset is not None
+        else None
+    )
 
     # Log dataset sizes
     logger.info(f"Training set size: {len(finetune_train_set)}")
     logger.info(f"Validation set size: {len(finetune_val_set)}")
     logger.info(f"Test set size: {len(finetune_test_set)}")
     logger.info(f"Companion/Ambiguity dataset size: {len(ambi_dataset)}")
+    filtered_size = len(filtered_dataset) if filtered_dataset is not None else 0
+    logger.info(f"Companion subset within confusion distance {MAX_CONFUSION_DISTANCE}: {filtered_size}")
 
-    return train_dataloader, val_dataloader, test_dataloader, ambi_dataloader
+    return train_dataloader, val_dataloader, test_dataloader, ambi_dataloader, filtered_dataloader
 
 
 def construct_model_path(config: CLEvaluationArgs, model_name: str) -> Path:
@@ -485,8 +521,12 @@ def train_model(
 
 def _log_evaluation_to_wandb(df: pd.DataFrame, config: "CLEvaluationArgs") -> None:
     """Log evaluation metrics to wandb."""
+    filtered = df[df["dataset"] == f"{config.dataset_name} Companion Filtered"]["improved_hubris"]
     wandb.log(
         {
+            # Improved absolute hubris over only the companion images the guiding estimator was
+            # undecided about, i.e. within MAX_CONFUSION_DISTANCE of the decision boundary
+            "hubris_improved_absolute_filter": filtered.values[0] if len(filtered) else None,
             "hubris_a_original": df[df["dataset"] == f"{config.dataset_name} Original"]["absolute_hubris"].values[0],
             "hubris_a_companion": df[df["dataset"] == f"{config.dataset_name} Companion"]["absolute_hubris"].values[0],
             "hubris_improved_original": df[df["dataset"] == f"{config.dataset_name} Original"][
@@ -571,7 +611,7 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
     os.makedirs(config.out_dir, exist_ok=True)
 
     # Load datasets (only once for all models)
-    train_dataloader, val_dataloader, test_dataloader, ambi_dataloader = load_datasets(config)
+    train_dataloader, val_dataloader, test_dataloader, ambi_dataloader, filtered_dataloader = load_datasets(config)
 
     # Get GAN ID for experiment tracking
     gan_id = args_dict.get("gan_id") or "unknown"
@@ -604,6 +644,20 @@ def main() -> None:  # pylint: disable=too-many-nested-blocks
                 ),
             )
         )
+
+        if filtered_dataloader is not None:
+            df = pd.concat(
+                (
+                    df,
+                    evaluate(
+                        config,
+                        model,
+                        filtered_dataloader,
+                        name=f"{config.dataset_name} Companion Filtered",
+                        compute_prf=False,
+                    ),
+                )
+            )
 
         # save to CSV for local backup
         csv_path = os.path.join(

@@ -157,3 +157,9 @@ mock_data/
 mock_dir/
 # all-vs-all YAML files
 experiments/all-vs-all/*.yml
+
+# one-off backfill script
+src/evaluation/hubris_filter_backfill_cli.py
+
+# paper figure script
+src/evaluation/companion_figures_cli.py

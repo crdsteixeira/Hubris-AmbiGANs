@@ -199,7 +199,7 @@ def test_ambiguous_selection_generates_more_when_the_pool_is_short(run_dir: Path
     assert len(generated) == 1
     assert len(selected) == 6
     # Every selection is ambiguous, and the two seed images alone could not have filled the quota
-    assert any("ambi_topup" in path for path in selected)
+    assert any("companion_topup" in path for path in selected)
 
 
 def test_ambiguous_selection_does_not_generate_when_forbidden(run_dir: Path, monkeypatch: Any) -> None:
@@ -223,7 +223,7 @@ def test_topup_reuses_previously_generated_rounds(run_dir: Path) -> None:
     names = write_images(ambi, 4)
     write_confusion_distances(ambi, names, [0.01, 0.4, 0.4, 0.4])
 
-    round_dir = run_dir / "companion_dataset" / companion_selection.TOPUP_DIR_NAME / "round_00"
+    round_dir = run_dir / companion_selection.TOPUP_DIR_NAME / "round_00"
     round_names = write_images(round_dir, 4)
     write_confusion_distances(round_dir, round_names, [0.01, 0.02, 0.03, 0.4])
 
@@ -237,12 +237,12 @@ def test_topup_reuses_previously_generated_rounds(run_dir: Path) -> None:
 def test_full_distribution_selection_ignores_topup_rounds(run_dir: Path) -> None:
     """Images generated to satisfy a threshold stay out of the unfiltered dataset, which must not drift."""
     write_images(companion_ambi_dir(run_dir), 4)
-    write_images(run_dir / "companion_dataset" / companion_selection.TOPUP_DIR_NAME / "round_00", 8)
+    write_images(run_dir / companion_selection.TOPUP_DIR_NAME / "round_00", 8)
 
     selected = select_companion_images(run_dir, None)
 
     assert len(selected) == 4
-    assert not any("ambi_topup" in path for path in selected)
+    assert not any("companion_topup" in path for path in selected)
 
 
 def test_selection_without_a_quota_takes_the_whole_pool(run_dir: Path) -> None:

@@ -30,9 +30,9 @@ IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 # A complete companion dataset holds 2500 images; runs below this had their generation interrupted
 MIN_COMPANION_IMAGES = 2000
 
-# Top-ups live beside `ambi`, not inside it: `ambi` is treated as fixed-size elsewhere, and
-# `src.gen_dataset` restarts its file numbering at zero on every call.
-TOPUP_DIR_NAME = "ambi_topup"
+# Top-ups live outside `companion_dataset`, which is read wholesale as an ImageFolder and is
+# treated as fixed-size elsewhere; `src.gen_dataset` also restarts its numbering on every call.
+TOPUP_DIR_NAME = "companion_topup"
 TOPUP_ROUND_PREFIX = "round"
 
 # Only images within the threshold count, so each round asks for more than it needs
@@ -314,7 +314,7 @@ def _next_topup_round(topup_root: Path) -> int:
 
 def _topup_root(run_dir: Path) -> Path:
     """Return the directory holding whatever was generated to extend a run's pool."""
-    return run_dir / "companion_dataset" / TOPUP_DIR_NAME
+    return run_dir / TOPUP_DIR_NAME
 
 
 def _pool_dirs(run_dir: Path) -> list[Path]:
