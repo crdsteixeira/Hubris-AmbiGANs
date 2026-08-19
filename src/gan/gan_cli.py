@@ -10,6 +10,7 @@ import torch
 import wandb
 from dotenv import load_dotenv
 from pydantic import ValidationError
+from wandb.sdk.lib.runid import generate_id
 
 from src.classifier.classifier_cache import ClassifierCache
 from src.datasets.load import load_dataset
@@ -384,7 +385,7 @@ def main(config: ConfigGAN | None = None) -> None:
         logger.info(f"# Starting run {i}\n")
         logger.info("##")
 
-        run_id = wandb.util.generate_id()
+        run_id = generate_id()
         cp_dir = create_checkpoint_path(config.__dict__, run_id)
         with open(os.path.join(cp_dir, "fixed_noise.npy"), "wb") as f:
             np.save(f, fixed_noise.cpu().numpy())
