@@ -36,6 +36,7 @@ class DeviceType(StrEnum):
 
     cpu = "cpu"
     cuda = "cuda:1"
+    cuda_0 = "cuda:0"
 
 
 class TrainingStage(StrEnum):
@@ -60,6 +61,9 @@ class DatasetNames(StrEnum):
     companion_mnist = "companion-mnist"
     companion_fmnist = "companion-fashion-mnist"
     companion_chest_xray = "companion-chest-xray"
+    companion_ambiguous_mnist = "companion-ambiguous-mnist"
+    companion_ambiguous_fmnist = "companion-ambiguous-fashion-mnist"
+    companion_ambiguous_chest_xray = "companion-ambiguous-chest-xray"
     synthetic_mnist = "synthetic-mnist"
     synthetic_fmnist = "synthetic-fashion-mnist"
     synthetic_chest_xray = "synthetic-chest-xray"

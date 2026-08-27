@@ -9,6 +9,7 @@ datasets:
     - chest-xray
     - synthetic-chest-xray
     - companion-chest-xray
+    - companion-ambiguous-chest-xray
   balanced: true
 
 classifiers:

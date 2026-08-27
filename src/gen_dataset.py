@@ -7,6 +7,7 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
 import torch
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -63,6 +64,7 @@ def main() -> None:  # pylint: disable=too-many-statements
         logger.info("Estimator loaded successfully.")
     confusion_distance_sum = 0.0
     confusion_distance_count = 0
+    per_image_confusion_distance: list[dict[str, float | str]] = []
 
     with torch.no_grad():
         for i in tqdm(range(config.n_samples)):
@@ -74,6 +76,9 @@ def main() -> None:  # pylint: disable=too-many-statements
                 prob = estimator(gen_image)[0].item()
                 confusion_distance_sum += abs(0.5 - prob)
                 confusion_distance_count += 1
+                per_image_confusion_distance.append(
+                    {"image": f"image_{i:06d}.png", "prob": prob, "confusion_distance": abs(0.5 - prob)}
+                )
             if config.fid_stats_path is not None:
                 fid.update(gen_image, (0, 0))
 
@@ -98,6 +103,13 @@ def main() -> None:  # pylint: disable=too-many-statements
     torch.cuda.empty_cache()
 
     logger.info(f"Generated test noise, stored in {config.out_dir}")
+
+    # Keep the per-image confusion distances, not just their mean, so the distribution can be studied later
+    if per_image_confusion_distance:
+        per_image_path = os.path.join(config.out_dir, "confusion_distance.csv")
+        pd.DataFrame(per_image_confusion_distance).to_csv(per_image_path, index=False)
+        logger.info(f"Stored per-image confusion distance in {per_image_path}")
+
     if config.fid_stats_path is not None and config.calculate_stats:
         dataset_fid = fid.finalize()
         logger.info(f"Dataset FID is: {dataset_fid}")

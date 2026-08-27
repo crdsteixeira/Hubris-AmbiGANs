@@ -671,7 +671,7 @@ class ConfigGAN(BaseModel):
 
     project: str = Field(..., description="Project name.")
     name: str = Field(..., description="Run name.")
-    out_dir: str = Field(..., description="Path to output directory.")
+    out_dir: str = Field(default="", description="Path to output directory. Empty means FILESDIR itself.")
     data_dir: str = Field(..., description="Path to data directory.")
     fid_stats_path: str | None = Field(default=None, description="Path to FID statistics file.")
     fixed_noise: str | int = Field(..., description="Path to fixed noise or number of fixed samples.")
